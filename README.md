@@ -102,7 +102,6 @@ CLI:
 mlx-harmony-chat --profile gpt-oss-20b --profiles-file configs/profiles.example.json
 ```
 
-
 ### GPT-OSS Tools (GPT-OSS models only)
 
 For GPT-OSS models, you can enable tools that the model can call during conversation:
@@ -116,11 +115,13 @@ mlx-harmony-chat \
 ```
 
 Available tools:
+
 - `--browser`: Browser tool for web navigation and interaction
 - `--python`: Python tool for executing Python code in a sandbox
 - `--apply-patch`: Apply patch tool for code modifications
 
 **Note**: Tool execution is currently stubbed. The infrastructure for detecting and parsing tool calls is in place, but actual tool executors need to be implemented. When a tool call is detected, the chat loop will:
+
 1. Parse the tool call from the model's response
 2. Execute the tool (currently returns a "not implemented" message)
 3. Feed the result back into the conversation
@@ -138,3 +139,14 @@ tokens = list(generator.generate(messages=messages, max_tokens=64))
 text = generator.tokenizer.decode([int(t) for t in tokens])
 print(text)
 ```
+
+---
+
+## Roadmap & Contributing
+
+- **[ROADMAP.md](./docs/ROADMAP.md)**: Detailed roadmap with planned enhancements and features
+- **[FEATURES_FROM_MLX.md](./docs/FEATURES_FROM_MLX.md)**: Features identified from mlx-lm/mlx-examples to incorporate
+- **[TODO.md](./docs/TODO.md)**: Active checklist for current work items
+- **[CHANGELOG.md](./CHANGELOG.md)**: Version history and release notes
+
+Contributions welcome! Please check the roadmap before starting work on major features.

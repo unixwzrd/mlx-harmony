@@ -6,6 +6,7 @@ from typing import Dict, Iterator, List, Optional, Union
 from mlx_lm import load, stream_generate
 from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from openai_harmony import (
+    Author,
     Conversation,
     DeveloperContent,
     HarmonyEncodingName,
@@ -276,12 +277,33 @@ class TokenGenerator:
 
         for msg in messages:
             role_str = msg.get("role", "user").upper()
-            role = Role(role_str)
-            content_text = msg.get("content", "")
-            content = TextContent.new().with_text(content_text)
-            harmony_messages.append(
-                Message.from_role_and_content(role, content),
-            )
+
+            # Handle tool messages: Role.TOOL with name in Author.name
+            # Only treat as tool message if role is explicitly "tool"
+            if role_str == "TOOL":
+                tool_name = msg.get("name")
+                if not tool_name:
+                    # Tool messages require a name field; skip invalid message
+                    continue
+                author = Author(role=Role.TOOL, name=tool_name)
+                content_text = msg.get("content", "")
+                content = TextContent.new().with_text(content_text)
+                tool_msg = Message.from_author_and_content(author, content)
+                # Set recipient if specified (tool results go to assistant)
+                if msg.get("recipient"):
+                    tool_msg = tool_msg.with_recipient(msg["recipient"])
+                # Set channel if specified (e.g., "commentary")
+                if msg.get("channel"):
+                    tool_msg = tool_msg.with_channel(msg["channel"])
+                harmony_messages.append(tool_msg)
+            else:
+                # Standard message: user, assistant, system, developer
+                role = Role(role_str)
+                content_text = msg.get("content", "")
+                content = TextContent.new().with_text(content_text)
+                harmony_messages.append(
+                    Message.from_role_and_content(role, content),
+                )
 
         conversation = Conversation.from_messages(harmony_messages)
         prompt_tokens = self.encoding.render_conversation_for_completion(

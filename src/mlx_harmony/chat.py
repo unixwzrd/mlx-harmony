@@ -191,9 +191,12 @@ def main() -> None:
 
                             # Add tool result to conversation in Harmony format
                             # Format: <|start|>{tool_name} to=assistant<|channel|>commentary<|message|>{result}<|end|>
+                            # Use role="tool" with name field for proper Harmony message construction
                             tool_result_msg = {
-                                "role": tool_call.tool_name,
+                                "role": "tool",
+                                "name": tool_call.tool_name,  # Tool name goes in Author.name
                                 "content": result,
+                                "recipient": "assistant",  # Tool results are sent to assistant
                             }
                             conversation.append(tool_result_msg)
 
