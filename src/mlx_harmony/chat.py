@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from typing import Dict, List
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
 
 from .config import load_prompt_config
 from .generator import TokenGenerator
@@ -10,6 +13,83 @@ from .tools import (
     get_tools_for_model,
     parse_tool_calls_from_messages,
 )
+
+
+def save_conversation(
+    path: str | Path,
+    messages: List[Dict[str, str]],
+    model_path: str,
+    prompt_config_path: Optional[str] = None,
+    tools: Optional[List] = None,
+) -> None:
+    """
+    Save conversation to a JSON file.
+
+    Format:
+    {
+        "metadata": {
+            "model_path": "...",
+            "prompt_config_path": "...",
+            "tools": ["browser", "python"],
+            "created_at": "2026-01-06T...",
+            "updated_at": "2026-01-06T..."
+        },
+        "messages": [
+            {"role": "user", "content": "..."},
+            {"role": "assistant", "content": "..."},
+            {"role": "tool", "name": "browser", "content": "...", "recipient": "assistant"}
+        ]
+    }
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Check if file exists to preserve created_at
+    created_at = datetime.utcnow().isoformat() + "Z"
+    if path.exists():
+        try:
+            with open(path, "r") as f:
+                existing = json.load(f)
+                created_at = existing.get("metadata", {}).get("created_at", created_at)
+        except Exception:
+            pass  # If we can't read it, use new timestamp
+
+    metadata = {
+        "model_path": model_path,
+        "prompt_config_path": prompt_config_path,
+        "tools": [t.name for t in tools] if tools else [],
+        "created_at": created_at,
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+    data = {
+        "metadata": metadata,
+        "messages": messages,
+    }
+
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+def load_conversation(path: str | Path) -> tuple[List[Dict[str, str]], Dict[str, str]]:
+    """
+    Load conversation from a JSON file.
+
+    Returns:
+        (messages, metadata) tuple where messages is the conversation history
+        and metadata contains model/prompt_config info.
+    """
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Conversation file not found: {path}")
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    messages = data.get("messages", [])
+    metadata = data.get("metadata", {})
+
+    return messages, metadata
 
 
 def main() -> None:
@@ -96,6 +176,18 @@ def main() -> None:
         default="configs/profiles.example.json",
         help="Path to profiles JSON (default: configs/profiles.example.json)",
     )
+    parser.add_argument(
+        "--save-conversation",
+        type=str,
+        default=None,
+        help="Path to save conversation JSON file (auto-saves after each exchange).",
+    )
+    parser.add_argument(
+        "--load-conversation",
+        type=str,
+        default=None,
+        help="Path to load previous conversation JSON file (resumes chat).",
+    )
     args = parser.parse_args()
 
     # Resolve profile/model/prompt_config
@@ -122,6 +214,29 @@ def main() -> None:
         load_prompt_config(prompt_config_path) if prompt_config_path else None
     )
 
+    # Load conversation if specified
+    conversation: List[Dict[str, str]] = []
+    loaded_metadata = {}
+    if args.load_conversation:
+        try:
+            conversation, loaded_metadata = load_conversation(args.load_conversation)
+            print(f"[INFO] Loaded conversation from: {args.load_conversation}")
+            print(f"[INFO] Found {len(conversation)} previous messages")
+            
+            # Optionally use loaded model/prompt_config if not explicitly set
+            if not model_path and loaded_metadata.get("model_path"):
+                model_path = loaded_metadata["model_path"]
+                print(f"[INFO] Using model from conversation: {model_path}")
+            if not prompt_config_path and loaded_metadata.get("prompt_config_path"):
+                prompt_config_path = loaded_metadata["prompt_config_path"]
+                prompt_config = (
+                    load_prompt_config(prompt_config_path) if prompt_config_path else None
+                )
+                print(f"[INFO] Using prompt config from conversation: {prompt_config_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed to load conversation: {e}")
+            raise SystemExit(1)
+
     generator = TokenGenerator(model_path, prompt_config=prompt_config)
 
     tools = []
@@ -142,8 +257,9 @@ def main() -> None:
         print("[INFO] Non–GPT-OSS model – using native chat template.")
 
     print("[INFO] Type 'q' to quit.")
+    if args.save_conversation:
+        print(f"[INFO] Conversation will be saved to: {args.save_conversation}")
 
-    conversation: List[Dict[str, str]] = []
     max_tool_iterations = 10  # Prevent infinite loops
 
     while True:
@@ -209,7 +325,35 @@ def main() -> None:
             # No tool calls or non-GPT-OSS model: add assistant response and break
             assistant_text = generator.tokenizer.decode(tokens)
             conversation.append({"role": "assistant", "content": assistant_text})
+            
+            # Save conversation after each exchange
+            if args.save_conversation:
+                try:
+                    save_conversation(
+                        args.save_conversation,
+                        conversation,
+                        model_path,
+                        prompt_config_path,
+                        tools,
+                    )
+                except Exception as e:
+                    print(f"\n[WARNING] Failed to save conversation: {e}")
+            
             break
+    
+    # Final save on exit
+    if args.save_conversation and conversation:
+        try:
+            save_conversation(
+                args.save_conversation,
+                conversation,
+                model_path,
+                prompt_config_path,
+                tools,
+            )
+            print(f"\n[INFO] Conversation saved to: {args.save_conversation}")
+        except Exception as e:
+            print(f"\n[WARNING] Failed to save conversation on exit: {e}")
 
 
 if __name__ == "__main__":

@@ -599,3 +599,4 @@ old-docs/
 configs/*
 !configs/profiles.example.json
 !configs/prompt-config.example.json
+!configs/conversation.example.json

@@ -51,8 +51,8 @@ Quick reference checklist for active work items. For detailed roadmap, see [ROAD
 
 _Add quick TODOs here as they come up during development:_
 
-- [ ]
-- [ ]
+- [ ] Conversation logging for chat CLI (save to JSON/text file)
+- [ ] Server request/response logging (optional debug mode)
 - [ ]
 
 ---

@@ -127,6 +127,32 @@ Available tools:
 3. Feed the result back into the conversation
 4. Continue generation with the tool result
 
+### Conversation Logging & Resuming
+
+Save conversations to resume later:
+
+```bash
+# Save conversation to a JSON file (auto-saves after each exchange)
+mlx-harmony-chat \
+  --model openai/gpt-oss-20b \
+  --save-conversation conversations/my-chat.json
+```
+
+Resume a previous conversation:
+
+```bash
+# Load and continue from a saved conversation
+mlx-harmony-chat --load-conversation conversations/my-chat.json
+```
+
+The conversation JSON format includes metadata (model, prompt config, tools) and the full message history. See `configs/conversation.example.json` for the schema.
+
+**Features:**
+- Auto-saves after each exchange
+- Preserves model/prompt config information
+- Supports resuming with same or different model
+- Tool messages are preserved in the format
+
 ### Python API
 
 ```python
