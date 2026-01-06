@@ -1,0 +1,18 @@
+{
+  "system_model_identity": "You are {assistant} on <|DATE|> at <|DATETIME|>.",
+  "reasoning_effort": "Medium",
+  "conversation_start_date": "<|DATE|>",
+  "knowledge_cutoff": "2025-01",
+  "developer_instructions": "Address the user as {user} and be concise.",
+  "placeholders": {
+    "assistant": "Dave",
+    "user": "Morgan"
+  },
+  "temperature": 0.8,
+  "top_p": 0.9,
+  "top_k": 40,
+  "min_p": 0.0,
+  "min_tokens_to_keep": 1,
+  "repetition_penalty": 1.0,
+  "repetition_context_size": 20
+}

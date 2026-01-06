@@ -1,0 +1,10 @@
+{
+  "gpt-oss-20b": {
+    "model": "~/models/gpt-oss-20b",
+    "prompt_config": "configs/prompt-config.example.json"
+  },
+  "gpt-oss-120b": {
+    "model": "~/models/gpt-oss-120b",
+    "prompt_config": "configs/prompt-config.example.json"
+  }
+}

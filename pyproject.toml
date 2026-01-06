@@ -1,0 +1,34 @@
+[project]
+name = "mlx-harmony"
+version = "0.1.0"
+description = "Multi-model MLX inference with GPT-OSS Harmony format and tools"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mlx-lm>=0.1.0",
+    "openai-harmony>=0.0.8",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "aiohttp>=3.12.0",
+    "docker>=7.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "black",
+    "ruff",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["mlx_harmony"]
+
+[project.scripts]
+mlx-harmony-chat = "mlx_harmony.chat:main"
+mlx-harmony-server = "mlx_harmony.server:main"
+mlx-harmony-generate = "mlx_harmony.generate:main"
