@@ -1,0 +1,60 @@
+Wed Jan  7 20:07:31 2026    profile.stats
+
+         143059 function calls (131805 primitive calls) in 4132.467 seconds
+
+   Ordered by: cumulative time
+   List reduced from 606 to 50 due to restriction <50>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000 4132.467 4132.467 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py:172(main)
+        1 4020.226 4020.226 4020.226 4020.226 {built-in method builtins.input}
+        1    0.000    0.000  112.236  112.236 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py:34(__init__)
+        1    0.000    0.000  112.139  112.139 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/load_optimized.py:125(load_optimized)
+        1    0.000    0.000  102.816  102.816 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/load_optimized.py:95(prewarm_model_cache)
+        5    0.007    0.001  102.815   20.563 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/load_optimized.py:20(_prewarm_filesystem_cache)
+     1413  102.809    0.073  102.809    0.073 {method 'read' of '_io.BufferedReader' objects}
+        1    0.000    0.000    9.323    9.323 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/utils.py:295(load)
+        1    7.466    7.466    7.531    7.531 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/utils.py:166(load_model)
+        1    0.019    0.019    1.792    1.792 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/utils.py:271(load_tokenizer)
+        1    0.003    0.003    1.773    1.773 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/tokenizer_utils.py:472(load)
+        1    0.000    0.000    1.329    1.329 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/transformers/models/auto/tokenization_auto.py:545(from_pretrained)
+        1    0.031    0.031    1.314    1.314 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:1512(from_pretrained)
+        1    0.000    0.000    1.282    1.282 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/transformers/tokenization_utils_base.py:1771(_from_pretrained)
+        1    0.001    0.001    0.700    0.700 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/transformers/tokenization_utils_tokenizers.py:229(__init__)
+    375/2    0.000    0.000    0.670    0.335 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/copy.py:118(deepcopy)
+        1    0.000    0.000    0.570    0.570 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/transformers/tokenization_utils_tokenizers.py:97(convert_to_native_format)
+        1    0.570    0.570    0.570    0.570 {built-in method from_file}
+    23/22    0.000    0.000    0.535    0.024 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/copy.py:247(_reconstruct)
+        1    0.534    0.534    0.534    0.534 {method '__setstate__' of 'tokenizers.Tokenizer' objects}
+        8    0.001    0.000    0.434    0.054 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/json/__init__.py:274(load)
+       10    0.250    0.025    0.270    0.027 {method 'read' of '_io.TextIOWrapper' objects}
+        9    0.000    0.000    0.176    0.020 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/json/__init__.py:299(loads)
+        9    0.000    0.000    0.176    0.020 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/json/decoder.py:333(decode)
+        9    0.176    0.020    0.176    0.020 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/json/decoder.py:344(raw_decode)
+       23    0.135    0.006    0.135    0.006 {method '__reduce_ex__' of 'object' objects}
+        1    0.000    0.000    0.096    0.096 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/openai_harmony/__init__.py:692(load_harmony_encoding)
+        1    0.096    0.096    0.096    0.096 {built-in method openai_harmony.openai_harmony.load_harmony_encoding}
+        1    0.000    0.000    0.053    0.053 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/tokenizer_utils.py:253(__init__)
+        1    0.000    0.000    0.053    0.053 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/transformers/tokenization_utils_tokenizers.py:483(get_vocab)
+        1    0.053    0.053    0.053    0.053 {method 'get_vocab' of 'tokenizers.Tokenizer' objects}
+        1    0.000    0.000    0.027    0.027 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/utils.py:147(load_config)
+        1    0.024    0.024    0.024    0.024 {method 'get_vocab_size' of 'tokenizers.Tokenizer' objects}
+       10    0.000    0.000    0.020    0.002 <frozen codecs>:319(decode)
+       10    0.019    0.002    0.019    0.002 {built-in method _codecs.utf_8_decode}
+        1    0.000    0.000    0.014    0.014 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/transformers/models/auto/tokenization_auto.py:435(get_tokenizer_config)
+        1    0.000    0.000    0.014    0.014 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/utils.py:218(_quantize)
+        1    0.000    0.000    0.014    0.014 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/quantized.py:11(quantize)
+    415/1    0.001    0.000    0.009    0.009 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/utils.py:60(tree_map_with_path)
+       50    0.000    0.000    0.009    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/utils.py:98(<genexpr>)
+ 1168/780    0.001    0.000    0.009    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/base.py:245(filter_and_map)
+      291    0.000    0.000    0.009    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/quantized.py:42(_maybe_quantize)
+        1    0.000    0.000    0.008    0.008 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/base.py:123(load_weights)
+ 4224/954    0.002    0.000    0.007    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/base.py:638(_unwrap)
+        1    0.000    0.000    0.006    0.006 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/models/gpt_oss.py:222(__init__)
+        1    0.000    0.000    0.006    0.006 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/models/gpt_oss.py:182(__init__)
+       24    0.000    0.000    0.006    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx_lm/models/gpt_oss.py:159(__init__)
+6069/1166    0.004    0.000    0.006    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/utils.py:116(tree_flatten)
+      121    0.000    0.000    0.005    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/linear.py:73(to_quantized)
+      195    0.000    0.000    0.005    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/base.py:405(apply_to_modules)
+
+

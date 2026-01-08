@@ -20,6 +20,7 @@ from openai_harmony import (
 )
 
 from .config import PromptConfig, apply_placeholders
+from .load_optimized import load_optimized
 
 
 class TokenGenerator:
@@ -36,6 +37,8 @@ class TokenGenerator:
         use_harmony: Optional[bool] = None,
         lazy: bool = False,
         prompt_config: Optional[PromptConfig] = None,
+        prewarm_cache: bool = True,
+        mlock: bool = False,
     ) -> None:
         """
         Initialize generator for any MLX-LM model.
@@ -45,8 +48,22 @@ class TokenGenerator:
             use_harmony: Whether to use Harmony format. When None, this is
                 auto-detected (enabled only for GPT-OSS models).
             lazy: Lazy-load model weights.
+            prewarm_cache: If True, pre-warm filesystem cache before loading
+                (speeds up loading, uses some disk I/O upfront). Default: True
+            mlock: If True, lock model weights in memory using MLX's wired limit
+                (mlock equivalent, macOS Metal only). Default: False
         """
-        self.model, self.tokenizer = load(model_path, lazy=lazy)
+        if prewarm_cache or mlock:
+            # Use optimized loader with pre-warming and/or memory locking (mlock)
+            self.model, self.tokenizer = load_optimized(
+                model_path,
+                lazy=lazy,
+                prewarm_cache=prewarm_cache,
+                mlock=mlock,
+            )
+        else:
+            # Use standard loader
+            self.model, self.tokenizer = load(model_path, lazy=lazy)
         self.model_path = model_path
         self.prompt_config = prompt_config
 
@@ -67,9 +84,8 @@ class TokenGenerator:
         # Streamable parser for tool call detection (Harmony only)
         self.streamable_parser: Optional[StreamableParser] = None
         if self.use_harmony and self.encoding is not None:
-            self.streamable_parser = StreamableParser.new(
-                self.encoding, Role.ASSISTANT
-            )
+            # StreamableParser constructor takes encoding and optional role
+            self.streamable_parser = StreamableParser(self.encoding, Role.ASSISTANT)
 
     @staticmethod
     def _is_gpt_oss_model(model_path: str) -> bool:
@@ -150,17 +166,54 @@ class TokenGenerator:
             ),
         )
 
+        # Resolve max_tokens: CLI/function arg > prompt_config > default
+        resolved_max_tokens = max_tokens
+        if resolved_max_tokens is None and cfg and cfg.max_tokens is not None:
+            resolved_max_tokens = cfg.max_tokens
+        # Default max_tokens: 1024 for Harmony models (to allow for both analysis and final channels),
+        # 512 for other models
+        if resolved_max_tokens is None:
+            resolved_max_tokens = 1024 if (self.is_gpt_oss and self.use_harmony) else 512
+
         kwargs: Dict[str, object] = {"sampler": sampler}
         if logits_processors:
             kwargs["logits_processors"] = logits_processors
-        if max_tokens is not None and max_tokens > 0:
-            kwargs["max_tokens"] = max_tokens
+        if resolved_max_tokens > 0:
+            kwargs["max_tokens"] = resolved_max_tokens
 
+        # For Harmony models, automatically add Harmony stop tokens (<|return|>, <|call|>)
+        # These are required for proper generation stopping - the model generates analysis,
+        # then final channel, then stops with <|return|> or <|call|>
+        # Note: MLX-LM's stream_generate doesn't accept 'stop' parameter, so we handle it manually
+        stop_strings_list = []
+
+        # Add user-provided stop tokens (converted to strings)
         if stop_tokens:
-            stop_strings = self._tokens_to_stop_strings(stop_tokens)
-            if stop_strings:
-                kwargs["stop"] = stop_strings
+            stop_strings_list.extend(self._tokens_to_stop_strings(stop_tokens))
 
+        # For Harmony models, add Harmony stop tokens
+        if self.use_harmony:
+            # These are the Harmony stop tokens: <|return|> (done) and <|call|> (tool call)
+            harmony_stops = ["<|return|>", "<|call|>"]
+            # Only add if not already present
+            for stop in harmony_stops:
+                if stop not in stop_strings_list:
+                    stop_strings_list.append(stop)
+
+        # Convert stop strings to token ID sequences for checking during generation
+        stop_id_sequences = []
+        if stop_strings_list:
+            for stop_str in stop_strings_list:
+                try:
+                    stop_ids = self.tokenizer.encode(stop_str, add_special_tokens=False)
+                    if stop_ids:
+                        stop_id_sequences.append(list(stop_ids))
+                except Exception:
+                    # Skip if encoding fails
+                    pass
+
+        # Track generated tokens for stop sequence detection
+        generated_tokens: List[int] = []
         for response in stream_generate(
             self.model,
             self.tokenizer,
@@ -169,6 +222,26 @@ class TokenGenerator:
         ):
             token_id = self._extract_token_id(response)
 
+            # Check if adding this token would complete a stop sequence
+            # (check BEFORE yielding and BEFORE appending to generated_tokens)
+            should_stop = False
+            if stop_id_sequences:
+                # Temporarily add token to check if it completes a stop sequence
+                temp_tokens = generated_tokens + [int(token_id)]
+                for stop_ids in stop_id_sequences:
+                    if len(temp_tokens) >= len(stop_ids):
+                        if temp_tokens[-len(stop_ids):] == stop_ids:
+                            # This token would complete a stop sequence
+                            # Don't yield it, just stop
+                            should_stop = True
+                            break
+
+            if should_stop:
+                # Stop generating - don't yield this token or any more
+                return
+
+            # Safe to yield - append to tracking list and yield
+            generated_tokens.append(int(token_id))
             if return_logprobs:
                 yield {
                     "token": token_id,
@@ -275,19 +348,43 @@ class TokenGenerator:
                 Message.from_role_and_content(Role.DEVELOPER, dev_content),
             )
 
+        # Add example dialogues (few-shot examples) before actual conversation
+        # These are part of the prompt but not sent every time like system/developer
+        if cfg and cfg.example_dialogues:
+            for example_turns in cfg.example_dialogues:
+                for turn in example_turns:
+                    role_str = turn.get("role", "user").strip().lower()
+                    if role_str == "tool":
+                        # Handle tool messages in examples
+                        tool_name = turn.get("name")
+                        if tool_name:
+                            author = Author(role=Role.TOOL, name=tool_name)
+                            content = TextContent(text=turn.get("content", ""))
+                            tool_msg = Message.from_author_and_content(author, content)
+                            if turn.get("recipient"):
+                                tool_msg = tool_msg.with_recipient(turn["recipient"])
+                            harmony_messages.append(tool_msg)
+                    else:
+                        # Standard messages in examples
+                        role = Role(role_str)
+                        content = TextContent(text=turn.get("content", ""))
+                        harmony_messages.append(
+                            Message.from_role_and_content(role, content),
+                        )
+
         for msg in messages:
-            role_str = msg.get("role", "user").upper()
+            role_str = msg.get("role", "user").strip().lower()
 
             # Handle tool messages: Role.TOOL with name in Author.name
             # Only treat as tool message if role is explicitly "tool"
-            if role_str == "TOOL":
+            if role_str == "tool":
                 tool_name = msg.get("name")
                 if not tool_name:
                     # Tool messages require a name field; skip invalid message
                     continue
                 author = Author(role=Role.TOOL, name=tool_name)
                 content_text = msg.get("content", "")
-                content = TextContent.new().with_text(content_text)
+                content = TextContent(text=content_text)
                 tool_msg = Message.from_author_and_content(author, content)
                 # Set recipient if specified (tool results go to assistant)
                 if msg.get("recipient"):
@@ -300,7 +397,7 @@ class TokenGenerator:
                 # Standard message: user, assistant, system, developer
                 role = Role(role_str)
                 content_text = msg.get("content", "")
-                content = TextContent.new().with_text(content_text)
+                content = TextContent(text=content_text)
                 harmony_messages.append(
                     Message.from_role_and_content(role, content),
                 )

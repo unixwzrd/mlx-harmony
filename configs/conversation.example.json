@@ -3,31 +3,63 @@
     "model_path": "openai/gpt-oss-20b",
     "prompt_config_path": "configs/prompt-config.example.json",
     "tools": ["browser", "python"],
+    "hyperparameters": {
+      "temperature": 0.7,
+      "top_p": 0.95,
+      "top_k": 40,
+      "min_p": 0.0,
+      "max_tokens": 512,
+      "repetition_penalty": 1.0,
+      "repetition_context_size": 20
+    },
     "created_at": "2026-01-06T12:00:00.000000Z",
     "updated_at": "2026-01-06T12:30:00.000000Z"
   },
   "messages": [
     {
       "role": "user",
-      "content": "Hello, what can you help me with?"
+      "content": "Hello, what can you help me with?",
+      "timestamp": "2026-01-06T12:00:15.123456Z"
     },
     {
       "role": "assistant",
-      "content": "Hello! I can help you with a variety of tasks. I have access to browser and Python tools, so I can search the web, execute code, and help with analysis. What would you like to do?"
+      "content": "Hello! I can help you with a variety of tasks. I have access to browser and Python tools, so I can search the web, execute code, and help with analysis. What would you like to do?",
+      "timestamp": "2026-01-06T12:00:18.789012Z",
+      "hyperparameters": {
+        "temperature": 0.8,
+        "top_p": 0.9,
+        "top_k": 40,
+        "min_p": 0.0,
+        "max_tokens": 512,
+        "repetition_penalty": 1.0,
+        "repetition_context_size": 20
+      }
     },
     {
       "role": "user",
-      "content": "Can you search for the latest Python news?"
+      "content": "Can you search for the latest Python news?",
+      "timestamp": "2026-01-06T12:01:05.456789Z"
     },
     {
       "role": "tool",
       "name": "browser",
       "content": "Search results: [Python 3.12 released...]",
-      "recipient": "assistant"
+      "recipient": "assistant",
+      "timestamp": "2026-01-06T12:01:12.234567Z"
     },
     {
       "role": "assistant",
-      "content": "I found that Python 3.12 was recently released with performance improvements..."
+      "content": "I found that Python 3.12 was recently released with performance improvements...",
+      "timestamp": "2026-01-06T12:01:15.890123Z",
+      "hyperparameters": {
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "top_k": 40,
+        "min_p": 0.0,
+        "max_tokens": 512,
+        "repetition_penalty": 1.0,
+        "repetition_context_size": 20
+      }
     }
   ]
 }

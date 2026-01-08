@@ -1,0 +1,101 @@
+[REPORT] Generating reports from: profile.stats
+Wed Jan  7 11:45:02 2026    profile.stats
+
+         4011 function calls (3948 primitive calls) in 0.002 seconds
+
+   Ordered by: cumulative time
+   List reduced from 177 to 50 due to restriction <50>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.002    0.002 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py:170(main)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1903(parse_args)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2639(error)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2613(print_usage)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2578(format_usage)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:285(format_help)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:212(format_help)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:297(_format_usage)
+       59    0.000    0.000    0.001    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/__init__.py:280(_compile)
+        4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_compiler.py:745(compile)
+        3    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:394(_format_actions_usage)
+       19    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1451(add_argument)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:616(gettext)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:578(dgettext)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:519(translation)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:479(find)
+        9    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/__init__.py:179(sub)
+        1    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1772(__init__)
+        4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_parser.py:969(parse)
+      8/4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_parser.py:452(_parse_sub)
+        2    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/__init__.py:209(findall)
+        4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_compiler.py:578(_code)
+     12/6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_parser.py:512(_parse)
+       20    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2607(_get_formatter)
+       20    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:164(__init__)
+       12    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:224(_expand_lang)
+        1    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1913(parse_known_args)
+        1    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1916(_parse_known_args2)
+     21/4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_compiler.py:37(_compile)
+        1    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1954(_parse_known_args)
+       12    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/locale.py:381(normalize)
+       20    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/shutil.py:1422(get_terminal_size)
+        4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_compiler.py:516(_compile_info)
+       64    0.000    0.000    0.000    0.000 <frozen os>:709(__getitem__)
+       24    0.000    0.000    0.000    0.000 <frozen posixpath>:71(join)
+       24    0.000    0.000    0.000    0.000 <frozen genericpath>:16(exists)
+       24    0.000    0.000    0.000    0.000 {built-in method posix.stat}
+      536    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+       10    0.000    0.000    0.000    0.000 {method 'sub' of 're.Pattern' objects}
+       47    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:602(_format_args)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/locale.py:347(_replace_encoding)
+       19    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1883(_add_action)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2021(consume_optional)
+       19    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1595(_get_optional_kwargs)
+       19    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1704(_add_action)
+       43    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/__init__.py:226(compile)
+       24    0.000    0.000    0.000    0.000 <frozen _collections_abc>:804(get)
+      374    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+        3    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1369(__init__)
+       64    0.000    0.000    0.000    0.000 <frozen os>:791(encode)
+
+
+[REPORT] Text report saved to: profile.stats.txt
+
+================================================================================
+PROFILING REPORT (Top 20 functions by cumulative time)
+================================================================================
+Wed Jan  7 11:45:02 2026    profile.stats
+
+         4011 function calls (3948 primitive calls) in 0.002 seconds
+
+   Ordered by: cumulative time
+   List reduced from 177 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.002    0.002 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py:170(main)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1903(parse_args)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2639(error)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2613(print_usage)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:2578(format_usage)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:285(format_help)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:212(format_help)
+        1    0.000    0.000    0.001    0.001 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:297(_format_usage)
+       59    0.000    0.000    0.001    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/__init__.py:280(_compile)
+        4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_compiler.py:745(compile)
+        3    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:394(_format_actions_usage)
+       19    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1451(add_argument)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:616(gettext)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:578(dgettext)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:519(translation)
+        6    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/gettext.py:479(find)
+        9    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/__init__.py:179(sub)
+        1    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/argparse.py:1772(__init__)
+        4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_parser.py:969(parse)
+      8/4    0.000    0.000    0.000    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/_parser.py:452(_parse_sub)
+
+
+[REPORT] DOT file generated: profile.dot
+[REPORT] SVG visualization saved to: profile.svg
+[REPORT] View with: open profile.svg (macOS) or xdg-open profile.svg (Linux)
+
+[REPORT] Done!

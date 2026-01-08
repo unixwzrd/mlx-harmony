@@ -1,0 +1,19 @@
+digraph {
+	tooltip=" "
+	graph [fontname=Arial, nodesep=0.125, ranksep=0.25];
+	node [fontcolor=white, fontname=Arial, height=0, shape=box, style=filled, width=0];
+	edge [fontname=Arial];
+	46 [color="#ff0000", fontcolor="#ffffff", fontsize="10.00", label="chat:172:main\n100.00%\n(0.00%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py"];
+	46 -> 213 [arrowsize="0.99", color="#fb1c01", fontcolor="#fb1c01", fontsize="10.00", label="97.28%\n1×", labeldistance="3.89", penwidth="3.89"];
+	46 -> 526 [arrowsize="0.35", color="#0d1876", fontcolor="#0d1876", fontsize="10.00", label="2.72%\n1×", labeldistance="0.50", penwidth="0.50"];
+	213 [color="#fb1c01", fontcolor="#ffffff", fontsize="10.00", label="~:0:<built-in method builtins.input>\n97.28%\n(97.28%)\n1×", tooltip="~"];
+	256 [color="#0d1776", fontcolor="#ffffff", fontsize="10.00", label="load_optimized:95:prewarm_model_cache\n2.49%\n(0.00%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/load_optimized.py"];
+	256 -> 326 [arrowsize="0.35", color="#0d1776", fontcolor="#0d1776", fontsize="10.00", label="2.49%\n5×", labeldistance="0.50", penwidth="0.50"];
+	326 [color="#0d1776", fontcolor="#ffffff", fontsize="10.00", label="load_optimized:20:_prewarm_filesystem_cache\n2.49%\n(0.00%)\n5×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/load_optimized.py"];
+	326 -> 331 [arrowsize="0.35", color="#0d1776", fontcolor="#0d1776", fontsize="10.00", label="2.49%\n1410×", labeldistance="0.50", penwidth="0.50"];
+	331 [color="#0d1776", fontcolor="#ffffff", fontsize="10.00", label="~:0:<method 'read' of '_io.BufferedReader' objects>\n2.49%\n(2.49%)\n1413×", tooltip="~"];
+	515 [color="#0d1876", fontcolor="#ffffff", fontsize="10.00", label="load_optimized:125:load_optimized\n2.71%\n(0.00%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/load_optimized.py"];
+	515 -> 256 [arrowsize="0.35", color="#0d1776", fontcolor="#0d1776", fontsize="10.00", label="2.49%\n1×", labeldistance="0.50", penwidth="0.50"];
+	526 [color="#0d1876", fontcolor="#ffffff", fontsize="10.00", label="generator:34:__init__\n2.72%\n(0.00%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py"];
+	526 -> 515 [arrowsize="0.35", color="#0d1876", fontcolor="#0d1876", fontsize="10.00", label="2.71%\n1×", labeldistance="0.50", penwidth="0.50"];
+}

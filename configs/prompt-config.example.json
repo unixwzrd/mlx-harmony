@@ -1,18 +1,33 @@
 {
-  "system_model_identity": "You are {assistant} on <|DATE|> at <|DATETIME|>.",
+  "system_model_identity": "You are {assistant} (also <|ASSISTANT|>) on <|DATE|> at <|TIMEZ|> (local time, <|TIMEU|> UTC).",
   "reasoning_effort": "Medium",
   "conversation_start_date": "<|DATE|>",
   "knowledge_cutoff": "2025-01",
   "developer_instructions": "Address the user as {user} and be concise.",
+  "assistant_greeting": "Hello {user}, I'm {assistant}. How can I help you today?",
+  "example_dialogues": [
+    [
+      {"role": "user", "content": "Hello, how can you help me?"},
+      {"role": "assistant", "content": "Hello {user}! I'm {assistant} and I'm here to help with any questions or tasks you have. What can I do for you today?"}
+    ],
+    [
+      {"role": "user", "content": "What's the weather like?"},
+      {"role": "assistant", "content": "I don't have access to real-time weather data, but I can help you find weather information or answer other questions. What else can I help with?"}
+    ]
+  ],
   "placeholders": {
     "assistant": "Dave",
+    "ASSISTANT": "Dave",
     "user": "Morgan"
   },
+  "max_tokens": 1024,
   "temperature": 0.8,
   "top_p": 0.9,
   "top_k": 40,
   "min_p": 0.0,
   "min_tokens_to_keep": 1,
   "repetition_penalty": 1.0,
-  "repetition_context_size": 20
+  "repetition_context_size": 20,
+  "prewarm_cache": true,
+  "mlock": false
 }

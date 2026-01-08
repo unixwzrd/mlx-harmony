@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "model_path": "models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx",
+    "prompt_config_path": "configs/Mia.json",
+    "tools": [],
+    "hyperparameters": {
+      "max_tokens": 1024,
+      "temperature": 0.8,
+      "top_p": 0.9,
+      "min_p": 0.0,
+      "top_k": 40,
+      "repetition_penalty": 1.0,
+      "repetition_context_size": 20
+    },
+    "created_at": "2026-01-07T22:57:57.188102Z",
+    "updated_at": "2026-01-08T02:07:31.025399Z"
+  },
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "Hi Michael, it's good to be with you after the day.",
+      "timestamp": "2026-01-08T01:00:30.720341Z"
+    }
+  ]
+}
