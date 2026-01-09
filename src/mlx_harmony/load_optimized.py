@@ -4,7 +4,6 @@ Optimized model loading utilities with filesystem cache pre-warming and memory l
 This module provides utilities to improve disk I/O performance when loading large models:
 - Pre-warm filesystem cache by reading weight files
 - Lock model weights in memory using MLX's wired limit (mlock equivalent, macOS Metal backend)
-- Optional parallel file prefetching
 """
 
 import glob
@@ -13,112 +12,73 @@ from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import mlx.core as mx
+from mlx.utils import tree_flatten
 from mlx_lm import load as mlx_load
-from mlx_lm.utils import TokenizerWrapper
+from mlx_lm.utils import TokenizerWrapper, _download
 
 
 def _prewarm_filesystem_cache(file_path: Path) -> None:
-    """
-    Pre-warm filesystem cache by reading a file into OS cache.
-
-    This reads the entire file sequentially to ensure it's in the OS filesystem cache,
-    which significantly speeds up subsequent reads by MLX.
-
-    Args:
-        file_path: Path to the file to pre-warm
-    """
+    """Pre-warm filesystem cache by reading a file into OS cache."""
     try:
-        # Read file with large buffer size for better I/O performance
         with open(file_path, "rb", buffering=1024 * 1024) as f:  # 1MB buffer
-            # Read in chunks to avoid loading entire file into Python memory
             chunk_size = 1024 * 1024 * 16  # 16MB chunks
             while True:
                 chunk = f.read(chunk_size)
                 if not chunk:
                     break
     except (IOError, OSError):
-        # Silently fail if file can't be read (e.g., permissions)
         pass
 
 
 def _get_model_size_from_files(model_path: Path) -> Optional[int]:
-    """
-    Get model size in bytes from safetensors index file or file sizes.
-
-    First tries to read `model.safetensors.index.json` to get the exact
-    `metadata.total_size` (this is the accurate size of model weights).
-    Falls back to summing safetensors file sizes if the index file doesn't exist.
-
-    Args:
-        model_path: Path to the model directory
-
-    Returns:
-        Model size in bytes, or None if files not found
-    """
+    """Get model size in bytes from safetensors index file or file sizes."""
     if not isinstance(model_path, Path):
         model_path = Path(model_path)
 
-    # First, try to read the index file for exact size (MLX-LM format)
+    # Try index file first for exact size
     index_file = model_path / "model.safetensors.index.json"
     if index_file.exists():
         try:
             with open(index_file, "r") as f:
                 index_data = json.load(f)
                 if "metadata" in index_data and "total_size" in index_data["metadata"]:
-                    total_size = index_data["metadata"]["total_size"]
-                    return total_size
+                    return index_data["metadata"]["total_size"]
         except (json.JSONDecodeError, IOError, KeyError):
-            # If we can't read the index file, fall through to file size method
             pass
 
-    # Fallback: sum file sizes (less accurate, includes file overhead)
+    # Fallback: sum file sizes
     weight_files = glob.glob(str(model_path / "model*.safetensors"))
     if not weight_files:
-        # Try alternative pattern
         weight_files = glob.glob(str(model_path / "*.safetensors"))
 
     if not weight_files:
         return None
 
-    # Sum file sizes
     total_size = 0
     for wf in weight_files:
         try:
             total_size += Path(wf).stat().st_size
         except (OSError, IOError):
-            # If we can't stat a file, skip it
             continue
 
     return total_size if total_size > 0 else None
 
 
 def prewarm_model_cache(model_path: Path) -> None:
-    """
-    Pre-warm filesystem cache for all model weight files.
-
-    This reads all safetensors files into the OS filesystem cache,
-    which significantly speeds up subsequent MLX loading.
-
-    Args:
-        model_path: Path to the model directory
-    """
+    """Pre-warm filesystem cache for all model weight files."""
     if not isinstance(model_path, Path):
         model_path = Path(model_path)
 
-    # Find all safetensors files
     weight_files = glob.glob(str(model_path / "model*.safetensors"))
     if not weight_files:
-        # Try alternative pattern
         weight_files = glob.glob(str(model_path / "*.safetensors"))
 
     if not weight_files:
         return
 
     print(f"[INFO] Pre-warming filesystem cache for {len(weight_files)} weight file(s)...")
-
     for wf in weight_files:
         _prewarm_filesystem_cache(Path(wf))
-
     print("[INFO] Filesystem cache pre-warming complete.")
 
 
@@ -139,6 +99,12 @@ def load_optimized(
     """
     Load a model with optimizations for faster disk I/O and memory management.
 
+    For mlock to work correctly:
+    1. Set wired limit BEFORE loading (buffers are wired as they're allocated)
+    2. Disable caching (prevents buffers from being unwired when freed)
+    3. Keep wired limit set for model lifetime (prevents unwiring)
+    4. Keep strong references to parameters (prevents deallocation)
+
     Args:
         path_or_hf_repo: Path to model directory or Hugging Face repo ID
         tokenizer_config: Optional tokenizer configuration
@@ -149,92 +115,72 @@ def load_optimized(
         revision: Optional Hugging Face revision (branch, tag, or commit)
         prewarm_cache: If True, pre-warm filesystem cache before loading (default: True)
         mlock: If True, lock model weights in memory using MLX's wired limit (default: False)
-               Note: This requires macOS with Metal backend (mlock equivalent)
+               Note: This requires macOS 15.0+ with Metal backend
 
     Returns:
         Tuple of (model, tokenizer) or (model, tokenizer, config) if return_config=True
     """
-    from mlx_lm.utils import _download
-
     # Download model if needed
     model_path = Path(_download(path_or_hf_repo, revision=revision))
-
-    # Set wired memory limit BEFORE loading (if mlock requested)
-    # Following MLX-LM pattern: set to max_recommended_working_set_size (the maximum allowed)
-    # The wired limit is a capacity - MLX will wire buffers up to this limit as they're allocated.
-    # This is more flexible than setting to model size, as it allows room for activations, KV cache, etc.
-    old_wired_limit = None
-    old_cache_limit = None
-    estimated_model_size = None
-    if mlock:
-        print("[INFO] Attempting to set wired memory limit...")
-        if mx.metal.is_available():
-            try:
-                # Get model size estimate for informational purposes
-                estimated_model_size = _get_model_size_from_files(model_path)
-
-                # Get max recommended working set size (system limit)
-                max_rec_size = mx.metal.device_info()["max_recommended_working_set_size"]
-
-                # CRITICAL: Clear cache BEFORE setting wired limit and loading
-                # Buffers reused from cache are NOT wired - only newly allocated buffers are.
-                # By clearing the cache first, we ensure all model buffers are freshly allocated
-                # and will be wired when the wired limit is active.
-                mx.clear_cache()
-
-                # CRITICAL: Set cache limit to 0 to prevent buffers from being cached/unwired
-                # When buffers are freed and recycled to cache, they're removed from the residency set (unwired).
-                # By disabling caching, we ensure that once buffers are wired, they stay wired.
-                # Buffers will only be freed when no longer referenced, and won't be unwired prematurely.
-                old_cache_limit = mx.set_cache_limit(0)
-                print("[INFO] Cleared buffer cache and disabled caching to keep buffers wired.")
-
-                # Set wired limit to maximum allowed (following MLX-LM pattern)
-                # This is a capacity limit, not an allocation - buffers are wired as they're allocated
-                old_wired_limit = mx.set_wired_limit(max_rec_size)
-
-                if estimated_model_size is not None:
-                    # Warn if model exceeds 90% of recommended size
-                    if estimated_model_size > 0.9 * max_rec_size:
-                        print(
-                            f"[WARNING] Estimated model size ({estimated_model_size / (1024**3):.2f} GB) "
-                            f"exceeds 90% of max recommended working set size ({max_rec_size / (1024**3):.2f} GB). "
-                            f"Performance may be degraded. Consider increasing system wired limit: "
-                            f"sudo sysctl iogpu.wired_limit_mb={int(estimated_model_size / (1024**2) * 1.1)}"
-                        )
-                    else:
-                        print(
-                            f"[INFO] Estimated model size: {estimated_model_size / (1024**3):.2f} GB. "
-                            f"Set wired memory limit to {max_rec_size / (1024**3):.2f} GB "
-                            f"(max recommended working set size). "
-                            f"Model weights will be kept in wired memory as they load."
-                        )
-                else:
-                    print(
-                        f"[INFO] Set wired memory limit to {max_rec_size / (1024**3):.2f} GB "
-                        f"(max recommended working set size). "
-                        f"Model weights will be kept in wired memory as they load."
-                    )
-
-                # Warn if lazy loading is enabled - weights won't be loaded until first use
-                if lazy:
-                    print(
-                        "[WARNING] Lazy loading is enabled. Model weights will be loaded on first use. "
-                        "For best wired memory effectiveness, consider using lazy=False to load weights immediately."
-                    )
-            except Exception as e:
-                print(f"[WARNING] Failed to set wired limit: {e}")
-                print("[INFO] Wired memory requires macOS 15.0+ with Metal backend.")
-        else:
-            print("[WARNING] Wired memory requires macOS with Metal backend.")
-            print("[INFO] Current platform does not support MLX Metal backend.")
 
     # Pre-warm filesystem cache if requested
     if prewarm_cache:
         prewarm_model_cache(model_path)
 
-    # Load model using standard MLX-LM loader
-    # With wired limit set, MLX will keep model weights in wired memory
+    # Set up memory locking BEFORE loading
+    old_wired_limit = None
+    old_cache_limit = None
+
+    if mlock:
+        if not mx.metal.is_available():
+            print("[WARNING] Wired memory requires macOS 15.0+ with Metal backend.")
+            mlock = False
+        else:
+            try:
+                max_rec_size = mx.metal.device_info()["max_recommended_working_set_size"]
+
+                # CRITICAL STEP 1: Clear cache before setting limits
+                mx.clear_cache()
+
+                # CRITICAL STEP 2: Disable caching to prevent unwiring
+                # When buffers are freed, if caching is enabled they go to cache and are unwired.
+                # With cache disabled (limit=0), freed buffers are deallocated (also unwired),
+                # but they won't be reused from cache (which wouldn't be wired).
+                # The key is to prevent buffers from being freed in the first place.
+                old_cache_limit = mx.set_cache_limit(0)
+
+                # CRITICAL STEP 3: Set wired limit BEFORE loading
+                # Buffers are only wired when newly allocated (not from cache).
+                # With cache disabled, all allocations are fresh and will be wired.
+                old_wired_limit = mx.set_wired_limit(max_rec_size)
+
+                print(
+                    f"[INFO] Set wired memory limit to {max_rec_size / (1024**3):.2f} GB. "
+                    f"Cache disabled to prevent unwiring."
+                )
+
+                # Optional: warn about large models
+                estimated_size = _get_model_size_from_files(model_path)
+                if estimated_size and estimated_size > 0.9 * max_rec_size:
+                    print(
+                        f"[WARNING] Estimated model size ({estimated_size / (1024**3):.2f} GB) "
+                        f"exceeds 90% of max recommended working set size. "
+                        f"Consider: sudo sysctl iogpu.wired_limit_mb={int(estimated_size / (1024**2) * 1.1)}"
+                    )
+
+                if lazy:
+                    print(
+                        "[WARNING] Lazy loading enabled. Use lazy=False for best wired memory effectiveness."
+                    )
+            except Exception as e:
+                print(f"[WARNING] Failed to set wired limit: {e}")
+                mlock = False
+                if old_cache_limit is not None:
+                    mx.set_cache_limit(old_cache_limit)
+                old_wired_limit = None
+                old_cache_limit = None
+
+    # Load model - buffers will be wired as they're allocated (if mlock=True)
     if return_config:
         model, tokenizer, config = mlx_load(
             path_or_hf_repo,
@@ -257,102 +203,65 @@ def load_optimized(
         )
         config = None
 
-    # After loading, ensure model weights are fully allocated and wired
-    # Since we cleared the cache before loading, all buffers should be freshly allocated
-    # and wired. We still need to ensure all parameters are evaluated to guarantee
-    # all buffers are allocated while the wired limit is active.
-    # CRITICAL: After evaluation, trigger a dummy inference to ensure buffers stay wired.
-    # This forces all model parameter buffers to be active and keeps them in the residency set.
-    if mlock and mx.metal.is_available() and not lazy:
+    # CRITICAL STEP 4: After loading, ensure parameters are allocated and stay wired
+    # The model object keeps references to parameters, which should keep buffers alive.
+    # But we also store explicit references to ensure they're never garbage collected.
+    if mlock and not lazy:
         try:
-            from mlx.utils import tree_flatten
+            # Get all parameter arrays
+            all_params = list(tree_flatten(model.parameters()))
+            param_arrays = [p for _, p in all_params if isinstance(p, mx.array)]
 
-            # Force evaluation of all parameters to ensure they're allocated
-            # This ensures all model weight buffers are allocated while wired limit is active
-            params = [p for _, p in tree_flatten(model.parameters()) if isinstance(p, mx.array)]
-            if params:
-                mx.eval(params)
-                # Synchronize to ensure all allocations are complete
+            if param_arrays:
+                # Force evaluation to ensure all parameters are allocated
+                # This happens while wired limit is active and cache is disabled
+                mx.eval(param_arrays)
                 mx.synchronize()
 
-                # CRITICAL: Force a dummy forward pass to ensure parameter buffers stay active
-                # This prevents them from being freed/recycled which would unwire them.
-                # We do this by creating a minimal input and running a forward pass.
-                # This ensures all parameter buffers remain in active use.
+                # CRITICAL: Store strong references to prevent deallocation
+                # If parameter arrays are deallocated, their buffers are freed and unwired.
+                # By keeping explicit references, we ensure they stay allocated.
+                model._mlx_harmony_param_refs = param_arrays
+                model._mlx_harmony_param_tree = all_params
+
+                # CRITICAL: Keep parameters actively allocated by doing a dummy operation
+                # This ensures buffers are fully allocated and wired, and prevents them
+                # from being freed/swapped out. We'll also periodically "touch" parameters
+                # after inference to keep them active.
                 try:
-                    # Get tokenizer to create a dummy input
-                    if hasattr(tokenizer, "bos_token_id") and tokenizer.bos_token_id is not None:
-                        dummy_input = mx.array([[tokenizer.bos_token_id]])
-                    elif hasattr(tokenizer, "eos_token_id") and tokenizer.eos_token_id is not None:
-                        dummy_input = mx.array([[tokenizer.eos_token_id]])
-                    else:
-                        # Fallback: use token ID 1 (usually a valid token)
-                        dummy_input = mx.array([[1]])
+                    # Do a small computation on parameters to ensure they're active
+                    # This prevents MLX from freeing them when not in use
+                    # Touch first few parameters to keep them active
+                    for param in param_arrays[:10]:
+                        _ = mx.sum(param)  # Small computation to keep param active
+                    mx.eval(param_arrays)  # Ensure all are evaluated
+                    mx.synchronize()  # Ensure all allocations complete
+                except Exception:
+                    pass  # Ignore errors - parameters are already allocated
 
-                    # Run a minimal forward pass to ensure parameter buffers stay active
-                    # This prevents them from being cached/unwired
-                    _ = model(dummy_input)
-                    mx.eval(_)
-                    mx.synchronize()
-                    print("[INFO] Ran dummy forward pass to keep parameter buffers active and wired.")
-                except Exception as forward_e:
-                    # If forward pass fails (e.g., wrong input format), that's okay
-                    # The evaluation above should have been sufficient
-                    print(f"[INFO] Evaluated model parameters (forward pass not possible: {forward_e}).")
+                # Store old limits for potential restoration
+                if old_wired_limit is not None:
+                    model._mlx_harmony_old_wired_limit = old_wired_limit
+                if old_cache_limit is not None:
+                    model._mlx_harmony_old_cache_limit = old_cache_limit
 
-                print("[INFO] Model parameters evaluated and synchronized to ensure wired memory.")
-        except Exception as e:
-            print(f"[WARNING] Could not ensure model parameters are wired: {e}")
-
-    # Verify actual model size matches estimate (informational)
-    if mlock and mx.metal.is_available() and not lazy:
-        try:
-            from mlx.utils import tree_flatten
-
-            actual_model_bytes = sum(
-                p.nbytes
-                for _, p in tree_flatten(model.parameters())
-                if isinstance(p, mx.array)
-            )
-            max_rec_size = mx.metal.device_info()["max_recommended_working_set_size"]
-
-            # Compare actual vs estimated (if we had an estimate)
-            if estimated_model_size is not None:
-                size_diff = abs(actual_model_bytes - estimated_model_size) / estimated_model_size
-                if size_diff > 0.1:  # More than 10% difference
-                    print(
-                        f"[INFO] Actual model size ({actual_model_bytes / (1024**3):.2f} GB) "
-                        f"differs from estimate ({estimated_model_size / (1024**3):.2f} GB) by "
-                        f"{size_diff * 100:.1f}%."
-                    )
-
-            # Check if model size is reasonable relative to wired limit
-            if actual_model_bytes > 0.9 * max_rec_size:
+                # Report model size
+                actual_bytes = sum(p.nbytes for p in param_arrays)
                 print(
-                    f"[WARNING] Model size ({actual_model_bytes / (1024**3):.2f} GB) "
-                    f"exceeds 90% of max recommended working set size "
-                    f"({max_rec_size / (1024**3):.2f} GB). "
-                    f"Performance may be degraded. Consider increasing system wired limit: "
-                    f"sudo sysctl iogpu.wired_limit_mb={int(actual_model_bytes / (1024**2) * 1.1)}"
+                    f"[INFO] Model loaded: {actual_bytes / (1024**3):.2f} GB. "
+                    f"Wired limit remains set - parameters should stay wired as long as model is alive."
+                )
+                print(
+                    f"[INFO] To verify wired memory, check Activity Monitor: "
+                    f"Python process should show ~{actual_bytes / (1024**3):.2f} GB in 'Wired Memory' column."
                 )
             else:
-                print(
-                    f"[INFO] Model loaded: {actual_model_bytes / (1024**3):.2f} GB. "
-                    f"Wired memory limit: {max_rec_size / (1024**3):.2f} GB."
-                )
-
-            # Store old limits on model for potential restoration
-            if old_wired_limit is not None:
-                model._mlx_harmony_old_wired_limit = old_wired_limit
-            if old_cache_limit is not None:
-                model._mlx_harmony_old_cache_limit = old_cache_limit
+                print("[WARNING] No parameter arrays found in model.")
         except Exception as e:
-            print(f"[WARNING] Could not verify model size: {e}")
-    elif mlock and old_wired_limit is not None:
-        # Store old limit even if we can't verify size (lazy loading)
-        model._mlx_harmony_old_wired_limit = old_wired_limit
+            print(f"[WARNING] Could not wire model parameters: {e}")
 
-    if return_config:
-        return model, tokenizer, config
-    else:
-        return model, tokenizer
+    # NOTE: We intentionally do NOT restore the wired limit here.
+    # The wired limit must stay set for the lifetime of the model to keep buffers wired.
+    # The caller can restore it when the model is unloaded if needed.
+
+    return (model, tokenizer, config) if return_config else (model, tokenizer)

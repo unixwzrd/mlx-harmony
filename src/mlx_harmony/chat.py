@@ -3,15 +3,16 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from unicodefix.transforms import clean_text
 
-from .config import apply_placeholders, load_prompt_config
-from .generator import TokenGenerator
-from .tools import (
+from mlx_harmony.config import apply_placeholders, load_prompt_config
+from mlx_harmony.generator import TokenGenerator
+from mlx_harmony.tools import (
     execute_tool_call,
     get_tools_for_model,
     parse_tool_calls_from_messages,
@@ -254,16 +255,10 @@ def main() -> None:
         help="Path to profiles JSON (default: configs/profiles.example.json)",
     )
     parser.add_argument(
-        "--save-conversation",
+        "--chat",
         type=str,
         default=None,
-        help="Path to save conversation JSON file (auto-saves after each exchange).",
-    )
-    parser.add_argument(
-        "--load-conversation",
-        type=str,
-        default=None,
-        help="Path to load previous conversation JSON file (resumes chat).",
+        help="Chat name (loads from chats_dir/<name>.json if exists, otherwise creates new chat).",
     )
     parser.add_argument(
         "--debug",
@@ -274,7 +269,7 @@ def main() -> None:
         "--debug-file",
         type=str,
         default=None,
-        help="Path to write debug prompts/responses when debug is enabled (default: log/prompt-debug.log).",
+        help="Path to write debug prompts/responses when debug is enabled (default: logs_dir/prompt-debug.log).",
     )
     parser.add_argument(
         "--prewarm-cache",
@@ -321,34 +316,67 @@ def main() -> None:
         load_prompt_config(prompt_config_path) if prompt_config_path else None
     )
 
-    # Load conversation if specified
+    # Resolve directories from config (defaults to "logs" if not specified)
+    # These will be re-resolved after loading chat if prompt_config changes
+    chats_dir = Path(prompt_config.chats_dir if prompt_config and prompt_config.chats_dir else "logs")
+    logs_dir = Path(prompt_config.logs_dir if prompt_config and prompt_config.logs_dir else "logs")
+    chats_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve chat file path if specified
+    chat_file_path: Optional[Path] = None
+    if args.chat:
+        chat_file_path = chats_dir / f"{args.chat}.json"
+
+    # Load conversation if chat file exists
     conversation: List[Dict[str, str]] = []
     loaded_metadata = {}
     loaded_hyperparameters = {}
-    if args.load_conversation:
+    if chat_file_path and chat_file_path.exists():
         try:
-            conversation, loaded_metadata = load_conversation(args.load_conversation)
-            print(f"[INFO] Loaded conversation from: {args.load_conversation}")
+            conversation, loaded_metadata = load_conversation(chat_file_path)
+            print(f"[INFO] Loaded existing chat from: {chat_file_path}")
             print(f"[INFO] Found {len(conversation)} previous messages (turns)")
 
             # Optionally use loaded model/prompt_config if not explicitly set
             if not model_path and loaded_metadata.get("model_path"):
                 model_path = loaded_metadata["model_path"]
-                print(f"[INFO] Using model from conversation: {model_path}")
+                print(f"[INFO] Using model from chat: {model_path}")
+
+            # Store original chat file path before potential reload
+            original_chat_file_path = chat_file_path
+
             if not prompt_config_path and loaded_metadata.get("prompt_config_path"):
                 prompt_config_path = loaded_metadata["prompt_config_path"]
                 prompt_config = (
                     load_prompt_config(prompt_config_path) if prompt_config_path else None
                 )
-                print(f"[INFO] Using prompt config from conversation: {prompt_config_path}")
+                print(f"[INFO] Using prompt config from chat: {prompt_config_path}")
+
+                # Re-resolve directories after reloading prompt_config in case it changed
+                chats_dir = Path(prompt_config.chats_dir if prompt_config and prompt_config.chats_dir else "logs")
+                logs_dir = Path(prompt_config.logs_dir if prompt_config and prompt_config.logs_dir else "logs")
+                chats_dir.mkdir(parents=True, exist_ok=True)
+                logs_dir.mkdir(parents=True, exist_ok=True)
+
+                # Re-resolve chat file path with updated directory
+                # Use the updated directory from the reloaded config for consistency
+                # Future saves will use this location, matching the prompt config settings
+                if args.chat:
+                    chat_file_path = chats_dir / f"{args.chat}.json"
+                    # If we loaded from a different location, inform the user
+                    if chat_file_path != original_chat_file_path:
+                        print(f"[INFO] Chat will be saved to: {chat_file_path} (per updated config)")
 
             # Restore hyperparameters from conversation if not explicitly set via CLI
             loaded_hyperparameters = loaded_metadata.get("hyperparameters", {})
             if loaded_hyperparameters:
-                print(f"[INFO] Loaded hyperparameters from conversation: {loaded_hyperparameters}")
+                print(f"[INFO] Loaded hyperparameters from chat: {loaded_hyperparameters}")
         except Exception as e:
-            print(f"[ERROR] Failed to load conversation: {e}")
+            print(f"[ERROR] Failed to load chat: {e}")
             raise SystemExit(1)
+    elif chat_file_path:
+        print(f"[INFO] Creating new chat: {chat_file_path}")
 
     # Get mlock/prewarm_cache from prompt config if not explicitly set via CLI
     mlock = args.mlock
@@ -383,9 +411,10 @@ def main() -> None:
     else:
         print("[INFO] Non–GPT-OSS model – using native chat template.")
 
-    print("[INFO] Type 'q' or `Control-D` to quit.\n")
-    if args.save_conversation:
-        print(f"[INFO] Conversation will be saved to: {args.save_conversation}")
+    print("[INFO] Type 'q' or `Control-D` to quit.")
+    print("[INFO] Type '\\set <param>=<value>' to change hyperparameters (e.g., '\\set temperature=0.7').")
+    if chat_file_path:
+        print(f"[INFO] Chat will be saved to: {chat_file_path}\n")
 
     # Optional assistant greeting from prompt config (only when starting fresh)
     # Print greeting AFTER quit instruction and save info
@@ -478,7 +507,12 @@ def main() -> None:
     debug_enabled = bool(args.debug or args.debug_file)
     debug_path = None
     if debug_enabled:
-        debug_path = Path(args.debug_file or "log/prompt-debug.log")
+        if args.debug_file:
+            # If user provided a path, use it (may be absolute or relative)
+            debug_path = Path(args.debug_file)
+        else:
+            # Default to logs_dir/prompt-debug.log
+            debug_path = logs_dir / "prompt-debug.log"
         debug_path.parent.mkdir(parents=True, exist_ok=True)
 
     while True:
@@ -490,6 +524,72 @@ def main() -> None:
             break
         if user_input.strip().lower() == "q":
             break
+
+        # Handle hyperparameter changes: \set param=value
+        if user_input.strip().startswith("\\set ") or user_input.strip().startswith("/set "):
+            stripped = user_input.strip().lstrip("\\/")
+            # Use removeprefix to correctly remove "set " literal substring
+            set_cmd = stripped.removeprefix("set ").strip()
+            if "=" in set_cmd:
+                param_name, param_value = set_cmd.split("=", 1)
+                param_name = param_name.strip().lower()
+                param_value = param_value.strip()
+
+                # Try to parse as float first, then int
+                try:
+                    if "." in param_value:
+                        parsed_value = float(param_value)
+                    else:
+                        parsed_value = int(param_value)
+                except ValueError:
+                    print(f"[ERROR] Invalid value '{param_value}' for parameter '{param_name}'. Must be a number.")
+                    continue
+
+                # Update hyperparameters dict
+                float_params = [
+                    "temperature",
+                    "top_p",
+                    "min_p",
+                    "repetition_penalty",
+                    "xtc_probability",
+                    "xtc_threshold",
+                ]
+                int_params = [
+                    "max_tokens",
+                    "top_k",
+                    "min_tokens_to_keep",
+                    "repetition_context_size",
+                ]
+
+                if param_name in float_params:
+                    hyperparameters[param_name] = parsed_value
+                    print(f"[INFO] Set {param_name} = {parsed_value}")
+                elif param_name in int_params:
+                    hyperparameters[param_name] = int(parsed_value)
+                    print(f"[INFO] Set {param_name} = {int(parsed_value)}")
+                else:
+                    valid_params = ", ".join(float_params + int_params)
+                    print(
+                        f"[ERROR] Unknown parameter '{param_name}'. "
+                        f"Valid parameters: {valid_params}"
+                    )
+                    continue
+
+                # Save updated hyperparameters immediately if chat file exists
+                if chat_file_path and conversation:
+                    try:
+                        save_conversation(
+                            chat_file_path,
+                            conversation,
+                            model_path,
+                            prompt_config_path,
+                            tools,
+                            hyperparameters,
+                        )
+                    except Exception as e:
+                        print(f"[WARNING] Failed to save updated hyperparameters: {e}")
+
+                continue  # Skip adding this as a user message
 
         # Add timestamp to user message (turn)
         user_turn = {
@@ -522,6 +622,7 @@ def main() -> None:
             # Use hyperparameters dict (CLI args already merged with loaded values)
             # For Harmony models, we'll parse messages to extract final channel content
             # For non-Harmony models, stream tokens directly
+            generation_start_time = time.perf_counter()
             parsed_messages = None  # Will be set for Harmony models
             for token_id in generator.generate(
                 messages=conversation,
@@ -539,6 +640,30 @@ def main() -> None:
                     text = generator.tokenizer.decode([int(token_id)])
                     text = clean_text(text)  # Clean Unicode and remove replacement chars
                     print(text, end="", flush=True)
+
+            # After generation, keep model parameters active to prevent swapping
+            # This ensures buffers stay wired and don't get swapped out
+            if hasattr(generator.model, "_mlx_harmony_param_refs"):
+                try:
+                    # Force evaluation of a dummy operation on parameters to keep them active
+                    # This prevents MLX from freeing parameter buffers
+                    import mlx.core as mx
+                    # Touch parameters to ensure they stay allocated
+                    param_sample = generator.model._mlx_harmony_param_refs[0] if generator.model._mlx_harmony_param_refs else None
+                    if param_sample is not None:
+                        # Access parameters to prevent deallocation
+                        _ = mx.sum(param_sample)  # Small computation to keep params active
+                        mx.eval(_)  # Force evaluation
+                except Exception:
+                    pass  # Ignore errors - not critical
+
+            generation_end_time = time.perf_counter()
+            generation_elapsed = generation_end_time - generation_start_time
+            num_generated_tokens = len(tokens)
+            tokens_per_second = num_generated_tokens / generation_elapsed if generation_elapsed > 0 else 0.0
+
+            # Display generation stats
+            print(f"\n[INFO] Generated {num_generated_tokens} tokens in {generation_elapsed:.2f}s ({tokens_per_second:.2f} tokens/s)")
 
             # For Harmony models, parse messages and extract final channel content
             if generator.is_gpt_oss and generator.use_harmony:
@@ -575,15 +700,32 @@ def main() -> None:
                     # Show analysis/thinking first if present
                     if analysis_text_parts:
                         thinking_text = " ".join(analysis_text_parts).strip()
-                        # Truncate if too long to avoid spam
-                        if len(thinking_text) > 2500:
-                            thinking_text = thinking_text[:2500] + "... [truncated]"
+                        # Truncate if too long (use config default or 1000)
+                        truncate_thinking = (
+                            prompt_config.truncate_thinking
+                            if prompt_config and prompt_config.truncate_thinking is not None
+                            else 1000
+                        )
+                        if len(thinking_text) > truncate_thinking:
+                            thinking_text = (
+                                thinking_text[:truncate_thinking] + "... [truncated]"
+                            )
                         if thinking_text:
                             print(f"\n[THINKING - {thinking_text}]\n")
 
                     # Show final channel message with assistant name
                     if final_text_parts:
                         assistant_text = "".join(final_text_parts).strip()
+                        # Truncate if too long (use config default or 1000)
+                        truncate_response = (
+                            prompt_config.truncate_response
+                            if prompt_config and prompt_config.truncate_response is not None
+                            else 1000
+                        )
+                        if len(assistant_text) > truncate_response:
+                            assistant_text = (
+                                assistant_text[:truncate_response] + "... [truncated]"
+                            )
                         print(f"{assistant_name}: {assistant_text}\n")
                     elif analysis_text_parts:
                         # Only analysis channel content was found (no final channel)
@@ -625,23 +767,45 @@ def main() -> None:
                     # Show analysis/thinking if present
                     if analysis_matches:
                         thinking_text = " ".join(clean_text(m.strip()) for m in analysis_matches).strip()
-                        # Truncate if too long
-                        if len(thinking_text) > 2500:
-                            thinking_text = thinking_text[:2500] + "... [truncated]"
+                        # Truncate if too long (use config default or 1000)
+                        truncate_thinking = (
+                            prompt_config.truncate_thinking
+                            if prompt_config and prompt_config.truncate_thinking is not None
+                            else 1000
+                        )
+                        if len(thinking_text) > truncate_thinking:
+                            thinking_text = (
+                                thinking_text[:truncate_thinking] + "... [truncated]"
+                            )
                         if thinking_text:
                             print(f"\n[THINKING - {thinking_text}]\n")
 
                     # Show final channel message with assistant name
                     if final_matches:
                         assistant_text = clean_text(final_matches[-1].strip())
+                        # Truncate if too long (use config default or 1000)
+                        truncate_response = (
+                            prompt_config.truncate_response
+                            if prompt_config and prompt_config.truncate_response is not None
+                            else 1000
+                        )
+                        if len(assistant_text) > truncate_response:
+                            assistant_text = assistant_text[:truncate_response] + "... [truncated]"
                         print(f"{assistant_name}: {assistant_text}\n")
                     elif analysis_matches:
                         # Only analysis channel found - don't display as response
                         assistant_text = ""  # No final response
                         thinking_text = " ".join(m.strip() for m in analysis_matches).strip()
-                        # Truncate if too long
-                        if len(thinking_text) > 2500:
-                            thinking_text = thinking_text[:2500] + "... [truncated]"
+                        # Truncate if too long (use config default or 1000)
+                        truncate_thinking = (
+                            prompt_config.truncate_thinking
+                            if prompt_config and prompt_config.truncate_thinking is not None
+                            else 1000
+                        )
+                        if len(thinking_text) > truncate_thinking:
+                            thinking_text = (
+                                thinking_text[:truncate_thinking] + "... [truncated]"
+                            )
                         if thinking_text and not analysis_text_parts:
                             # Show thinking if we haven't already
                             print(f"\n[THINKING - {thinking_text}]\n")
@@ -757,10 +921,10 @@ def main() -> None:
                     conversation.append(assistant_turn)
 
             # Save conversation after each exchange (turn)
-            if args.save_conversation:
+            if chat_file_path:
                 try:
                     save_conversation(
-                        args.save_conversation,
+                        chat_file_path,
                         conversation,
                         model_path,
                         prompt_config_path,
@@ -768,24 +932,24 @@ def main() -> None:
                         hyperparameters,
                     )
                 except Exception as e:
-                    print(f"\n[WARNING] Failed to save conversation: {e}")
+                    print(f"\n[WARNING] Failed to save chat: {e}")
 
             break
 
     # Final save on exit
-    if args.save_conversation and conversation:
+    if chat_file_path and conversation:
         try:
             save_conversation(
-                args.save_conversation,
+                chat_file_path,
                 conversation,
                 model_path,
                 prompt_config_path,
                 tools,
                 hyperparameters,
             )
-            print(f"\n[INFO] Conversation saved to: {args.save_conversation}")
+            print(f"\n[INFO] Chat saved to: {chat_file_path}")
         except Exception as e:
-            print(f"\n[WARNING] Failed to save conversation on exit: {e}")
+            print(f"\n[WARNING] Failed to save chat on exit: {e}")
 
 
 if __name__ == "__main__":

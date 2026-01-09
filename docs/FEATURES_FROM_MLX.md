@@ -9,6 +9,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Command-line tool to scan, list, and delete models from Hugging Face cache.
 
 **Implementation**:
+
 - Uses `huggingface_hub.scan_cache_dir()` to scan cache
 - Tabulated output showing: repo ID, size, path, last accessed
 - Pattern-based filtering
@@ -27,6 +28,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Intelligent KV cache management for multi-turn conversations.
 
 **Features**:
+
 - LRU cache with configurable max size
 - Cache search (exact, shorter, longer matches)
 - Automatic cache trimming
@@ -36,7 +38,8 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 
 **Files to reference**: `mlx-lm/mlx_lm/server.py` (lines 174-308), `mlx-lm/mlx_lm/cache_prompt.py`
 
-**Our implementation**: 
+**Our implementation**:
+
 - Add `LRUPromptCache` class to `mlx_harmony.cache`
 - Integrate into chat loop
 - Add `--prompt-cache-file` option to CLI
@@ -48,6 +51,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Additional HTTP endpoints for model listing and health checks.
 
 **Implementation**:
+
 - `/v1/models`: Scans HF cache and returns available models
 - `/health`: Simple health check returning `{"status": "ok"}`
 
@@ -64,6 +68,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Centralized model loading and caching with lazy loading.
 
 **Features**:
+
 - On-demand model loading
 - Model caching with key-based lookup
 - Support for adapters (LoRA)
@@ -83,6 +88,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Use a smaller draft model to propose tokens, then verify with main model.
 
 **Features**:
+
 - Configurable draft model path
 - `num_draft_tokens` parameter
 - Automatic acceptance/rejection
@@ -101,6 +107,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Return log probabilities for generated tokens.
 
 **Features**:
+
 - Top-k logprobs per token
 - Configurable number of top tokens
 - Per-token probability scores
@@ -120,6 +127,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Process multiple prompts concurrently in a batch.
 
 **Features**:
+
 - Efficient batching with padding
 - Shared KV cache
 - Per-request progress tracking
@@ -138,6 +146,7 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 **What**: Quantize KV cache to reduce memory usage.
 
 **Features**:
+
 - Configurable bit-width (e.g., 8-bit)
 - Group size configuration
 - Delayed quantization start
@@ -231,3 +240,5 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 ---
 
 **Last Updated**: 2026-01-06
+
+[← Back to README](../README.md)

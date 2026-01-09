@@ -295,3 +295,7 @@ Note: Profile-level `mlock`/`prewarm_cache` are currently not directly supported
   - ✅ Safe if total sizes < system wired limit
   - ⚠️ Models compete for wired memory slots
   - 💡 Consider sequential loading for very large models
+
+---
+
+[← Back to README](../README.md)

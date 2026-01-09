@@ -670,3 +670,7 @@ This gives you:
 - The power of OpenHarmony-MLX (GPT-OSS features)
 - Simplified architecture (MLX only)
 - One unified application
+
+---
+
+[← Back to README](../README.md)

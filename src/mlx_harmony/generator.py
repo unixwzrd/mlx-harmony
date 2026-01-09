@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Dict, Iterator, List, Optional, Union
 
@@ -19,8 +20,8 @@ from openai_harmony import (
     load_harmony_encoding,
 )
 
-from .config import PromptConfig, apply_placeholders
-from .load_optimized import load_optimized
+from mlx_harmony.config import PromptConfig, apply_placeholders
+from mlx_harmony.load_optimized import load_optimized
 
 
 class TokenGenerator:
@@ -214,6 +215,8 @@ class TokenGenerator:
 
         # Track generated tokens for stop sequence detection
         generated_tokens: List[int] = []
+        start_time = time.perf_counter()
+
         for response in stream_generate(
             self.model,
             self.tokenizer,
@@ -242,6 +245,8 @@ class TokenGenerator:
 
             # Safe to yield - append to tracking list and yield
             generated_tokens.append(int(token_id))
+
+            # Yield token with timing info if this is the last token
             if return_logprobs:
                 yield {
                     "token": token_id,
@@ -251,6 +256,34 @@ class TokenGenerator:
                 }
             else:
                 yield token_id
+
+        # After generation completes, keep parameters active to prevent deallocation
+        # This ensures buffers stay wired and don't get swapped out
+        if hasattr(self.model, "_mlx_harmony_param_refs"):
+            # Periodically access parameters to keep them "active" and prevent deallocation
+            # This is a workaround to prevent MLX from freeing parameter buffers
+            try:
+                # Touch all parameter arrays to keep them active
+                for param in self.model._mlx_harmony_param_refs:
+                    # Access the array data to prevent deallocation
+                    _ = param.shape  # Access a property to keep reference alive
+            except Exception:
+                pass  # Ignore errors - not critical
+
+        # Calculate and store generation stats
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        num_tokens = len(generated_tokens)
+        tokens_per_second = num_tokens / elapsed_time if elapsed_time > 0 else 0.0
+
+        # Store stats on model for access by caller
+        self._last_generation_stats = {
+            "start_time": start_time,
+            "end_time": end_time,
+            "elapsed_time": elapsed_time,
+            "num_tokens": num_tokens,
+            "tokens_per_second": tokens_per_second,
+        }
 
     def _prepare_prompt(
         self,

@@ -32,6 +32,12 @@ This document explains all parameters available in the prompt configuration JSON
   - [Model Loading Optimizations](#model-loading-optimizations)
     - [`prewarm_cache` (boolean, optional)](#prewarm_cache-boolean-optional)
     - [`mlock` (boolean, optional)](#mlock-boolean-optional)
+  - [Display Configuration](#display-configuration)
+    - [`truncate_thinking` (integer, optional)](#truncate_thinking-integer-optional)
+    - [`truncate_response` (integer, optional)](#truncate_response-integer-optional)
+  - [Directory Configuration](#directory-configuration)
+    - [`logs_dir` (string, optional)](#logs_dir-string-optional)
+    - [`chats_dir` (string, optional)](#chats_dir-string-optional)
   - [Complete Example](#complete-example)
   - [Parameter Priority](#parameter-priority)
   - [Tips](#tips)
@@ -440,6 +446,70 @@ Lock model weights in memory using MLX's wired limit (mlock equivalent). Prevent
 
 **Note:** This uses MLX's `set_wired_limit()` under the hood, which is the MLX equivalent of mlock.
 
+## Display Configuration
+
+### `truncate_thinking` (integer, optional)
+
+Maximum number of characters to display for thinking/analysis channel content before truncating. Default: `1000`.
+
+**Example:**
+
+```json
+"truncate_thinking": 2000
+```
+
+**Note:** This only affects display in the chat interface. Full analysis content is still saved in the conversation log.
+
+### `truncate_response` (integer, optional)
+
+Maximum number of characters to display for final response content before truncating. Default: `1000`.
+
+**Example:**
+
+```json
+"truncate_response": 2000
+```
+
+**Note:** This only affects display in the chat interface. Full response content is still saved in the conversation log.
+
+## Directory Configuration
+
+### `logs_dir` (string, optional)
+
+Directory path for debug logs. Default: `"logs"`.
+
+**Example:**
+
+```json
+"logs_dir": "logs"
+```
+
+Or use a custom path:
+
+```json
+"logs_dir": "/var/log/mlx-harmony"
+```
+
+**Note:** The directory is created automatically if it doesn't exist. Debug logs (from `--debug` or `--debug-file`) are written to `logs_dir/prompt-debug.log` by default.
+
+### `chats_dir` (string, optional)
+
+Directory path for chat history files. Default: `"logs"`.
+
+**Example:**
+
+```json
+"chats_dir": "logs"
+```
+
+Or use a custom path:
+
+```json
+"chats_dir": "conversations"
+```
+
+**Note:** The directory is created automatically if it doesn't exist. Chat files are saved as `chats_dir/<chat_name>.json` when using `--chat <name>`.
+
 ## Complete Example
 
 ```json
@@ -469,7 +539,11 @@ Lock model weights in memory using MLX's wired limit (mlock equivalent). Prevent
   "repetition_penalty": 1.0,
   "repetition_context_size": 20,
   "prewarm_cache": true,
-  "mlock": false
+  "mlock": false,
+  "truncate_thinking": 1000,
+  "truncate_response": 1000,
+  "logs_dir": "logs",
+  "chats_dir": "logs"
 }
 ```
 
@@ -490,7 +564,13 @@ When a parameter is specified in multiple places, the priority is:
 - **To reduce repetition**: Set `repetition_penalty` to 1.1-1.2
 - **For faster loading**: Keep `prewarm_cache: true` (default)
 - **For stable memory**: Enable `mlock: true` on macOS (prevents swapping)
+- **For long responses**: Increase `truncate_thinking` and `truncate_response` if you want to see more content in the chat interface
+- **For organization**: Use separate `logs_dir` and `chats_dir` to organize output files
 
 ## Memory Management
 
-For detailed information about memory management, including wired memory (mlock), pre-warming, and considerations for loading multiple models, see [Memory Management Guide](../docs/MEMORY_MANAGEMENT.md).
+For detailed information about memory management, including wired memory (mlock), pre-warming, and considerations for loading multiple models, see [Memory Management Guide](./MEMORY_MANAGEMENT.md).
+
+---
+
+[← Back to README](../README.md)

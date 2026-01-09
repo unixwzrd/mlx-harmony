@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 
-from .config import load_prompt_config
-from .generator import TokenGenerator
+from mlx_harmony.config import load_prompt_config
+from mlx_harmony.generator import TokenGenerator
 
 
 def main() -> None:
@@ -87,7 +87,7 @@ def main() -> None:
     profile_model = None
     profile_prompt_cfg = None
     if args.profile:
-        from .config import load_profiles
+        from mlx_harmony.config import load_profiles
 
         profiles = load_profiles(args.profiles_file)
         if args.profile not in profiles:
@@ -126,4 +126,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

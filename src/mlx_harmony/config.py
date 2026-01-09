@@ -45,6 +45,14 @@ class PromptConfig:
     prewarm_cache: Optional[bool] = None  # Pre-warm filesystem cache before loading (default: True)
     mlock: Optional[bool] = None  # Lock model weights in memory using mlock (macOS Metal only, default: False)
 
+    # Display truncation limits
+    truncate_thinking: Optional[int] = None  # Truncate thinking/analysis text to N chars (default: 1000)
+    truncate_response: Optional[int] = None  # Truncate final response text to N chars (default: 1000)
+
+    # Directory configuration
+    logs_dir: Optional[str] = None  # Directory for debug logs (default: "logs")
+    chats_dir: Optional[str] = None  # Directory for chat history files (default: "logs")
+
 
 _PLACEHOLDER_RE = re.compile(r"<\|([A-Z_]+)\|>")
 
@@ -110,7 +118,7 @@ def apply_placeholders(value: Optional[str], placeholders: Dict[str, str]) -> Op
     return _maybe_render(value, placeholders)
 
 
-def load_prompt_config(path: str | Path) -> PromptConfig:
+def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
     """
     Load a PromptConfig from a JSON file.
 
@@ -134,7 +142,14 @@ def load_prompt_config(path: str | Path) -> PromptConfig:
       "xtc_probability": 0.0,
       "xtc_threshold": 0.0,
       "repetition_penalty": 1.0,
-      "repetition_context_size": 20
+      "repetition_context_size": 20,
+      "max_tokens": 1024,
+      "prewarm_cache": true,
+      "mlock": false,
+      "truncate_thinking": 1000,
+      "truncate_response": 1000,
+      "logs_dir": "logs",
+      "chats_dir": "logs"
     }
 
     Built-in placeholders:
@@ -146,9 +161,19 @@ def load_prompt_config(path: str | Path) -> PromptConfig:
     - <|TIMEU|>: Current time (HH:MM:SS UTC 24-hour, UTC timezone)
 
     User-defined placeholders: {key} replaced with placeholders[key]
+
+    Returns:
+        PromptConfig if file exists and is valid, None if file doesn't exist.
+        Raises json.JSONDecodeError or ValueError if file exists but is invalid.
     """
     raw_path = Path(path)
-    data: Dict[str, Any] = json.loads(raw_path.read_text(encoding="utf-8"))
+    if not raw_path.exists():
+        return None
+
+    try:
+        data: Dict[str, Any] = json.loads(raw_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Invalid JSON in config file {path}: {e}") from e
 
     user_placeholders: Dict[str, str] = {
         str(k): str(v) for k, v in (data.get("placeholders", {}) or {}).items()
@@ -194,6 +219,7 @@ def load_prompt_config(path: str | Path) -> PromptConfig:
         ),
         example_dialogues=example_dialogues,
         placeholders=user_placeholders,
+        max_tokens=data.get("max_tokens"),
         temperature=data.get("temperature"),
         top_p=data.get("top_p"),
         min_p=data.get("min_p"),
@@ -203,6 +229,12 @@ def load_prompt_config(path: str | Path) -> PromptConfig:
         xtc_threshold=data.get("xtc_threshold"),
         repetition_penalty=data.get("repetition_penalty"),
         repetition_context_size=data.get("repetition_context_size"),
+        prewarm_cache=data.get("prewarm_cache"),
+        mlock=data.get("mlock"),
+        truncate_thinking=data.get("truncate_thinking"),
+        truncate_response=data.get("truncate_response"),
+        logs_dir=data.get("logs_dir"),
+        chats_dir=data.get("chats_dir"),
     )
 
 

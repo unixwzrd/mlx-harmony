@@ -1,6 +1,6 @@
 # MLX-Harmony Roadmap
 
-**Last Updated**: 2026-01-06  
+**Last Updated**: 2026-01-07  
 **Project Status**: ✅ v0.1.0 - Initial Release Complete
 
 ## Overview
@@ -90,25 +90,30 @@ The tool infrastructure is in place, but executors need real implementations.
 
 ### Testing Infrastructure
 
-- [ ] **Unit Tests**
-  - [ ] `tests/test_config.py`: Config loading, placeholder expansion
-  - [ ] `tests/test_generator.py`: TokenGenerator, format detection
-  - [ ] `tests/test_tools.py`: Tool parsing, execution stubs
-  - [ ] `tests/test_chat.py`: Chat loop, tool integration
-  - [ ] `tests/test_server.py`: API endpoints, streaming
+- [x] **Unit Tests**
+  - [x] `tests/test_config.py`: Config loading, placeholder expansion
+  - [x] `tests/test_generator.py`: TokenGenerator, format detection
+  - [x] `tests/test_tools.py`: Tool parsing, execution stubs
+  - [x] `tests/test_chat.py`: Chat save/load, conversation management
+  - [x] `tests/test_server.py`: API endpoints, streaming, error handling
 
-- [ ] **Integration Tests**
+- [x] **Integration Tests**
+  - [x] Conversation save/load with metadata
+  - [x] Profile loading and resolution
+  - [x] Server request/response cycles (FastAPI TestClient)
+  - [x] Server streaming responses
+  - [x] Server error handling
   - [ ] End-to-end chat with tool calls
-  - [ ] Profile loading and resolution
-  - [ ] Server request/response cycles
-  - [ ] Error handling and edge cases
+  - [ ] Error handling edge cases
 
-- [ ] **CI/CD Setup**
-  - [ ] GitHub Actions workflow
-  - [ ] Test matrix (Python 3.12+)
-  - [ ] Linting (ruff, black)
-  - [ ] Type checking (mypy or pyright)
+- [x] **CI/CD Setup**
+  - [x] GitHub Actions workflow (`.github/workflows/ci.yml`)
+  - [x] Test matrix (Python 3.12, 3.13)
+  - [x] Linting (ruff, black)
+  - [x] Coverage reporting (Codecov integration)
+  - [ ] Type checking (mypy or pyright) - optional
 
+**Current Status**: Core unit tests implemented. Uses small test model (`mlx-community/Qwen1.5-0.5B-Chat-4bit`) for inference tests.  
 **Target Coverage**: >80%
 
 ---
@@ -393,3 +398,7 @@ Contributions welcome! Please:
 2. Open an issue to discuss major features
 3. Submit PRs with tests and documentation
 4. Update this roadmap when completing items
+
+---
+
+[← Back to README](../README.md)

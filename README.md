@@ -1,42 +1,104 @@
 # MLX Harmony
 
-`mlx-harmony` is a lightweight wrapper around `mlx-lm` and `openai-harmony`
-that gives you:
+Run GPT-OSS and other MLX-LM models through a single, lightweight interface.
 
-- **Multi‑model MLX inference** using `mlx-lm` (Llama, Mistral, Qwen, GPT‑OSS, …)
-- **Harmony formatting** automatically enabled for GPT‑OSS models
-- Simple **chat**, **generate**, and **HTTP API server** entrypoints
+`mlx-harmony` is a small wrapper around [`mlx-lm`](https://github.com/ml-explore/mlx-lm) and [`openai-harmony`](https://github.com/openai/openai-harmony) that gives you:
 
-### Installation
+- Multi-model **MLX inference** (Llama, Mistral, Qwen, GPT-OSS, …)
+- Automatic **Harmony formatting** and tools when using **GPT-OSS** models
+- Simple **CLI entrypoints** for chat, one-shot generation, and an **OpenAI-style HTTP API**
+- A JSON **prompt config** system with placeholders, examples, and memory optimizations
+
+It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
+
+---
+
+## Features
+
+- **Single generator for many models**  
+  Works with any `mlx-lm` model: local paths or Hugging Face repos, including quantized MXFP4/Q8 models.
+
+- **GPT-OSS aware**  
+  Automatically detects GPT-OSS models (`openai/gpt-oss-*`) and:
+  - Uses Harmony formatting
+  - Supports GPT-OSS tools (browser, python, apply_patch) at the chat layer
+
+- **Friendly CLIs**
+  - `mlx-harmony-chat` – interactive chat (with optional tools)
+  - `mlx-harmony-generate` – single-shot text generation
+  - `mlx-harmony-server` – OpenAI-style `/v1/chat/completions` endpoint
+
+- **Prompt configs and profiles**
+  - JSON configs for system text, developer instructions, placeholders, examples, and sampler settings
+  - Profiles that bundle a model path + prompt config for one-flag switching
+
+- **Conversation logging & resume**
+  - Save chat sessions as JSON (with timestamps + hyperparameters per turn)
+  - Resume with the same or a different model
+
+- **Performance hooks**
+  - Optional filesystem pre-warming
+  - Wired memory (mlock) support for model weights (MLX Metal wired memory API; requires macOS 15.0+)
+  - Token counting and timing (tokens/second display)
+- **Configurable directories**
+  - Separate directories for logs, chats, and profiling stats (configurable in prompt config)
+
+See the docs in `docs/` for deeper details:
+
+- [`IMPLEMENTATION_SUMMARY.md`](docs/IMPLEMENTATION_SUMMARY.md) – current state and architecture
+- [`NEW_PROJECT_DESIGN.md`](docs/NEW_PROJECT_DESIGN.md) – original design doc
+- [`FEATURES_FROM_MLX.md`](docs/FEATURES_FROM_MLX.md) – useful ideas to port from `mlx-lm`
+- [`MEMORY_MANAGEMENT.md`](docs/MEMORY_MANAGEMENT.md) – wired memory, cache pre-warm, multi-model notes
+- [`PROMPT_CONFIG_REFERENCE.md`](docs/PROMPT_CONFIG_REFERENCE.md) – every field in the JSON config
+- [`TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) – common issues and solutions
+- [`ROADMAP.md`](docs/ROADMAP.md), [`TODO.md`](docs/TODO.md) – what's next
+
+See [`examples/`](examples/) for practical usage examples:
+
+- Basic chat, generation, prompt configs
+- Profiles, conversation resume, custom placeholders
+- Sampling parameters, server client, tools
+
+---
+
+## Installation
 
 ```bash
 pip install mlx-harmony
 ```
 
-You will also need compatible versions of `mlx-lm` and `openai-harmony`
-installed; they are declared as dependencies in `pyproject.toml`.
+This will pull in compatible versions of:
 
-### Quick start
+- `mlx-lm`
+- `openai-harmony`
+- `fastapi`, `uvicorn` (for the HTTP server)
+- Plus a few support libs listed in `pyproject.toml`.
 
-Chat with any MLX‑LM model:
+You’ll need a working MLX setup (typically Python 3.12+ on Apple Silicon).
+
+⸻
+
+## Quick start
+
+Chat with any MLX-LM model:
 
 ```bash
 mlx-harmony-chat --model mlx-community/Llama-3.2-3B-Instruct-4bit
 ```
 
-Chat with a GPT‑OSS model (Harmony format is used automatically):
+Chat with a GPT-OSS model (Harmony formatting is automatic):
 
 ```bash
 mlx-harmony-chat --model openai/gpt-oss-20b
 ```
 
-Run the HTTP API server (OpenAI‑style `/v1/chat/completions`):
+Run an OpenAI-style HTTP server:
 
 ```bash
-mlx-harmony-server  # defaults to port 8000
+mlx-harmony-server  # defaults to 0.0.0.0:8000
 ```
 
-Generate text once from the CLI:
+One-shot generation:
 
 ```bash
 mlx-harmony-generate \
@@ -44,11 +106,20 @@ mlx-harmony-generate \
   --prompt "Explain MXFP4 in simple terms."
 ```
 
-### Prompt configs (Harmony + placeholders)
+---
 
-You can supply a JSON prompt config to set Harmony fragments, placeholders, default sampling parameters, and model loading optimizations. See **[PROMPT_CONFIG_REFERENCE.md](./docs/PROMPT_CONFIG_REFERENCE.md)** for complete documentation of all parameters.
+## Prompt configs
 
-`configs/prompt-config.example.json`:
+Prompt configs let you define:
+
+- System / developer instructions
+- Harmony-specific fields (`reasoning_effort`, `knowledge_cutoff`, etc.)
+- Example dialogues (few-shot)
+- Placeholders (`{assistant}`, `<|DATE|>`, etc.)
+- Sampler parameters
+- Memory hints (`prewarm_cache`, `mlock`)
+
+Example (`configs/prompt-config.example.json`):
 
 ```json
 {
@@ -77,52 +148,21 @@ You can supply a JSON prompt config to set Harmony fragments, placeholders, defa
   "repetition_penalty": 1.0,
   "repetition_context_size": 20,
   "prewarm_cache": true,
-  "mlock": false
+  "mlock": false,
+  "truncate_thinking": 1000,
+  "truncate_response": 1000,
+  "logs_dir": "logs",
+  "chats_dir": "logs"
 }
 ```
 
-**Key Parameters:**
+More detail (including all built-in date/time placeholders) is in [`PROMPT_CONFIG_REFERENCE.md`](docs/PROMPT_CONFIG_REFERENCE.md)
 
-- **`max_tokens`**: Maximum tokens to generate (default: 1024 for Harmony models, 512 otherwise). Increase for longer responses.
-- **`temperature`**: Sampling temperature (0.0-2.0, default: 0.8). Higher = more creative.
-- **`top_p`**: Nucleus sampling (0.0-1.0, default: 0.9). Keeps tokens with cumulative probability ≤ top_p.
-- **`repetition_penalty`**: Penalty for repetition (>1.0 reduces repetition, default: 1.0).
+---
 
-See **[PROMPT_CONFIG_REFERENCE.md](./docs/PROMPT_CONFIG_REFERENCE.md)** for complete documentation of all parameters.
+## Profiles
 
-**Example Dialogues (Few-shot Examples)**: The `example_dialogues` field allows you to include sample conversations that are part of the prompt but not sent every time like system/developer instructions. This is useful for:
-
-- Role-playing assistants
-- Customer service bots
-- Demonstrating desired conversation style
-
-**Importing Dialogue Text Format**: You can convert simple dialogue text format to JSON for `example_dialogues`:
-
-```bash
-# Convert dialogue text file to JSON format
-mlx-harmony-convert-dialogue input.txt output.json --as-example-dialogues
-```
-
-Input format:
-
-```text
-assistant: Hello, how may I help you today?
-user: I'd like to know something about fruit.
-assistant: What would you like to know about fruit?
-user: What is the difference between a fruit and a vegetable?
-```
-
-Use it:
-
-```bash
-mlx-harmony-chat --model ~/models/gpt-oss-20b --prompt-config configs/prompt-config.example.json
-```
-
-### Profiles (optional)
-
-You can define profiles to bundle a model path and prompt config:
-
-`configs/profiles.example.json`:
+Profiles bundle “model + prompt config”:
 
 ```json
 {
@@ -140,12 +180,16 @@ You can define profiles to bundle a model path and prompt config:
 CLI:
 
 ```bash
-mlx-harmony-chat --profile gpt-oss-20b --profiles-file configs/profiles.example.json
+mlx-harmony-chat \
+  --profile gpt-oss-20b \
+  --profiles-file configs/profiles.example.json
 ```
 
-### GPT-OSS Tools (GPT-OSS models only)
+---
 
-For GPT-OSS models, you can enable tools that the model can call during conversation:
+## GPT-OSS tools
+
+When using GPT-OSS models you can surface tool hooks:
 
 ```bash
 mlx-harmony-chat \
@@ -155,63 +199,95 @@ mlx-harmony-chat \
   --apply-patch
 ```
 
-Available tools:
+Flags:
 
-- `--browser`: Browser tool for web navigation and interaction
-- `--python`: Python tool for executing Python code in a sandbox
-- `--apply-patch`: Apply patch tool for code modifications
+- `--browser` – browser / web navigation tool
+- `--python` – Python execution tool
+- `--apply-patch` – apply-patch tool for code edits
 
-**Note**: Tool execution is currently stubbed. The infrastructure for detecting and parsing tool calls is in place, but actual tool executors need to be implemented. When a tool call is detected, the chat loop will:
+Right now, the loop does:
+	1.	Detect tool calls in Harmony messages
+	2.	Parse the tool + arguments
+	3.	Call a stub executor (returns “not implemented”)
+	4.	Feed the tool result back into the conversation
 
-1. Parse the tool call from the model's response
-2. Execute the tool (currently returns a "not implemented" message)
-3. Feed the result back into the conversation
-4. Continue generation with the tool result
+That gives you a clean place to plug real executors later (sandboxed Python, a Playwright browser, git patch application, etc.).
 
-### Debug Mode
+---
 
-Enable debug mode to see raw prompts and responses:
+## Conversation logging & resume
+
+You can save and resume conversations using a single chat name:
 
 ```bash
+# Start a new chat or continue existing one
 mlx-harmony-chat \
   --model openai/gpt-oss-20b \
-  --debug
+  --chat mychat
 ```
 
-This outputs the raw text prompts sent to the LLM and the raw responses received, useful for debugging prompt formatting and model behavior.
+Chat files are saved to `chats_dir/<name>.json` (default: `logs/<name>.json`). If the chat file exists, it loads and continues; if not, a new chat is created. New messages are automatically appended after each exchange.
 
-### Conversation Logging & Resuming
+**Dynamic hyperparameter changes during chat:**
 
-Save conversations to resume later:
+You can change hyperparameters on the fly:
 
 ```bash
-# Save conversation to a JSON file (auto-saves after each exchange)
-mlx-harmony-chat \
-  --model openai/gpt-oss-20b \
-  --save-conversation conversations/my-chat.json
+>> \set temperature=0.7
+[INFO] Set temperature = 0.7
+
+>> \set max_tokens=2048
+[INFO] Set max_tokens = 2048
 ```
 
-Resume a previous conversation:
+Valid parameters: `temperature`, `top_p`, `min_p`, `top_k`, `max_tokens`, `repetition_penalty`, `repetition_context_size`
+
+The conversation JSON includes:
+
+- Full message history (with timestamps)
+- Model + prompt config metadata
+- Hyperparameters per turn (including changes made during chat)
+- Tool messages
+- Generation stats (tokens/second)
+
+Hyperparameters from the saved file are restored unless you override them via CLI or change them during chat.
+
+---
+
+## Memory & performance
+
+Two knobs exist for memory behavior:
+
+- `prewarm_cache` (default: true) – read model weight files into the OS cache before load to speed up subsequent loads.
+- `mlock` – keep model weights wired in memory using MLX's Metal wired-memory APIs (requires macOS 15.0+).
+
+You can set these in the prompt config:
+
+```json
+{
+  "prewarm_cache": true,
+  "mlock": false
+}
+```
+
+CLI overrides:
 
 ```bash
-# Load and continue from a saved conversation
-mlx-harmony-chat --load-conversation conversations/my-chat.json
+mlx-harmony-chat --model models/my-model --mlock
+mlx-harmony-chat --model models/my-model --no-prewarm-cache
 ```
 
-The conversation JSON format includes metadata (model, prompt config, tools, hyperparameters) and the full message history with timestamps. Each message (turn) includes a timestamp when it was created. See `configs/conversation.example.json` for the schema.
+Mlock support requires macOS 15.0+ with Metal backend. For details on how it works, limitations, and best practices (especially when loading multiple models), see [`MEMORY_MANAGEMENT.md`](docs/MEMORY_MANAGEMENT.md). That guide covers:
 
-**Features:**
+- How wired memory works on macOS
+- How to size the wired limit vs model size
+- What happens with multiple large models loaded at once
 
-- Auto-saves after each exchange (turn)
-- Timestamps on every message
-- Preserves model/prompt config information
-- Saves and restores hyperparameters (temperature, top_p, etc.)
-- **Per-turn hyperparameter tracking**: Each assistant and tool message stores the hyperparameters used for that generation, allowing you to see how hyperparameters changed during the conversation
-- Supports resuming with same or different model
-- Hyperparameters from saved conversation are restored unless overridden via CLI
-- Tool messages are preserved in the format
+---
 
-### Python API
+## Python API
+
+For direct programmatic use:
 
 ```python
 from mlx_harmony import TokenGenerator
@@ -224,87 +300,62 @@ text = generator.tokenizer.decode([int(t) for t in tokens])
 print(text)
 ```
 
----
+You still get:
 
-## Performance Profiling
-
-Profile the chat interface to identify performance bottlenecks:
-
-```bash
-# Profile the actual running chat (recommended - shows real-world usage)
-python scripts/profile_chat.py \
-  --model models/your-model \
-  --prompt-config configs/your-config.json \
-  --graph profile.svg
-
-# Or profile just startup/initialization
-python scripts/profile_startup.py \
-  --model models/your-model \
-  --prompt-config configs/your-config.json \
-  --graph profile.svg
-
-# View the call graph
-open profile.svg  # macOS
-# or
-xdg-open profile.svg  # Linux
-```
-
-See **[scripts/README.md](./scripts/README.md)** for detailed profiling instructions.
+- Automatic GPT-OSS detection and Harmony formatting (for GPT-OSS models)
+- Native chat templates for other MLX-LM models
+- Access to all sampling parameters exposed by mlx-lm
 
 ---
 
-## Model Loading Optimizations
+## Testing
 
-### Filesystem Cache Pre-warming
-
-By default, `mlx-harmony` pre-warms the filesystem cache before loading models, which can significantly speed up model loading (especially on subsequent loads):
+The project includes a comprehensive test suite:
 
 ```bash
-mlx-harmony-chat --model models/my-model  # Pre-warming enabled by default
+# Install test dependencies
+pip install -e ".[dev]"
 
-# Disable pre-warming
-mlx-harmony-chat --model models/my-model --no-prewarm-cache
+# Run all tests
+pytest
+
+# Run only fast tests (skip model downloads)
+pytest -m "not slow and not requires_model"
+
+# Run tests with coverage
+pytest --cov=mlx_harmony --cov-report=html
 ```
 
-You can also control this in your prompt config JSON:
+Tests use a small model (`mlx-community/Qwen1.5-0.5B-Chat-4bit`, ~300MB) for inference tests, which is automatically downloaded and cached by HuggingFace on first use.
 
-```json
-{
-  "prewarm_cache": true
-}
-```
+See [`tests/README.md`](tests/README.md) for detailed test documentation.
 
-### Memory Locking (mlock)
+## CI/CD
 
-On macOS with Metal backend, you can lock model weights in memory to prevent swapping:
+Continuous integration is configured with GitHub Actions:
 
-```bash
-mlx-harmony-chat --model models/my-model --mlock
-```
+- **Linting**: Runs `black` and `ruff` on Ubuntu
+- **Fast Tests**: Runs unit tests on Ubuntu (Python 3.12, 3.13)
+- **Full Tests**: Runs complete test suite on macOS-14 (Apple Silicon required for MLX)
+- **Coverage**: Reports code coverage on pushes to `main`
 
-You can also enable this in your prompt config JSON:
-
-```json
-{
-  "mlock": true
-}
-```
-
-**Note**: Memory locking (mlock) requires:
-
-- macOS with Metal backend
-- Model size must fit within 90% of Metal's recommended working set size
-- Uses MLX's `set_wired_limit()` under the hood (mlock equivalent)
-
-For detailed information about memory management, including wired memory, pre-warming, and considerations for loading multiple models, see **[Memory Management Guide](docs/MEMORY_MANAGEMENT.md)**.
+See [`.github/workflows/README.md`](.github/workflows/README.md) for workflow details.
 
 ---
 
-## Roadmap & Contributing
+## Roadmap
 
-- **[ROADMAP.md](./docs/ROADMAP.md)**: Detailed roadmap with planned enhancements and features
-- **[FEATURES_FROM_MLX.md](./docs/FEATURES_FROM_MLX.md)**: Features identified from mlx-lm/mlx-examples to incorporate
-- **[TODO.md](./docs/TODO.md)**: Active checklist for current work items
-- **[CHANGELOG.md](./CHANGELOG.md)**: Version history and release notes
+The longer-term plan is tracked in:
 
-Contributions welcome! Please check the roadmap before starting work on major features.
+- [`ROADMAP.md`](docs/ROADMAP.md)
+- [`FEATURES_FROM_MLX.md`](docs/FEATURES_FROM_MLX.md)
+- [`TODO.md`](docs/TODO.md)
+
+Highlights on the horizon:
+
+- Real implementations for GPT-OSS tools (browser, python, apply_patch)
+- Prompt cache and KV-cache integration from `mlx-lm`
+- `/v1/models` and `/health` endpoints in the server
+- Speculative decoding and other performance features from upstream `mlx-lm`
+
+Pull requests and issue reports are very welcome. If you're planning to tackle something big, check the roadmap first so we don't step on each other.

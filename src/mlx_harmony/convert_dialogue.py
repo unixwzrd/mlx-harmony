@@ -14,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from .config import parse_dialogue_file, parse_dialogue_text
+from mlx_harmony.config import parse_dialogue_file, parse_dialogue_text
 
 
 def main() -> None:

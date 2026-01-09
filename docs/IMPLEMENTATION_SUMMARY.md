@@ -10,12 +10,14 @@ Successfully implemented `mlx-harmony` - a unified project that combines `mlx-lm
 ## Completed Features
 
 ### 1. ✅ Core Infrastructure
+
 - **TokenGenerator**: Multi-model generator with automatic Harmony format detection for GPT-OSS
 - **Auto-detection**: Identifies GPT-OSS models and enables Harmony automatically
 - **MLX Backend**: Full MLX-LM integration for Apple Silicon optimization
 - **Model Support**: Local models, Hugging Face Hub, quantized models (MXFP4, Q8, etc.)
 
 ### 2. ✅ Configuration System
+
 - **PromptConfig**: JSON-based configuration for prompt fragments and sampling
 - **Dynamic Placeholders**: `<|DATE|>`, `<|DATETIME|>`, and custom `{key}` placeholders
 - **Sampling Defaults**: All MLX-LM sampler parameters configurable via JSON
@@ -23,18 +25,21 @@ Successfully implemented `mlx-harmony` - a unified project that combines `mlx-lm
 - **Examples**: `configs/prompt-config.example.json`, `configs/profiles.example.json`
 
 ### 3. ✅ CLI Tools
+
 - **mlx-harmony-chat**: Interactive chat with tool support
 - **mlx-harmony-generate**: One-shot text generation
 - **mlx-harmony-server**: OpenAI-compatible HTTP API server
 - **Full Hyperparameter Control**: All sampling parameters exposed as CLI flags
 
 ### 4. ✅ GPT-OSS Tool Infrastructure
+
 - **Tool Call Parsing**: Extracts tool calls from Harmony messages
 - **Tool Execution Framework**: Stub implementations for browser/python/apply_patch
 - **Chat Loop Integration**: Automatic tool call detection and result feeding
 - **Extensible Design**: Ready for real tool executor implementations
 
 ### 5. ✅ Documentation
+
 - **README.md**: Complete usage guide with examples
 - **CHANGELOG.md**: Version history and feature list
 - **NEW_PROJECT_DESIGN.md**: Original design document
@@ -43,13 +48,16 @@ Successfully implemented `mlx-harmony` - a unified project that combines `mlx-lm
 ## Technical Highlights
 
 ### Sampling Hyperparameters
+
 All `mlx_lm.sample_utils` parameters are exposed:
+
 - `temperature`, `top_p`, `min_p`, `top_k`
 - `xtc_probability`, `xtc_threshold`, `min_tokens_to_keep`
 - `repetition_penalty`, `repetition_context_size`
 - `logit_bias`
 
 ### Harmony Integration
+
 - System/developer message customization
 - Reasoning effort control
 - Conversation start date (dynamic `<|DATE|>`)
@@ -57,6 +65,7 @@ All `mlx_lm.sample_utils` parameters are exposed:
 - Custom placeholders for prompt personalization
 
 ### Tool System (GPT-OSS)
+
 ```python
 # Tool call detection flow:
 1. Model generates tokens with tool call (to=browser.navigate)
@@ -94,6 +103,7 @@ mlx-harmony/
 ## Usage Examples
 
 ### With Prompt Config
+
 ```bash
 mlx-harmony-chat \
   --model openai/gpt-oss-20b \
@@ -103,11 +113,13 @@ mlx-harmony-chat \
 ```
 
 ### With Profile
+
 ```bash
 mlx-harmony-chat --profile gpt-oss-20b
 ```
 
 ### With Tools
+
 ```bash
 mlx-harmony-chat \
   --model openai/gpt-oss-20b \
@@ -117,6 +129,7 @@ mlx-harmony-chat \
 ```
 
 ### HTTP Server
+
 ```bash
 mlx-harmony-server --host 0.0.0.0 --port 8000
 ```
@@ -158,6 +171,7 @@ While the current implementation is complete and functional, future enhancements
 ## Conclusion
 
 The `mlx-harmony` project is now fully functional with:
+
 - ✅ Multi-model MLX inference
 - ✅ Automatic Harmony format for GPT-OSS
 - ✅ Comprehensive configuration system
@@ -166,3 +180,7 @@ The `mlx-harmony` project is now fully functional with:
 - ✅ Full documentation
 
 The project provides a solid foundation for GPT-OSS model usage on Apple Silicon while maintaining compatibility with thousands of other MLX-LM supported models.
+
+---
+
+[← Back to README](../README.md)

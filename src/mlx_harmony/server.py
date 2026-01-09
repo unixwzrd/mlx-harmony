@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .generator import TokenGenerator
+from mlx_harmony.generator import TokenGenerator
 
 app = FastAPI(title="MLX Harmony API")
 

@@ -29,5 +29,9 @@
   "repetition_penalty": 1.0,
   "repetition_context_size": 20,
   "prewarm_cache": true,
-  "mlock": false
+  "mlock": true,
+  "truncate_thinking": 1000,
+  "truncate_response": 1000,
+  "logs_dir": "logs",
+  "chats_dir": "logs"
 }

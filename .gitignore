@@ -476,6 +476,8 @@ tags
 [Ll]ib64
 [Ll]ocal
 [Ss]cripts
+!scripts/
+!scripts/**
 pyvenv.cfg
 pip-selfcheck.json
 
@@ -555,6 +557,9 @@ build/
 utils/
 backup/
 tmp/
+
+# Performance metrics
+stats/
 
 windsurf/
 src.checkpoint/
