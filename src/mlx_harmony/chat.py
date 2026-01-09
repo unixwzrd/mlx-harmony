@@ -8,6 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:
+    from rich.console import Console
+    from rich.markdown import Markdown
+
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
 from unicodefix.transforms import clean_text
 
 from mlx_harmony.config import apply_placeholders, load_prompt_config
@@ -17,6 +25,70 @@ from mlx_harmony.tools import (
     get_tools_for_model,
     parse_tool_calls_from_messages,
 )
+
+# Create a console instance for rich rendering (only if rich is available)
+_console = Console() if RICH_AVAILABLE else None
+
+
+def _render_markdown(text: str, render_markdown: bool = True) -> None:
+    """
+    Render text as markdown using rich (similar to glow/mdless) if enabled and rich is available.
+
+    Rich's Markdown class will:
+    - Format markdown elements (headers, lists, code blocks, etc.) beautifully
+    - Handle plain text gracefully (no formatting applied if not markdown)
+    - Preserve newlines and structure
+
+    This function also normalizes markdown by adding newlines before markdown elements
+    (headers, lists) for proper formatting even if the model didn't emit explicit newlines.
+
+    Args:
+        text: Text content to render
+        render_markdown: If True, attempt to render as markdown. If False, print as plain text.
+    """
+    if not text:
+        return
+
+    # Always try to render with rich if available and enabled
+    # Rich handles both markdown and plain text gracefully
+    if RICH_AVAILABLE and render_markdown:
+        try:
+            # Normalize markdown: add newlines before markdown elements for proper formatting
+            # This handles cases where the model generates markdown syntax but without explicit newlines
+            normalized_text = text
+
+            # Add newline before headers if not already present
+            # Pattern: match "###" or similar not preceded by newline
+            normalized_text = re.sub(r"(.)(#{2,6}\s)", r"\1\n\2", normalized_text)
+
+            # Add newline before list items if not already present
+            # Pattern: match "1. " or "- " or "* " not preceded by newline
+            normalized_text = re.sub(r"(.)(\d+\.\s+)", r"\1\n\2", normalized_text)  # Numbered lists
+            normalized_text = re.sub(r"(.)([-*+]\s+)", r"\1\n\2", normalized_text)  # Bullet lists
+
+            # Ensure code blocks have proper newlines for Rich markdown rendering
+            # Code blocks need newlines around them for Rich to recognize them
+            # Add newline before opening ``` if not already present
+            normalized_text = re.sub(r"([^\n])(```)", r"\1\n\2", normalized_text)
+            # Add newline after opening ``` with optional language identifier (e.g., ```python)
+            # Pattern: ```python -> ```python\n
+            normalized_text = re.sub(r"(```\w*?)([^\n])", r"\1\n\2", normalized_text)
+            # Add newline before closing ``` if not already present
+            normalized_text = re.sub(r"([^\n])(```)", r"\1\n\2", normalized_text)
+            # Ensure there's a newline after closing ``` for proper code block termination
+            normalized_text = re.sub(r"(```)([^\n])", r"\1\n\2", normalized_text)
+
+            # Use rich to render markdown beautifully
+            # Rich will format markdown elements including code blocks with syntax highlighting
+            # code_theme="monokai" enables syntax highlighting for code blocks
+            markdown = Markdown(normalized_text, code_theme="monokai")
+            _console.print(markdown)
+        except Exception:
+            # Fallback to plain text if rich rendering fails
+            print(text, end="")
+    else:
+        # Plain text fallback (rich not available or markdown disabled)
+        print(text, end="")
 
 
 def _extract_content_from_raw_harmony(raw_text: str) -> Optional[str]:
@@ -272,23 +344,17 @@ def main() -> None:
         help="Path to write debug prompts/responses when debug is enabled (default: logs_dir/prompt-debug.log).",
     )
     parser.add_argument(
-        "--prewarm-cache",
-        action="store_true",
-        default=True,
-        help="Pre-warm filesystem cache before loading model (speeds up loading, default: True).",
-    )
-    parser.add_argument(
-        "--no-prewarm-cache",
-        dest="prewarm_cache",
-        action="store_false",
-        help="Disable filesystem cache pre-warming.",
-    )
-    parser.add_argument(
         "--mlock",
         action="store_true",
         default=None,
         help="Lock model weights in memory using MLX's wired limit (mlock equivalent, macOS Metal only). "
         "Can also be set in prompt config JSON. Default: False",
+    )
+    parser.add_argument(
+        "--no-markdown",
+        action="store_true",
+        default=False,
+        help="Disable markdown rendering for assistant responses (display as plain text).",
     )
     args = parser.parse_args()
 
@@ -317,25 +383,164 @@ def main() -> None:
     )
 
     # Resolve directories from config (defaults to "logs" if not specified)
+    # Normalize paths to avoid nested directories like logs/log/
     # These will be re-resolved after loading chat if prompt_config changes
-    chats_dir = Path(prompt_config.chats_dir if prompt_config and prompt_config.chats_dir else "logs")
-    logs_dir = Path(prompt_config.logs_dir if prompt_config and prompt_config.logs_dir else "logs")
+    def normalize_dir_path(path_str: str) -> Path:
+        """Normalize directory path to prevent nested logs/log/ structures."""
+        if not path_str:
+            return Path("logs")
+        path = Path(path_str)
+        # If it's absolute, use as-is
+        if path.is_absolute():
+            return path
+
+        # Convert to string and normalize - handle both forward and backslash
+        path_str_norm = str(path).replace("\\", "/")
+
+        # Remove nested logs/log/ patterns
+        # Handle: logs/log, logs/logs, logs/log/log, etc.
+        # Keep normalizing until no more nested patterns exist
+        max_iterations = 10  # Prevent infinite loops
+        iteration = 0
+        while iteration < max_iterations:
+            iteration += 1
+            original = path_str_norm
+
+            # Replace any occurrence of logs/log with logs
+            if "/logs/log" in path_str_norm or path_str_norm.startswith("logs/log"):
+                path_str_norm = path_str_norm.replace("/logs/log", "/logs")
+                path_str_norm = path_str_norm.replace("logs/log", "logs")
+
+            # If path contains multiple "logs" segments, simplify to just "logs"
+            # Count how many times "logs" appears as a complete path component
+            parts = path_str_norm.split("/")
+            logs_count = sum(1 for p in parts if p == "logs")
+            if logs_count > 1:
+                # Multiple "logs" - simplify to just "logs"
+                path_str_norm = "logs"
+                break
+
+            # If no changes were made, we're done
+            if path_str_norm == original:
+                break
+
+        # Clean up any double slashes or trailing slashes
+        path_str_norm = path_str_norm.replace("//", "/").rstrip("/")
+
+        # Final check: if it's empty or still contains nested patterns, default to "logs"
+        if not path_str_norm or "/logs/log" in path_str_norm or path_str_norm.startswith("logs/log"):
+            path_str_norm = "logs"
+
+        return Path(path_str_norm)
+
+    chats_dir_str = prompt_config.chats_dir if prompt_config and prompt_config.chats_dir else "logs"
+    logs_dir_str = prompt_config.logs_dir if prompt_config and prompt_config.logs_dir else "logs"
+
+    chats_dir = normalize_dir_path(chats_dir_str)
+    logs_dir = normalize_dir_path(logs_dir_str)
+
     chats_dir.mkdir(parents=True, exist_ok=True)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve chat file path if specified
+    # Handle case where user might provide filename with or without .json extension
+    # Also handle cases where user includes directory path (extract just filename)
     chat_file_path: Optional[Path] = None
+    load_file_path: Optional[Path] = None
+
     if args.chat:
-        chat_file_path = chats_dir / f"{args.chat}.json"
+        # Extract just the filename from the path (handle cases like "log/mia-chat.json" or "logs/log/mia-chat.json")
+        chat_input = args.chat
+        # Convert to Path to extract filename
+        chat_path = Path(chat_input)
+        chat_filename = chat_path.name  # Extract just the filename (e.g., "mia-chat.json" or "mia-chat.json.json")
+
+        # Strip .json extension(s) if present (handle both ".json" and ".json.json")
+        chat_name = chat_filename
+        if chat_name.endswith(".json.json"):
+            chat_name = chat_name[:-10]  # Remove ".json.json"
+        elif chat_name.endswith(".json"):
+            chat_name = chat_name[:-5]  # Remove ".json"
+
+        # Always use normalized chats_dir for saving (ignore any directory in user input)
+        chat_file_path = chats_dir / f"{chat_name}.json"
+        load_file_path = chat_file_path  # Default: load from expected location
+
+        # If file doesn't exist at expected location, try to find it in common locations
+        # (e.g., if it was saved with wrong path due to config change)
+        # Also search using the original user input path in case they specified a directory
+        if not chat_file_path.exists():
+            # Try looking for any file matching the name (handles wrong paths from previous saves)
+            # Search in common locations: expected location, logs/, nested logs/log/, chats_dir, project root
+            # Also try the original user input path if it was different
+            search_dirs = [
+                chats_dir,
+                Path("logs"),
+                Path("logs/log"),  # Check nested location in case files were saved there
+                Path("."),
+            ]
+
+            # If user provided a path with directory, also search there
+            if chat_path.parent != Path(".") and str(chat_path.parent) != ".":
+                search_dirs.append(chat_path.parent)
+
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_search_dirs = []
+            for d in search_dirs:
+                d_str = str(d)
+                if d_str not in seen and d_str not in ("", "."):
+                    seen.add(d_str)
+                    unique_search_dirs.append(d)
+
+            found_file_path = None
+            for search_dir in unique_search_dirs:
+                if not search_dir.exists():
+                    continue
+
+                # Try exact name
+                candidate = search_dir / f"{chat_name}.json"
+                if candidate.exists():
+                    found_file_path = candidate
+                    # Always use normalized path for future saves (never use nested paths)
+                    expected_path = chats_dir / f"{chat_name}.json"
+                    if candidate != expected_path:
+                        print(f"[INFO] Found chat file at: {candidate} (will save to: {expected_path})")
+                    # Set chat_file_path to normalized path for future saves
+                    chat_file_path = expected_path
+                    load_file_path = found_file_path  # Load from found location
+                    break
+                # Try with double .json (handles legacy files with wrong extension)
+                candidate = search_dir / f"{chat_name}.json.json"
+                if candidate.exists():
+                    expected_path = chats_dir / f"{chat_name}.json"
+                    print(f"[INFO] Found legacy chat file at: {candidate} (will save to: {expected_path})")
+                    found_file_path = candidate
+                    # Set chat_file_path to normalized path for future saves
+                    chat_file_path = expected_path
+                    load_file_path = found_file_path  # Load from found location
+                    break
+                # Also try the original filename from user input (in case they passed "log/mia-chat.json.json")
+                if chat_filename != f"{chat_name}.json":
+                    candidate = search_dir / chat_filename
+                    if candidate.exists():
+                        expected_path = chats_dir / f"{chat_name}.json"
+                        print(f"[INFO] Found chat file at: {candidate} (will save to: {expected_path})")
+                        found_file_path = candidate
+                        chat_file_path = expected_path
+                        load_file_path = found_file_path
+                        break
 
     # Load conversation if chat file exists
     conversation: List[Dict[str, str]] = []
     loaded_metadata = {}
     loaded_hyperparameters = {}
-    if chat_file_path and chat_file_path.exists():
+    if load_file_path and load_file_path.exists():
         try:
-            conversation, loaded_metadata = load_conversation(chat_file_path)
-            print(f"[INFO] Loaded existing chat from: {chat_file_path}")
+            conversation, loaded_metadata = load_conversation(load_file_path)
+            print(f"[INFO] Loaded existing chat from: {load_file_path}")
+            if chat_file_path and load_file_path != chat_file_path:
+                print(f"[INFO] Chat will be saved to: {chat_file_path}")
             print(f"[INFO] Found {len(conversation)} previous messages (turns)")
 
             # Optionally use loaded model/prompt_config if not explicitly set
@@ -354,19 +559,44 @@ def main() -> None:
                 print(f"[INFO] Using prompt config from chat: {prompt_config_path}")
 
                 # Re-resolve directories after reloading prompt_config in case it changed
-                chats_dir = Path(prompt_config.chats_dir if prompt_config and prompt_config.chats_dir else "logs")
-                logs_dir = Path(prompt_config.logs_dir if prompt_config and prompt_config.logs_dir else "logs")
+                # Normalize paths to avoid nested directories
+                chats_dir_str = prompt_config.chats_dir if prompt_config and prompt_config.chats_dir else "logs"
+                logs_dir_str = prompt_config.logs_dir if prompt_config and prompt_config.logs_dir else "logs"
+
+                # Always normalize to prevent nested directories (even if config has "logs/log")
+                chats_dir = normalize_dir_path(chats_dir_str)
+                logs_dir = normalize_dir_path(logs_dir_str)
+
+                # Ensure directories are normalized (double-check)
+                if str(chats_dir).endswith("/logs/log") or str(chats_dir).endswith("\\logs\\log") or "logs/log" in str(chats_dir):
+                    chats_dir = Path("logs")
+                if str(logs_dir).endswith("/logs/log") or str(logs_dir).endswith("\\logs\\log") or "logs/log" in str(logs_dir):
+                    logs_dir = Path("logs")
+
                 chats_dir.mkdir(parents=True, exist_ok=True)
                 logs_dir.mkdir(parents=True, exist_ok=True)
 
                 # Re-resolve chat file path with updated directory
-                # Use the updated directory from the reloaded config for consistency
-                # Future saves will use this location, matching the prompt config settings
+                # Always use normalized path for consistency (extract just filename, ignore directory from user input)
                 if args.chat:
-                    chat_file_path = chats_dir / f"{args.chat}.json"
+                    # Extract just the filename from user input (same logic as above)
+                    chat_input = args.chat
+                    chat_path = Path(chat_input)
+                    chat_filename = chat_path.name
+
+                    # Strip .json extension(s) if present
+                    chat_name = chat_filename
+                    if chat_name.endswith(".json.json"):
+                        chat_name = chat_name[:-10]  # Remove ".json.json"
+                    elif chat_name.endswith(".json"):
+                        chat_name = chat_name[:-5]  # Remove ".json"
+
+                    # Always use normalized chats_dir (ignore any directory in user input)
+                    new_chat_file_path = chats_dir / f"{chat_name}.json"
                     # If we loaded from a different location, inform the user
-                    if chat_file_path != original_chat_file_path:
-                        print(f"[INFO] Chat will be saved to: {chat_file_path} (per updated config)")
+                    if new_chat_file_path != original_chat_file_path:
+                        print(f"[INFO] Chat will be saved to: {new_chat_file_path} (per updated config)")
+                    chat_file_path = new_chat_file_path
 
             # Restore hyperparameters from conversation if not explicitly set via CLI
             loaded_hyperparameters = loaded_metadata.get("hyperparameters", {})
@@ -378,19 +608,14 @@ def main() -> None:
     elif chat_file_path:
         print(f"[INFO] Creating new chat: {chat_file_path}")
 
-    # Get mlock/prewarm_cache from prompt config if not explicitly set via CLI
+    # Get mlock from prompt config if not explicitly set via CLI
     mlock = args.mlock
     if mlock is None and prompt_config:
         mlock = prompt_config.mlock
 
-    prewarm_cache = args.prewarm_cache
-    if prompt_config and prompt_config.prewarm_cache is not None:
-        prewarm_cache = prompt_config.prewarm_cache
-
     generator = TokenGenerator(
         model_path,
         prompt_config=prompt_config,
-        prewarm_cache=prewarm_cache,
         mlock=mlock or False,  # Default to False if None
     )
 
@@ -404,29 +629,130 @@ def main() -> None:
 
     print(f"[INFO] Starting chat with model: {model_path}")
     if generator.is_gpt_oss:
-        print("[INFO] GPT-OSS model detected – Harmony format enabled.")
+        print("[INFO] GPT-OSS model detected - Harmony format enabled.")
         if tools:
             enabled = ", ".join(t.name for t in tools if t.enabled)
             print(f"[INFO] Tools enabled: {enabled}")
     else:
-        print("[INFO] Non–GPT-OSS model – using native chat template.")
+        print("[INFO] Non-GPT-OSS model - using native chat template.")
 
     print("[INFO] Type 'q' or `Control-D` to quit.")
+    print("[INFO] Type '\\help' to list all out-of-band commands.")
     print("[INFO] Type '\\set <param>=<value>' to change hyperparameters (e.g., '\\set temperature=0.7').")
+    print("[INFO] Type '\\list' or '\\show' to display current hyperparameters.")
     if chat_file_path:
         print(f"[INFO] Chat will be saved to: {chat_file_path}\n")
 
+    # Get assistant name for display (need this before resume display)
+    assistant_name = "Assistant"
+    if prompt_config and prompt_config.placeholders:
+        assistant_name = prompt_config.placeholders.get("assistant", "Assistant")
+
+    # If resuming a prior chat, display resume message and last assistant output
+    # Skip greeting if we have any conversation history
+    has_conversation_history = bool(conversation)
+
+    if has_conversation_history:
+        print("[INFO] Resuming prior chat...")
+
+        # Find and display the last assistant message
+        last_assistant_msg = None
+        for msg in reversed(conversation):
+            if msg.get("role") == "assistant":
+                last_assistant_msg = msg
+                break
+
+        if last_assistant_msg:
+            content = last_assistant_msg.get("content", "")
+
+            # Check if it's a Harmony-formatted message (might be saved as analysis only)
+            if content in ("[Analysis only - no final response]", "[No final response - see thinking above]"):
+                # Handle case where only analysis was generated
+                analysis = last_assistant_msg.get("analysis", "")
+                if analysis:
+                    # Analysis from JSON already has newlines preserved as \n characters
+                    # Don't call clean_text() again - content was already cleaned when saved
+                    display_analysis = analysis
+                    truncate_thinking = (
+                        prompt_config.truncate_thinking
+                        if prompt_config and prompt_config.truncate_thinking is not None
+                        else 1000
+                    )
+                    if len(display_analysis) > truncate_thinking:
+                        display_analysis = display_analysis[:truncate_thinking] + "... [truncated]"
+                    if display_analysis.strip():  # Only print if there's actual analysis
+                        # Plain text mode - preserve newlines exactly as they are
+                        # Python's print() will automatically process \n characters as newlines
+                        print(f"[THINKING - {display_analysis}]")
+                        print("\n[WARNING] Previous turn only generated analysis. Check max_tokens or repetition_penalty.\n")
+            elif content:  # Has content and it's not a special marker
+                # Display the last assistant response
+                # Content from JSON already has newlines preserved as \n characters
+                # JSON.load() converts \n escape sequences to actual newlines
+                # Don't call clean_text() again - content was already cleaned when saved
+                # This ensures newlines are preserved exactly as saved
+                display_content = content
+                # Truncate if needed (use config default or 1000)
+                truncate_response = (
+                    prompt_config.truncate_response
+                    if prompt_config and prompt_config.truncate_response is not None
+                    else 1000
+                )
+                if len(display_content) > truncate_response:
+                    # When truncating, try to preserve newlines by truncating at a safe boundary
+                    # If truncation point is in the middle of content, it's fine - newlines before it will be preserved
+                    display_content = display_content[:truncate_response] + "... [truncated]"
+                # Always print if we have content (even if it's short)
+                # Use markdown rendering if enabled (default unless --no-markdown is set)
+                render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
+                if render_markdown and RICH_AVAILABLE:
+                    # Rich markdown rendering preserves newlines automatically
+                    print(f"{assistant_name}: ", end="")
+                    _render_markdown(display_content, render_markdown=True)
+                    print()  # Extra newline after markdown
+                else:
+                    # Plain text mode (--no-markdown) - preserve newlines exactly as they are
+                    # Python's print() will automatically process \n characters in the string as newlines
+                    # Just print directly - no special handling needed
+                    print(f"{assistant_name}: {display_content}")
+                    print()  # Extra blank line for readability
+            else:
+                # Content is empty - check if there's analysis we can show
+                analysis = last_assistant_msg.get("analysis", "")
+                if analysis:
+                    # Analysis from JSON already has newlines preserved as \n characters
+                    # Don't call clean_text() again - content was already cleaned when saved
+                    display_analysis = analysis
+                    truncate_thinking = (
+                        prompt_config.truncate_thinking
+                        if prompt_config and prompt_config.truncate_thinking is not None
+                        else 1000
+                    )
+                    if len(display_analysis) > truncate_thinking:
+                        display_analysis = display_analysis[:truncate_thinking] + "... [truncated]"
+                    if display_analysis.strip():
+                        # Plain text mode - preserve newlines exactly as they are
+                        # Python's print() will automatically process \n characters as newlines
+                        print(f"[THINKING - {display_analysis}]")
+                        print()  # Extra blank line for readability
+        else:
+            print("[INFO] No assistant messages found in conversation history.\n")
+
     # Optional assistant greeting from prompt config (only when starting fresh)
-    # Print greeting AFTER quit instruction and save info
-    if prompt_config and prompt_config.assistant_greeting and not conversation:
+    # Print greeting AFTER quit instruction and save info (or after resume message)
+    # Only show greeting if we don't have conversation history
+    if not has_conversation_history and prompt_config and prompt_config.assistant_greeting:
         greeting_text = apply_placeholders(
             prompt_config.assistant_greeting, prompt_config.placeholders
         )
-        # Get assistant name for greeting display
-        assistant_name = "Assistant"
-        if prompt_config.placeholders:
-            assistant_name = prompt_config.placeholders.get("assistant", "Assistant")
-        print(f"{assistant_name}: {greeting_text}")
+        # Use markdown rendering for greeting if enabled
+        render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
+        if render_markdown and RICH_AVAILABLE:
+            print(f"{assistant_name}: ", end="")
+            _render_markdown(greeting_text, render_markdown=True)
+            print()  # Extra newline after markdown
+        else:
+            print(f"{assistant_name}: {greeting_text}")
         conversation.append(
             {
                 "role": "assistant",
@@ -525,8 +851,38 @@ def main() -> None:
         if user_input.strip().lower() == "q":
             break
 
+        # Normalize input for command checking
+        user_input_stripped = user_input.strip()
+        user_input_lower = user_input_stripped.lower()
+
+        # Handle help command: \help or /help
+        if user_input_lower in ("\\help", "/help", "help"):
+            print("\n[INFO] Out-of-band commands:")
+            print("  q, Control-D           - Quit the chat")
+            print("  \\help, /help          - Show this help message")
+            print("  \\list, /list          - List current hyperparameters")
+            print("  \\show, /show          - List current hyperparameters (alias for \\list)")
+            print("  \\set <param>=<value>  - Set a hyperparameter")
+            print("                          Example: \\set temperature=0.7")
+            print("                          Valid parameters: temperature, top_p, min_p, top_k,")
+            print("                          max_tokens, min_tokens_to_keep, repetition_penalty,")
+            print("                          repetition_context_size, xtc_probability, xtc_threshold")
+            print()
+            continue
+
+        # Handle hyperparameter listing: \list or \show
+        if user_input_lower in ("\\list", "/list", "\\show", "/show"):
+            print("\n[INFO] Current hyperparameters:")
+            if hyperparameters:
+                for param, value in sorted(hyperparameters.items()):
+                    print(f"  {param} = {value}")
+            else:
+                print("  (using defaults)")
+            print()  # Extra blank line for readability
+            continue
+
         # Handle hyperparameter changes: \set param=value
-        if user_input.strip().startswith("\\set ") or user_input.strip().startswith("/set "):
+        if user_input_stripped.startswith("\\set ") or user_input_stripped.startswith("/set "):
             stripped = user_input.strip().lstrip("\\/")
             # Use removeprefix to correctly remove "set " literal substring
             set_cmd = stripped.removeprefix("set ").strip()
@@ -590,6 +946,31 @@ def main() -> None:
                         print(f"[WARNING] Failed to save updated hyperparameters: {e}")
 
                 continue  # Skip adding this as a user message
+            else:
+                # \set without = - show usage
+                print("\n[ERROR] Invalid \\set command format.")
+                print("[INFO] Usage: \\set <param>=<value>")
+                print("[INFO] Example: \\set temperature=0.7")
+                valid_params = "temperature, top_p, min_p, top_k, max_tokens, min_tokens_to_keep, repetition_penalty, repetition_context_size, xtc_probability, xtc_threshold"
+                print(f"[INFO] Valid parameters: {valid_params}")
+                print()
+                continue
+
+        # Handle invalid out-of-band commands (starts with \ or / but not recognized)
+        if user_input_stripped.startswith("\\") or user_input_stripped.startswith("/"):
+            print("\n[ERROR] Unknown out-of-band command.")
+            print("[INFO] Valid out-of-band commands:")
+            print("  q, Control-D           - Quit the chat")
+            print("  \\help, /help          - Show help message")
+            print("  \\list, /list          - List current hyperparameters")
+            print("  \\show, /show          - List current hyperparameters (alias for \\list)")
+            print("  \\set <param>=<value>  - Set a hyperparameter")
+            print("                          Example: \\set temperature=0.7")
+            print("                          Valid parameters: temperature, top_p, min_p, top_k,")
+            print("                          max_tokens, min_tokens_to_keep, repetition_penalty,")
+            print("                          repetition_context_size, xtc_probability, xtc_threshold")
+            print()
+            continue
 
         # Add timestamp to user message (turn)
         user_turn = {
@@ -672,12 +1053,15 @@ def main() -> None:
                 if prompt_config and prompt_config.placeholders:
                     assistant_name = prompt_config.placeholders.get("assistant", "Assistant")
 
+                # Initialize these before try block so they're available in finally/except
+                final_text_parts = []
+                analysis_text_parts = []
+                assistant_text = ""
+
                 try:
                     parsed_messages = generator.parse_messages_from_tokens(tokens)
                     # Extract text from final channel messages (or messages without channel)
                     # Format analysis channel as [THINKING - ...]
-                    final_text_parts = []
-                    analysis_text_parts = []
 
                     for msg in parsed_messages:
                         channel = getattr(msg, "channel", None)
@@ -699,7 +1083,8 @@ def main() -> None:
                     # Display formatted output
                     # Show analysis/thinking first if present
                     if analysis_text_parts:
-                        thinking_text = " ".join(analysis_text_parts).strip()
+                        # Join with newlines to preserve structure, then strip only leading/trailing whitespace
+                        thinking_text = "\n".join(analysis_text_parts).strip()
                         # Truncate if too long (use config default or 1000)
                         truncate_thinking = (
                             prompt_config.truncate_thinking
@@ -715,6 +1100,7 @@ def main() -> None:
 
                     # Show final channel message with assistant name
                     if final_text_parts:
+                        # Join with empty string to preserve newlines, then strip only leading/trailing whitespace
                         assistant_text = "".join(final_text_parts).strip()
                         # Truncate if too long (use config default or 1000)
                         truncate_response = (
@@ -726,7 +1112,14 @@ def main() -> None:
                             assistant_text = (
                                 assistant_text[:truncate_response] + "... [truncated]"
                             )
-                        print(f"{assistant_name}: {assistant_text}\n")
+                        # Use markdown rendering if enabled
+                        render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
+                        if render_markdown and RICH_AVAILABLE:
+                            print(f"{assistant_name}: ", end="")
+                            _render_markdown(assistant_text, render_markdown=True)
+                            print()  # Extra newline after markdown
+                        else:
+                            print(f"{assistant_name}: {assistant_text}\n")
                     elif analysis_text_parts:
                         # Only analysis channel content was found (no final channel)
                         # Don't display analysis as if it were the response - just warn
@@ -748,7 +1141,14 @@ def main() -> None:
                         assistant_text = _extract_content_from_raw_harmony(raw_text)
                         if assistant_text:
                             assistant_text = clean_text(assistant_text)
-                            print(f"{assistant_name}: {assistant_text}")
+                            # Use markdown rendering if enabled
+                            render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
+                            if render_markdown and RICH_AVAILABLE:
+                                print(f"{assistant_name}: ", end="")
+                                _render_markdown(assistant_text, render_markdown=True)
+                                print()  # Extra newline after markdown
+                            else:
+                                print(f"{assistant_name}: {assistant_text}")
                         else:
                             assistant_text = raw_text  # Last resort (already cleaned)
                             print(raw_text)
@@ -766,7 +1166,8 @@ def main() -> None:
 
                     # Show analysis/thinking if present
                     if analysis_matches:
-                        thinking_text = " ".join(clean_text(m.strip()) for m in analysis_matches).strip()
+                        # Join with newlines to preserve structure, clean but don't strip (preserve newlines)
+                        thinking_text = "\n".join(clean_text(m) for m in analysis_matches).strip()
                         # Truncate if too long (use config default or 1000)
                         truncate_thinking = (
                             prompt_config.truncate_thinking
@@ -782,7 +1183,8 @@ def main() -> None:
 
                     # Show final channel message with assistant name
                     if final_matches:
-                        assistant_text = clean_text(final_matches[-1].strip())
+                        # Clean but don't strip (preserve newlines), only strip leading/trailing whitespace
+                        assistant_text = clean_text(final_matches[-1]).strip()
                         # Truncate if too long (use config default or 1000)
                         truncate_response = (
                             prompt_config.truncate_response
@@ -791,11 +1193,19 @@ def main() -> None:
                         )
                         if len(assistant_text) > truncate_response:
                             assistant_text = assistant_text[:truncate_response] + "... [truncated]"
-                        print(f"{assistant_name}: {assistant_text}\n")
+                        # Use markdown rendering if enabled
+                        render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
+                        if render_markdown and RICH_AVAILABLE:
+                            print(f"{assistant_name}: ", end="")
+                            _render_markdown(assistant_text, render_markdown=True)
+                            print()  # Extra newline after markdown
+                        else:
+                            print(f"{assistant_name}: {assistant_text}\n")
                     elif analysis_matches:
                         # Only analysis channel found - don't display as response
                         assistant_text = ""  # No final response
-                        thinking_text = " ".join(m.strip() for m in analysis_matches).strip()
+                        # Join with newlines to preserve structure, clean but don't strip (preserve newlines)
+                        thinking_text = "\n".join(clean_text(m) for m in analysis_matches).strip()
                         # Truncate if too long (use config default or 1000)
                         truncate_thinking = (
                             prompt_config.truncate_thinking
@@ -821,7 +1231,14 @@ def main() -> None:
                         # Try to extract any assistant message
                         assistant_text = _extract_content_from_raw_harmony(raw_text)
                         if assistant_text:
-                            print(f"{assistant_name}: {assistant_text}")
+                            # Use markdown rendering if enabled
+                            render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
+                            if render_markdown and RICH_AVAILABLE:
+                                print(f"{assistant_name}: ", end="")
+                                _render_markdown(assistant_text, render_markdown=True)
+                                print()  # Extra newline after markdown
+                            else:
+                                print(f"{assistant_name}: {assistant_text}")
                         else:
                             # Last resort: show raw text (shouldn't happen often)
                             assistant_text = raw_text
@@ -906,15 +1323,17 @@ def main() -> None:
                 }
                 # For Harmony models, also record analysis channel if present
                 if generator.is_gpt_oss and generator.use_harmony and analysis_text_parts:
-                    assistant_turn["analysis"] = " ".join(analysis_text_parts).strip()
+                    # Join with newlines to preserve structure when saving
+                    assistant_turn["analysis"] = "\n".join(analysis_text_parts).strip()
                 conversation.append(assistant_turn)
             else:
                 # Harmony model with only analysis channel - save analysis separately
                 if generator.is_gpt_oss and generator.use_harmony and analysis_text_parts:
+                    # Join with newlines to preserve structure when saving
                     assistant_turn = {
                         "role": "assistant",
                         "content": "[Analysis only - no final response]",
-                        "analysis": " ".join(analysis_text_parts).strip(),
+                        "analysis": "\n".join(analysis_text_parts).strip(),
                         "timestamp": datetime.utcnow().isoformat() + "Z",
                         "hyperparameters": hyperparameters.copy() if hyperparameters else {},
                     }

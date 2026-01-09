@@ -1,24 +1,22 @@
 # Memory Management Guide
 
-This guide explains how memory management works in `mlx-harmony`, including wired memory (mlock), pre-warming, and considerations for loading multiple models.
+This guide explains how memory management works in `mlx-harmony`, including wired memory (mlock) and considerations for loading multiple models.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Wired Memory (mlock)](#wired-memory-mlock)
-- [Pre-warming Filesystem Cache](#pre-warming-filesystem-cache)
 - [Multiple Models](#multiple-models)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 
 ## Overview
 
-`mlx-harmony` provides two main memory optimization features:
+`mlx-harmony` provides wired memory (mlock) support to optimize inference performance:
 
-1. **Pre-warming filesystem cache**: Reads model weight files into the OS cache before loading, speeding up subsequent reads.
-2. **Wired memory (mlock)**: Locks model weights in physical RAM to prevent swapping, improving inference performance.
+- **Wired memory (mlock)**: Locks model weights in physical RAM to prevent swapping, improving inference performance.
 
-Both features are optional and can be enabled via configuration or CLI arguments.
+This feature is optional and can be enabled via configuration or CLI arguments.
 
 ## Wired Memory (mlock)
 
@@ -83,36 +81,6 @@ To make this permanent, add it to `/etc/sysctl.conf`:
 iogpu.wired_limit_mb=22000
 ```
 
-## Pre-warming Filesystem Cache
-
-### What is Pre-warming?
-
-Pre-warming reads model weight files into the OS filesystem cache before MLX loads them. This can significantly speed up model loading, especially on systems with slower storage.
-
-### How It Works
-
-1. Before loading, `mlx-harmony` reads all `.safetensors` files sequentially
-2. Files are read in 16MB chunks to avoid loading entire files into Python memory
-3. The OS keeps these files in its filesystem cache
-4. When MLX loads the model, it reads from the cache instead of disk
-
-### Performance Impact
-
-- **Faster loading**: 2-5x faster on spinning disks, 1.5-2x on SSDs
-- **Low overhead**: Uses disk I/O but doesn't reserve memory
-- **Safe**: Can be enabled on any system with sufficient disk bandwidth
-
-### When to Enable
-
-Enable pre-warming when:
-- ✅ Loading models from slower storage (HDD, network drives)
-- ✅ Repeatedly loading the same model
-- ✅ System has available disk bandwidth
-
-Disable pre-warming when:
-- ❌ Loading from very fast storage (NVMe) where overhead isn't worth it
-- ❌ Disk I/O is constrained
-
 ## Multiple Models
 
 ### Is It Safe?
@@ -169,14 +137,13 @@ Disable pre-warming when:
 
 ### Prompt Config JSON
 
-Add `mlock` and `prewarm_cache` to your prompt config JSON:
+Add `mlock` to your prompt config JSON:
 
 ```json
 {
   "system_model_identity": "You are {assistant}.",
   "temperature": 0.8,
   "max_tokens": 1024,
-  "prewarm_cache": true,
   "mlock": false
 }
 ```
@@ -188,33 +155,34 @@ Override config values via command line:
 ```bash
 # Enable mlock via CLI
 mlx-harmony-chat --model ~/models/my-model --mlock
-
-# Disable pre-warming via CLI
-mlx-harmony-chat --model ~/models/my-model --no-prewarm-cache
 ```
 
 ### Priority
 
 Parameter priority (highest to lowest):
 
-1. **CLI arguments** (`--mlock`, `--prewarm-cache`)
-2. **Prompt config JSON** (`mlock`, `prewarm_cache` fields)
-3. **Default values** (`mlock: false`, `prewarm_cache: true`)
+1. **CLI arguments** (`--mlock`)
+2. **Prompt config JSON** (`mlock` field)
+3. **Default values** (`mlock: false`)
 
 ### Profile Configuration
 
-You can also set these in profile JSON files:
+You can set `mlock` in the referenced prompt config within a profile:
 
 ```json
 {
   "model_path": "~/models/gpt-oss-20b",
-  "prompt_config_path": "configs/my-config.json",
-  "mlock": true,
-  "prewarm_cache": true
+  "prompt_config_path": "configs/my-config.json"
 }
 ```
 
-Note: Profile-level `mlock`/`prewarm_cache` are currently not directly supported in profiles, but you can set them in the referenced prompt config.
+Where `configs/my-config.json` contains:
+
+```json
+{
+  "mlock": true
+}
+```
 
 ## Troubleshooting
 
@@ -252,25 +220,12 @@ Note: Profile-level `mlock`/`prewarm_cache` are currently not directly supported
 3. Disable `mlock` for less-critical models
 4. Consider model quantization to reduce sizes
 
-### Pre-warming seems slow
-
-**Causes**:
-- Very large models (50GB+)
-- Slow storage (network drives, slow HDD)
-- Disk I/O contention
-
-**Solutions**:
-- Pre-warming is optional; disable if overhead is too high
-- Use faster storage (local SSD/NVMe)
-- Pre-warming happens once; subsequent loads are faster
-
 ## Performance Tips
 
-1. **First-time setup**: Enable both `prewarm_cache` and `mlock` for best performance
-2. **Development**: Disable `mlock` to reduce memory pressure during testing
-3. **Production**: Enable `mlock` for consistent inference latency
-4. **Large models**: Always check system wired limit before enabling `mlock`
-5. **Multiple models**: Calculate total sizes and monitor wired memory usage
+1. **Development**: Disable `mlock` to reduce memory pressure during testing
+2. **Production**: Enable `mlock` for consistent inference latency
+3. **Large models**: Always check system wired limit before enabling `mlock`
+4. **Multiple models**: Calculate total sizes and monitor wired memory usage
 
 ## References
 
@@ -285,11 +240,6 @@ Note: Profile-level `mlock`/`prewarm_cache` are currently not directly supported
   - ✅ Requires macOS 15.0+ with Metal
   - ✅ Safe for single models that fit in RAM
   - ⚠️ Use caution with multiple large models
-
-- **Pre-warming**: Speeds up model loading by caching files
-  - ✅ Low overhead, works on all systems
-  - ✅ Significant speedup on slower storage
-  - ✅ Can be disabled if not needed
 
 - **Multiple models**: Supported but watch total memory usage
   - ✅ Safe if total sizes < system wired limit

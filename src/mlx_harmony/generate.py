@@ -7,7 +7,7 @@ from mlx_harmony.generator import TokenGenerator
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="One-shot text generation with MLX-LM.")
+    parser = argparse.ArgumentParser(description="One-shot text generation with MLX Harmony.")
     parser.add_argument(
         "--model",
         type=str,

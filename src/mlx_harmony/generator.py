@@ -4,8 +4,6 @@ import time
 from datetime import datetime
 from typing import Dict, Iterator, List, Optional, Union
 
-from mlx_lm import load, stream_generate
-from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from openai_harmony import (
     Author,
     Conversation,
@@ -21,14 +19,17 @@ from openai_harmony import (
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
-from mlx_harmony.load_optimized import load_optimized
+from mlx_harmony.generate_standalone import stream_generate
+from mlx_harmony.loader import load_model_standalone
+from mlx_harmony.sampling import make_logits_processors, make_sampler
 
 
 class TokenGenerator:
     """
-    Multi-model token generator using MLX-LM + Harmony.
+    Multi-model token generator using MLX + Harmony.
 
-    - Works with any MLX-LM supported model.
+    - Works with any MLX-compatible model (uses mlx-lm model architectures only).
+    - Standalone generation and sampling implementation.
     - Automatically uses Harmony format for GPT-OSS models.
     """
 
@@ -38,33 +39,25 @@ class TokenGenerator:
         use_harmony: Optional[bool] = None,
         lazy: bool = False,
         prompt_config: Optional[PromptConfig] = None,
-        prewarm_cache: bool = True,
         mlock: bool = False,
     ) -> None:
         """
-        Initialize generator for any MLX-LM model.
+        Initialize generator for any MLX-compatible model.
 
         Args:
             model_path: Path to model checkpoint or Hugging Face repo.
             use_harmony: Whether to use Harmony format. When None, this is
                 auto-detected (enabled only for GPT-OSS models).
             lazy: Lazy-load model weights.
-            prewarm_cache: If True, pre-warm filesystem cache before loading
-                (speeds up loading, uses some disk I/O upfront). Default: True
             mlock: If True, lock model weights in memory using MLX's wired limit
                 (mlock equivalent, macOS Metal only). Default: False
         """
-        if prewarm_cache or mlock:
-            # Use optimized loader with pre-warming and/or memory locking (mlock)
-            self.model, self.tokenizer = load_optimized(
-                model_path,
-                lazy=lazy,
-                prewarm_cache=prewarm_cache,
-                mlock=mlock,
-            )
-        else:
-            # Use standard loader
-            self.model, self.tokenizer = load(model_path, lazy=lazy)
+        # Use standalone loader (no pre-warming, filesystem cache handles it naturally)
+        self.model, self.tokenizer = load_model_standalone(
+            model_path,
+            lazy=lazy,
+            mlock=mlock,
+        )
         self.model_path = model_path
         self.prompt_config = prompt_config
 
@@ -93,6 +86,55 @@ class TokenGenerator:
         """Best-effort detection of GPT-OSS models from the model identifier."""
         path_lower = model_path.lower()
         return "gpt-oss" in path_lower or "gpt_oss" in path_lower
+
+    def _resolve_xtc_special_tokens(
+        self, config_tokens: Optional[List[int]], xtc_probability: float
+    ) -> list[int]:
+        """
+        Resolve XTC special tokens from config or auto-detect from tokenizer.
+
+        If config_tokens is None and XTC is enabled (xtc_probability > 0.0),
+        auto-detects special tokens (EOS and newline) from the tokenizer.
+        Otherwise, returns the configured tokens or empty list.
+        """
+        # If explicitly set in config, use that
+        if config_tokens is not None:
+            return config_tokens
+
+        # If XTC is disabled, return empty list
+        if xtc_probability <= 0.0:
+            return []
+
+        # XTC is enabled but no special tokens specified - auto-detect from tokenizer
+        # Similar to mlx-lm's server.py, we exclude EOS and newline tokens
+        special_tokens: list[int] = []
+        try:
+            # Add EOS token if available
+            if hasattr(self.tokenizer, "eos_token_id") and self.tokenizer.eos_token_id is not None:
+                eos_id = self.tokenizer.eos_token_id
+                if isinstance(eos_id, int):
+                    special_tokens.append(eos_id)
+                elif isinstance(eos_id, list) and eos_id:
+                    # Some tokenizers have eos_token_id as a list
+                    special_tokens.extend(eos_id)
+
+            # Add newline token if available
+            newline_ids = self.tokenizer.encode("\n", add_special_tokens=False)
+            if newline_ids:
+                special_tokens.extend(list(newline_ids))
+
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_tokens = []
+            for token_id in special_tokens:
+                if token_id not in seen:
+                    seen.add(token_id)
+                    unique_tokens.append(token_id)
+
+            return unique_tokens
+        except Exception:
+            # If auto-detection fails, return empty list (no special tokens excluded)
+            return []
 
     def generate(
         self,
@@ -147,7 +189,10 @@ class TokenGenerator:
             xtc_threshold=resolve(
                 xtc_threshold, cfg.xtc_threshold if cfg else None, 0.0
             ),
-            xtc_special_tokens=[],
+            xtc_special_tokens=self._resolve_xtc_special_tokens(
+                cfg.xtc_special_tokens if cfg else None,
+                resolve(xtc_probability, cfg.xtc_probability if cfg else None, 0.0),
+            ),
         )
 
         logits_processors = make_logits_processors(
@@ -201,19 +246,22 @@ class TokenGenerator:
                 if stop not in stop_strings_list:
                     stop_strings_list.append(stop)
 
-        # Convert stop strings to token ID sequences for checking during generation
-        stop_id_sequences = []
+        # Convert stop strings to token IDs (flatten all stop tokens into a single list)
+        # Our standalone stream_generate handles stop tokens internally
+        stop_token_ids: List[int] = []
         if stop_strings_list:
             for stop_str in stop_strings_list:
                 try:
                     stop_ids = self.tokenizer.encode(stop_str, add_special_tokens=False)
                     if stop_ids:
-                        stop_id_sequences.append(list(stop_ids))
+                        # For now, add all token IDs - multi-token sequences not yet fully supported
+                        # but single tokens work fine
+                        stop_token_ids.extend(list(stop_ids))
                 except Exception:
                     # Skip if encoding fails
                     pass
 
-        # Track generated tokens for stop sequence detection
+        # Track generated tokens and timing
         generated_tokens: List[int] = []
         start_time = time.perf_counter()
 
@@ -221,38 +269,26 @@ class TokenGenerator:
             self.model,
             self.tokenizer,
             prompt_str,
-            **kwargs,
+            sampler=sampler,
+            logits_processors=logits_processors if logits_processors else None,
+            max_tokens=resolved_max_tokens,
+            stop_tokens=stop_token_ids if stop_token_ids else None,
         ):
-            token_id = self._extract_token_id(response)
+            token_id = response.token
 
-            # Check if adding this token would complete a stop sequence
-            # (check BEFORE yielding and BEFORE appending to generated_tokens)
-            should_stop = False
-            if stop_id_sequences:
-                # Temporarily add token to check if it completes a stop sequence
-                temp_tokens = generated_tokens + [int(token_id)]
-                for stop_ids in stop_id_sequences:
-                    if len(temp_tokens) >= len(stop_ids):
-                        if temp_tokens[-len(stop_ids):] == stop_ids:
-                            # This token would complete a stop sequence
-                            # Don't yield it, just stop
-                            should_stop = True
-                            break
-
-            if should_stop:
-                # Stop generating - don't yield this token or any more
-                return
+            # Check if this is a stop response (generation ended)
+            if response.finish_reason == "stop":
+                # Stop token was generated, don't yield it
+                break
 
             # Safe to yield - append to tracking list and yield
             generated_tokens.append(int(token_id))
 
-            # Yield token with timing info if this is the last token
+            # Yield token with timing info
             if return_logprobs:
                 yield {
                     "token": token_id,
-                    # MLX-LM Response currently does not expose per-token logprobs
-                    # on the public API; keep this for future extension.
-                    "logprob": getattr(response, "logprob", None),
+                    "logprob": response.logprobs[token_id].item() if response.logprobs is not None else None,
                 }
             else:
                 yield token_id

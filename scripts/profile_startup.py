@@ -213,9 +213,13 @@ def main():
     else:
         profiler, _ = profile_token_generator_init(args.model, args.prompt_config)
 
-    # Ensure stats directory exists
+    # Ensure stats directory exists and resolve relative paths to stats/
     output_path = Path(args.output)
+    # If path is relative and doesn't start with stats/, put it in stats/ directory
+    if not output_path.is_absolute() and not str(output_path).startswith("stats/"):
+        output_path = Path("stats") / output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    args.output = str(output_path)
 
     # Save stats
     profiler.dump_stats(args.output)
@@ -226,6 +230,12 @@ def main():
 
     # Generate graphviz visualization
     if not args.text_only:
+        # Resolve graph path to stats/ directory as well
+        graph_path = Path(args.graph)
+        if not graph_path.is_absolute() and not str(graph_path).startswith("stats/"):
+            graph_path = Path("stats") / graph_path
+        graph_path.parent.mkdir(parents=True, exist_ok=True)
+        args.graph = str(graph_path)
         generate_graphviz_report(profiler, args.graph)
 
     print("\n[PROFILE] Profiling complete!")

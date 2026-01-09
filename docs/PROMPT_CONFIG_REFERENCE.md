@@ -29,8 +29,8 @@ This document explains all parameters available in the prompt configuration JSON
     - [`repetition_context_size` (integer, optional)](#repetition_context_size-integer-optional)
     - [`xtc_probability` (float, optional)](#xtc_probability-float-optional)
     - [`xtc_threshold` (float, optional)](#xtc_threshold-float-optional)
+    - [`xtc_special_tokens` (array of integers, optional)](#xtc_special_tokens-array-of-integers-optional)
   - [Model Loading Optimizations](#model-loading-optimizations)
-    - [`prewarm_cache` (boolean, optional)](#prewarm_cache-boolean-optional)
     - [`mlock` (boolean, optional)](#mlock-boolean-optional)
   - [Display Configuration](#display-configuration)
     - [`truncate_thinking` (integer, optional)](#truncate_thinking-integer-optional)
@@ -42,6 +42,7 @@ This document explains all parameters available in the prompt configuration JSON
   - [Parameter Priority](#parameter-priority)
   - [Tips](#tips)
   - [Memory Management](#memory-management)
+  - [Markdown Rendering](#markdown-rendering)
 
 ## Harmony-Specific Parameters (GPT-OSS Models Only)
 
@@ -399,33 +400,90 @@ Number of previous tokens to consider when calculating repetition penalty.
 
 ### `xtc_probability` (float, optional)
 
-XTC (Experimental Token Control) sampling probability. Experimental feature.
+XTC (Experimental Token Control) sampling probability. This controls how often XTC filtering is applied during token generation.
 
 **Range:** 0.0 to 1.0
 
 **Default:** `0.0` (disabled)
 
-### `xtc_threshold` (float, optional)
+**Typical Values:**
 
-XTC (Experimental Token Control) sampling threshold. Experimental feature.
-
-**Default:** `0.0` (disabled)
-
-## Model Loading Optimizations
-
-### `prewarm_cache` (boolean, optional)
-
-Pre-warm filesystem cache before loading model weights. This reads all safetensors files into the OS cache, which can significantly speed up model loading (especially on subsequent loads).
-
-**Default:** `true`
+- `0.0`: Disabled (default)
+- `0.1-0.3`: Light filtering (applied occasionally)
+- `0.5-0.7`: Moderate filtering (applied about half the time)
+- `>0.7`: Heavy filtering (applied most of the time)
 
 **Example:**
 
 ```json
-"prewarm_cache": true
+"xtc_probability": 0.5
 ```
 
-**Note:** This uses some disk I/O upfront but makes subsequent loads faster.
+**Note:** This is an experimental feature. XTC sampling filters tokens based on a probability threshold, keeping only tokens with probabilities above the minimum threshold that meets the `xtc_threshold` criterion. Use with caution and test thoroughly with your models.
+
+### `xtc_threshold` (float, optional)
+
+XTC (Experimental Token Control) sampling threshold. This sets the minimum probability threshold that tokens must meet to be considered for sampling when XTC is applied.
+
+**Range:** 0.0 to 0.5
+
+**Default:** `0.0` (disabled)
+
+**Typical Values:**
+
+- `0.0`: Disabled (default)
+- `0.05-0.1`: Light filtering (allows more tokens)
+- `0.1-0.2`: Moderate filtering (filters low-probability tokens)
+- `0.2-0.5`: Heavy filtering (very selective)
+
+**Example:**
+
+```json
+"xtc_threshold": 0.1
+```
+
+**Note:** Must be used together with `xtc_probability > 0.0` to have any effect. When XTC sampling is triggered (based on `xtc_probability`), only tokens with probabilities above the minimum threshold meeting this `xtc_threshold` will be considered for sampling. This can help reduce low-quality token generation but may also reduce diversity. This is an experimental feature - use with caution.
+
+### `xtc_special_tokens` (array of integers, optional)
+
+List of special token IDs to exclude from XTC filtering. These tokens will always be considered for sampling, even when XTC filtering is applied.
+
+**Default:** `null` (auto-detected when XTC is enabled)
+
+**Auto-detection:**
+
+When `xtc_special_tokens` is `null` or not specified and XTC is enabled (`xtc_probability > 0.0`), special tokens are automatically detected from the tokenizer:
+
+- EOS token ID (end-of-sequence token)
+- Newline token ID (`\n`)
+
+This ensures that important control tokens like end-of-sequence markers and newlines can still be generated even when XTC filtering is active.
+
+**Manual override:**
+
+You can manually specify token IDs to exclude from XTC filtering:
+
+```json
+"xtc_special_tokens": [2, 13, 220]
+```
+
+Where `2` might be the EOS token, `13` might be a newline token, etc.
+
+**Example:**
+
+```json
+"xtc_special_tokens": null
+```
+
+Or with explicit token IDs (advanced users only):
+
+```json
+"xtc_special_tokens": [2, 13]
+```
+
+**Note:** Token IDs are model-specific and must match the tokenizer used by your model. If you're unsure of the correct token IDs, leave this as `null` to use auto-detection. This is an experimental feature - use with caution.
+
+## Model Loading Optimizations
 
 ### `mlock` (boolean, optional)
 
@@ -536,9 +594,11 @@ Or use a custom path:
   "top_k": 40,
   "min_p": 0.0,
   "min_tokens_to_keep": 1,
+  "xtc_probability": 0.0,
+  "xtc_threshold": 0.0,
+  "xtc_special_tokens": null,
   "repetition_penalty": 1.0,
   "repetition_context_size": 20,
-  "prewarm_cache": true,
   "mlock": false,
   "truncate_thinking": 1000,
   "truncate_response": 1000,
@@ -562,14 +622,40 @@ When a parameter is specified in multiple places, the priority is:
 - **For creative tasks**: Use higher `temperature` (0.9-1.2) with `top_p` 0.9-0.95
 - **For focused tasks**: Use lower `temperature` (0.3-0.7) with `top_p` 0.7-0.9
 - **To reduce repetition**: Set `repetition_penalty` to 1.1-1.2
-- **For faster loading**: Keep `prewarm_cache: true` (default)
 - **For stable memory**: Enable `mlock: true` on macOS (prevents swapping)
 - **For long responses**: Increase `truncate_thinking` and `truncate_response` if you want to see more content in the chat interface
 - **For organization**: Use separate `logs_dir` and `chats_dir` to organize output files
 
 ## Memory Management
 
-For detailed information about memory management, including wired memory (mlock), pre-warming, and considerations for loading multiple models, see [Memory Management Guide](./MEMORY_MANAGEMENT.md).
+For detailed information about memory management, including wired memory (mlock) and considerations for loading multiple models, see [Memory Management Guide](./MEMORY_MANAGEMENT.md).
+
+## Markdown Rendering
+
+The chat CLI (`mlx-harmony-chat`) automatically renders assistant responses as markdown using the `rich` library, similar to `glow` or `mdless`. This provides beautiful formatting for:
+
+- Headers (`#`, `##`, `###`, etc.)
+- Lists (numbered and bulleted)
+- Code blocks (with syntax highlighting)
+- Bold and italic text
+- Blockquotes
+
+**Example:** If the model generates:
+
+```text
+### Simplifying Optimal Loading on macOS
+1. **Checkpointing**: Instead of loading...
+```
+
+It will be automatically formatted with proper styling, newlines, and colors.
+
+**Disable markdown rendering:** Use the `--no-markdown` flag:
+
+```bash
+mlx-harmony-chat --model openai/gpt-oss-20b --no-markdown
+```
+
+This is useful if you prefer plain text output or are piping output to other tools.
 
 ---
 

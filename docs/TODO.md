@@ -1,13 +1,15 @@
 # TODO Checklist
 
-Quick reference checklist for active work items. For detailed roadmap, see [ROADMAP.md](./ROADMAP.md).
+**Last Updated**: 2026-01-09
+
+Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
 
 ## 🚀 Current Sprint / Active Work
 
 <!-- Update this section with items you're actively working on -->
 
-- [ ] Memory management (mlock) refinements - ensuring buffers stay wired
 - [ ] Testing and validation of mlock implementation
+- [ ] End-to-end integration tests (full chat flow with model)
 
 ---
 
@@ -24,51 +26,37 @@ Quick reference checklist for active work items. For detailed roadmap, see [ROAD
 - [x] Conversation resume functionality (load/save JSON)
 - [x] Debug mode with file output (`--debug-file`)
 - [x] Assistant greeting support
-- [x] Memory management infrastructure (mlock, pre-warming)
+- [x] Memory management infrastructure (mlock)
 - [x] Comprehensive documentation with navigation links
 - [x] Prompt config reference documentation
 - [x] Memory management guide
+- [x] Beautiful markdown rendering for assistant responses (rich library integration, similar to glow/mdless)
+- [x] Fixed MLX API compatibility issues (zeros_like, scatter, searchsorted)
+- [x] Fixed sampling implementation to match mlx-lm exactly
+- [x] Fixed newline preservation in chat history
+- [x] Added \help command for out-of-band commands
+- [x] Added error handling for invalid \ commands
+- [x] Removed prewarm_cache feature
 
 ---
 
-## 🎯 Next Up (Priority Order)
+## 🎯 Short-Term Priorities
 
-### Tool Executors
-
-- [ ] Browser tool implementation
-- [ ] Python tool implementation  
-- [ ] Apply patch tool implementation
+_These are items actively planned for upcoming releases. For comprehensive long-term planning, see [ROADMAP.md](./ROADMAP.md)._
 
 ### Testing
 
-- [x] Unit tests for config module
-- [x] Unit tests for generator
-- [x] Unit tests for tools
-- [x] Integration tests for chat loop (conversation save/load)
-- [x] Server API tests (FastAPI endpoints, streaming, error handling)
-- [x] Server integration tests with real model
 - [ ] End-to-end integration tests (full chat flow with model)
-- [x] CI/CD setup
-  - [x] GitHub Actions workflow (ci.yml)
-  - [x] Linting (black, ruff)
-  - [x] Test matrix (Python 3.12, 3.13)
-  - [x] Coverage reporting
+- [ ] Testing and validation of mlock implementation
 
 ### Documentation
 
-- [ ] API documentation setup
-- [ ] Tool usage tutorial
-- [x] Examples directory
-  - [x] Basic chat example
-  - [x] One-shot generation example
-  - [x] Prompt config example
-  - [x] Profile usage example
-  - [x] Conversation resume example
-  - [x] Custom placeholders example
-  - [x] Sampling parameters example
-  - [x] Server client example
-  - [x] Tools infrastructure example
-- [x] Troubleshooting guide
+- [ ] API documentation setup (Sphinx/MkDocs)
+- [ ] Tool usage tutorial (when tool executors are implemented)
+
+---
+
+**Note**: Tool executors (browser, python, apply_patch), model caching, prompt caching, and other major features are tracked in [ROADMAP.md](./ROADMAP.md) under High/Medium priority sections.
 
 ---
 
@@ -80,6 +68,14 @@ _Add quick TODOs here as they come up during development:_
 
 ---
 
-**Last Updated**: 2026-01-07
+## 📋 Quick Add
+
+_Add quick TODOs here as they come up during development:_
+
+- [ ] Server request/response logging (optional debug mode)
+
+---
+
+**Note**: This file focuses on **short-term active work items**. For comprehensive long-term planning, feature requests, and detailed roadmaps, see [ROADMAP.md](./ROADMAP.md).
 
 [← Back to README](../README.md)

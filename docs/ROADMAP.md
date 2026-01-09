@@ -1,7 +1,7 @@
 # MLX-Harmony Roadmap
 
-**Last Updated**: 2026-01-07  
-**Project Status**: ✅ v0.1.0 - Initial Release Complete
+**Last Updated**: 2026-01-09  
+**Project Status**: ✅ v0.2.0 - Standalone Implementation with Markdown Rendering
 
 ## Overview
 
@@ -337,9 +337,19 @@ Inspired by `mlx-lm`'s `BatchGenerator` for concurrent requests.
 
 ---
 
-## 📊 Progress Tracking
+## 📊 Version History
 
-### v0.1.0 (Current) ✅
+### v0.2.0 (Current) ✅ - 2026-01-09
+
+- [x] Standalone generation and sampling implementation
+- [x] Beautiful markdown rendering with rich library
+- [x] Fixed MLX API compatibility issues
+- [x] Fixed sampling implementation to match mlx-lm exactly
+- [x] Added `\help` command for out-of-band commands
+- [x] XTC special tokens auto-detection
+- [x] Removed prewarm_cache feature
+
+### v0.1.0 ✅ - 2026-01-06
 
 - [x] Core TokenGenerator
 - [x] PromptConfig with placeholders
@@ -348,19 +358,18 @@ Inspired by `mlx-lm`'s `BatchGenerator` for concurrent requests.
 - [x] CLI tools (chat, generate, server)
 - [x] Basic documentation
 
-### v0.2.0 (Next Release Target)
+For detailed changelog, see [CHANGELOG.md](../CHANGELOG.md).
+
+### v0.3.0 (Planned)
 
 - [ ] Browser tool implementation
 - [ ] Python tool implementation
-- [ ] Comprehensive test suite
-- [ ] Enhanced documentation
-
-### v0.3.0 (Future)
-
 - [ ] Apply patch tool
-- [ ] Model caching
-- [ ] Server enhancements
-- [ ] Performance optimizations
+- [ ] Model caching (ModelProvider pattern)
+- [ ] Prompt caching system
+- [ ] Enhanced server features
+
+See sections above for detailed roadmap items.
 
 ---
 

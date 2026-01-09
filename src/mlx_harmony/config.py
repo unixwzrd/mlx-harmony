@@ -38,11 +38,11 @@ class PromptConfig:
     top_k: Optional[int] = None  # Top-k sampling (keep only top k tokens, 0 = disabled)
     xtc_probability: Optional[float] = None  # XTC sampling probability (0.0-1.0, experimental)
     xtc_threshold: Optional[float] = None  # XTC sampling threshold (experimental)
+    xtc_special_tokens: Optional[List[int]] = None  # Token IDs to exclude from XTC filtering (e.g., EOS, newline). Auto-detected if None.
     repetition_penalty: Optional[float] = None  # Repetition penalty (>1.0 penalizes repetition, 1.0 = no penalty)
     repetition_context_size: Optional[int] = None  # Number of previous tokens to consider for repetition penalty
 
     # Model loading optimizations
-    prewarm_cache: Optional[bool] = None  # Pre-warm filesystem cache before loading (default: True)
     mlock: Optional[bool] = None  # Lock model weights in memory using mlock (macOS Metal only, default: False)
 
     # Display truncation limits
@@ -141,10 +141,10 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
       "min_tokens_to_keep": 1,
       "xtc_probability": 0.0,
       "xtc_threshold": 0.0,
+      "xtc_special_tokens": null,
       "repetition_penalty": 1.0,
       "repetition_context_size": 20,
       "max_tokens": 1024,
-      "prewarm_cache": true,
       "mlock": false,
       "truncate_thinking": 1000,
       "truncate_response": 1000,
@@ -227,9 +227,9 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
         top_k=data.get("top_k"),
         xtc_probability=data.get("xtc_probability"),
         xtc_threshold=data.get("xtc_threshold"),
+        xtc_special_tokens=data.get("xtc_special_tokens") if data.get("xtc_special_tokens") is not None else None,
         repetition_penalty=data.get("repetition_penalty"),
         repetition_context_size=data.get("repetition_context_size"),
-        prewarm_cache=data.get("prewarm_cache"),
         mlock=data.get("mlock"),
         truncate_thinking=data.get("truncate_thinking"),
         truncate_response=data.get("truncate_response"),

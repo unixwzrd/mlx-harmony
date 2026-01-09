@@ -1,7 +1,7 @@
 # Troubleshooting Guide
 
 **Created**: 2026-01-07  
-**Last Updated**: 2026-01-07
+**Last Updated**: 2026-01-09
 
 Common issues and solutions for `mlx-harmony`.
 
@@ -180,16 +180,8 @@ Common issues and solutions for `mlx-harmony`.
    }
    ```
 
-3. Enable `prewarm_cache` to speed up loading:
-
-   ```json
-   {
-     "prewarm_cache": true
-   }
-   ```
-
-4. Use a smaller/quantized model
-5. Check CPU/GPU utilization (MLX should use GPU on Apple Silicon)
+3. Use a smaller/quantized model
+4. Check CPU/GPU utilization (MLX should use GPU on Apple Silicon)
 
 ---
 
@@ -266,6 +258,59 @@ Common issues and solutions for `mlx-harmony`.
 ---
 
 ## Chat/Server Issues
+
+### Markdown Rendering Issues
+
+**Problem**: Assistant responses don't appear formatted, or formatting looks broken.
+
+**Solutions**:
+
+1. Markdown rendering is enabled by default. To disable:
+
+   ```bash
+   mlx-harmony-chat --no-markdown
+   ```
+
+2. If markdown rendering fails, ensure `rich` is installed:
+
+   ```bash
+   pip install rich>=13.0.0
+   ```
+
+3. Rich automatically handles both markdown and plain text, so even if the model generates plain text, it will display correctly
+
+4. If output looks garbled when piping to files, use `--no-markdown`:
+
+   ```bash
+   mlx-harmony-chat --model openai/gpt-oss-20b --no-markdown > output.txt
+   ```
+
+### Out-of-Band Commands
+
+**Problem**: Unclear what commands are available during chat, or getting errors on `\` commands.
+
+**Solutions**:
+
+1. Type `\help` during chat to see all available out-of-band commands:
+
+   ```bash
+   >> \help
+   
+   [INFO] Out-of-band commands:
+     q, Control-D           - Quit the chat
+     \help, /help          - Show this help message
+     \list, /list          - List current hyperparameters
+     \show, /show          - List current hyperparameters (alias for \list)
+     \set <param>=<value>  - Set a hyperparameter
+                             Example: \set temperature=0.7
+                             Valid parameters: temperature, top_p, min_p, top_k,
+                             max_tokens, min_tokens_to_keep, repetition_penalty,
+                             repetition_context_size, xtc_probability, xtc_threshold
+   ```
+
+2. If you enter an invalid `\` command, you'll automatically see the list of valid commands
+
+3. All commands work with either `\` or `/` prefix (e.g., both `\help` and `/help` work)
 
 ### Chat Session Not Saving
 
@@ -464,15 +509,7 @@ print(f"Uses Harmony: {gen.use_harmony}")
 
 **Solutions**:
 
-1. Enable cache pre-warming:
-
-   ```json
-   {
-     "prewarm_cache": true
-   }
-   ```
-
-2. Use lazy loading:
+1. Use lazy loading:
 
    ```bash
    mlx-harmony-chat --lazy

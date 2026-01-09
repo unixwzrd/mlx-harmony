@@ -1,8 +1,13 @@
 # MLX Harmony
 
-Run GPT-OSS and other MLX-LM models through a single, lightweight interface.
+![MLX Harmony banner Image](docs/images/MLX_Harmony_Banner.png)
 
-`mlx-harmony` is a small wrapper around [`mlx-lm`](https://github.com/ml-explore/mlx-lm) and [`openai-harmony`](https://github.com/openai/openai-harmony) that gives you:
+[![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.md) [![Release](https://img.shields.io/github/v/tag/unixwzrd/mlx-harmony?label=release)](https://github.com/unixwzrd/mlx-harmony/releases) [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-blue)](.github/workflows/ci.yml)
+[![MLX](https://img.shields.io/badge/MLX-Apple%20Silicon-orange)](https://github.com/ml-explore/mlx) [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688)](https://fastapi.tiangolo.com/) [![Harmony](https://img.shields.io/badge/OpenAI--Harmony-GPT--OSS-blue)](https://github.com/openai/openai-harmony) [![Rich](https://img.shields.io/badge/Rich-13.0%2B-FFE066)](https://github.com/Textualize/rich) [![Uvicorn](https://img.shields.io/badge/Uvicorn-0.23%2B-5E4F5F)](https://www.uvicorn.org/)
+
+Run GPT-OSS and other MLX-compatible models through a single, lightweight interface.
+
+`mlx-harmony` combines the best of [`mlx-lm`](https://github.com/ml-explore/mlx-lm) (model architectures) and [`openai-harmony`](https://github.com/openai/openai-harmony) (Harmony formatting) with a standalone implementation that gives you:
 
 - Multi-model **MLX inference** (Llama, Mistral, Qwen, GPT-OSS, …)
 - Automatic **Harmony formatting** and tools when using **GPT-OSS** models
@@ -24,7 +29,7 @@ It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
   - Supports GPT-OSS tools (browser, python, apply_patch) at the chat layer
 
 - **Friendly CLIs**
-  - `mlx-harmony-chat` – interactive chat (with optional tools)
+  - `mlx-harmony-chat` – interactive chat with beautiful markdown rendering (like `glow`/`mdless`)
   - `mlx-harmony-generate` – single-shot text generation
   - `mlx-harmony-server` – OpenAI-style `/v1/chat/completions` endpoint
 
@@ -36,8 +41,11 @@ It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
   - Save chat sessions as JSON (with timestamps + hyperparameters per turn)
   - Resume with the same or a different model
 
+- **Beautiful markdown rendering**
+  - Assistant responses are automatically formatted with rich markdown rendering (similar to `glow`/`mdless`)
+  - Headers, lists, code blocks, and bold text are beautifully styled in the terminal
+  - Use `--no-markdown` flag to disable if you prefer plain text
 - **Performance hooks**
-  - Optional filesystem pre-warming
   - Wired memory (mlock) support for model weights (MLX Metal wired memory API; requires macOS 15.0+)
   - Token counting and timing (tokens/second display)
 - **Configurable directories**
@@ -45,13 +53,12 @@ It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
 
 See the docs in `docs/` for deeper details:
 
-- [`IMPLEMENTATION_SUMMARY.md`](docs/IMPLEMENTATION_SUMMARY.md) – current state and architecture
-- [`NEW_PROJECT_DESIGN.md`](docs/NEW_PROJECT_DESIGN.md) – original design doc
 - [`FEATURES_FROM_MLX.md`](docs/FEATURES_FROM_MLX.md) – useful ideas to port from `mlx-lm`
-- [`MEMORY_MANAGEMENT.md`](docs/MEMORY_MANAGEMENT.md) – wired memory, cache pre-warm, multi-model notes
+- [`MEMORY_MANAGEMENT.md`](docs/MEMORY_MANAGEMENT.md) – wired memory (mlock) and multi-model notes
 - [`PROMPT_CONFIG_REFERENCE.md`](docs/PROMPT_CONFIG_REFERENCE.md) – every field in the JSON config
 - [`TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) – common issues and solutions
-- [`ROADMAP.md`](docs/ROADMAP.md), [`TODO.md`](docs/TODO.md) – what's next
+- [`ROADMAP.md`](docs/ROADMAP.md) – long-term planning and feature roadmap
+- [`TODO.md`](docs/TODO.md) – short-term active work items
 
 See [`examples/`](examples/) for practical usage examples:
 
@@ -69,8 +76,9 @@ pip install mlx-harmony
 
 This will pull in compatible versions of:
 
-- `mlx-lm`
-- `openai-harmony`
+- `mlx-lm` (for model architectures and tokenizer utilities)
+- `openai-harmony` (for Harmony format support)
+- `rich` (for beautiful markdown rendering in terminal)
 - `fastapi`, `uvicorn` (for the HTTP server)
 - Plus a few support libs listed in `pyproject.toml`.
 
@@ -115,9 +123,9 @@ Prompt configs let you define:
 - System / developer instructions
 - Harmony-specific fields (`reasoning_effort`, `knowledge_cutoff`, etc.)
 - Example dialogues (few-shot)
-- Placeholders (`{assistant}`, `<|DATE|>`, etc.)
+- Placeholders (`{assistant}`, `<|DATE|>`, `<|TIME|>`, etc.)
 - Sampler parameters
-- Memory hints (`prewarm_cache`, `mlock`)
+- Memory hints (`mlock`)
 
 Example (`configs/prompt-config.example.json`):
 
@@ -139,15 +147,17 @@ Example (`configs/prompt-config.example.json`):
     "assistant": "Dave",
     "user": "Morgan"
   },
+  "max_tokens": 1024,
   "temperature": 0.8,
   "top_p": 0.9,
   "top_k": 40,
   "min_p": 0.0,
   "min_tokens_to_keep": 1,
-  "max_tokens": 1024,
+  "xtc_probability": 0.0,
+  "xtc_threshold": 0.0,
+  "xtc_special_tokens": null,
   "repetition_penalty": 1.0,
   "repetition_context_size": 20,
-  "prewarm_cache": true,
   "mlock": false,
   "truncate_thinking": 1000,
   "truncate_response": 1000,
@@ -240,7 +250,18 @@ You can change hyperparameters on the fly:
 [INFO] Set max_tokens = 2048
 ```
 
-Valid parameters: `temperature`, `top_p`, `min_p`, `top_k`, `max_tokens`, `repetition_penalty`, `repetition_context_size`
+Valid parameters: `temperature`, `top_p`, `min_p`, `top_k`, `max_tokens`, `min_tokens_to_keep`, `repetition_penalty`, `repetition_context_size`, `xtc_probability`, `xtc_threshold`
+
+**Out-of-band commands:**
+
+During chat, you can use special commands (prefixed with `\`):
+
+- `\help` - Show list of all out-of-band commands
+- `\list` or `\show` - Display current hyperparameters
+- `\set <param>=<value>` - Change a hyperparameter (see above for valid parameters)
+- `q` or `Control-D` - Quit the chat
+
+If you enter an invalid `\` command, you'll see an error message with the list of valid commands.
 
 The conversation JSON includes:
 
@@ -256,25 +277,22 @@ Hyperparameters from the saved file are restored unless you override them via CL
 
 ## Memory & performance
 
-Two knobs exist for memory behavior:
+Wired memory (mlock) keeps model weights in physical RAM, preventing swapping and improving inference performance:
 
-- `prewarm_cache` (default: true) – read model weight files into the OS cache before load to speed up subsequent loads.
 - `mlock` – keep model weights wired in memory using MLX's Metal wired-memory APIs (requires macOS 15.0+).
 
-You can set these in the prompt config:
+You can set this in the prompt config:
 
 ```json
 {
-  "prewarm_cache": true,
   "mlock": false
 }
 ```
 
-CLI overrides:
+CLI override:
 
 ```bash
 mlx-harmony-chat --model models/my-model --mlock
-mlx-harmony-chat --model models/my-model --no-prewarm-cache
 ```
 
 Mlock support requires macOS 15.0+ with Metal backend. For details on how it works, limitations, and best practices (especially when loading multiple models), see [`MEMORY_MANAGEMENT.md`](docs/MEMORY_MANAGEMENT.md). That guide covers:

@@ -72,9 +72,13 @@ def profile_chat_command(
     finally:
         sys.argv = original_argv
 
-    # Ensure stats directory exists
+    # Ensure stats directory exists and resolve relative paths to stats/
     profile_output_path = Path(profile_output)
+    # If path is relative and doesn't start with stats/, put it in stats/ directory
+    if not profile_output_path.is_absolute() and not str(profile_output_path).startswith("stats/"):
+        profile_output_path = Path("stats") / profile_output_path
     profile_output_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_output = str(profile_output_path)
 
     # Save the profile
     profiler.dump_stats(profile_output)
@@ -109,9 +113,13 @@ def profile_chat_command(
         try:
             import subprocess as sp
 
-            # Ensure stats directory exists for graph output
+            # Ensure stats directory exists for graph output and resolve relative paths
             graph_path = Path(graph_output)
+            # If path is relative and doesn't start with stats/, put it in stats/ directory
+            if not graph_path.is_absolute() and not str(graph_path).startswith("stats/"):
+                graph_path = Path("stats") / graph_path
             graph_path.parent.mkdir(parents=True, exist_ok=True)
+            graph_output = str(graph_path)
             dot_output = str(graph_path.with_suffix(".dot")) if graph_path.suffix.lower() == ".svg" else str(graph_path)
 
             sp.run(

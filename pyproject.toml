@@ -1,16 +1,18 @@
 [project]
 name = "mlx-harmony"
-version = "0.1.0"
+version = "0.2.0"
 description = "Multi-model MLX inference with GPT-OSS Harmony format and tools"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "mlx-lm>=0.1.0",
+    "mlx-lm>=0.1.0",  # Used only for model architecture classes (mlx_lm.models.*) and tokenizer utilities
+    "huggingface-hub>=0.20.0",  # For downloading models from HuggingFace Hub
     "openai-harmony>=0.0.8",
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "aiohttp>=3.12.0",
     "docker>=7.1.0",
+    "rich>=13.0.0",  # For beautiful markdown rendering in terminal (like glow/mdless)
     "unicodefix @ git+https://github.com/unixwzrd/UnicodeFix.git",
 ]
 
