@@ -82,7 +82,9 @@ This will pull in compatible versions of:
 - `fastapi`, `uvicorn` (for the HTTP server)
 - Plus a few support libs listed in `pyproject.toml`.
 
-You’ll need a working MLX setup (typically Python 3.12+ on Apple Silicon).
+**Native tokenization:** `mlx-harmony` uses pure Python native tokenizer loading (no Rust, no sentencepiece, no jinja2, no mlx-lm tokenizers) to avoid PyTorch dependency. Tokenizers are loaded directly from `tokenizer.json` files using pure Python ByteLevel BPE implementation. This provides faster startup and eliminates all external tokenizer dependencies. The implementation is based on GPT-2 style ByteLevel BPE and is compatible with GPT-OSS models.
+
+You'll need a working MLX setup (typically Python 3.12+ on Apple Silicon).
 
 ⸻
 

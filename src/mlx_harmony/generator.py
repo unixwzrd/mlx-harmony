@@ -60,6 +60,7 @@ class TokenGenerator:
         )
         self.model_path = model_path
         self.prompt_config = prompt_config
+        self.mlock = mlock
 
         # Auto-detect if this is a GPT-OSS model.
         self.is_gpt_oss = self._is_gpt_oss_model(model_path)
@@ -79,7 +80,8 @@ class TokenGenerator:
         self.streamable_parser: Optional[StreamableParser] = None
         if self.use_harmony and self.encoding is not None:
             # StreamableParser constructor takes encoding and optional role
-            self.streamable_parser = StreamableParser(self.encoding, Role.ASSISTANT)
+            # Use strict=False for permissive parsing (allows recovery from malformed output)
+            self.streamable_parser = StreamableParser(self.encoding, Role.ASSISTANT, strict=False)
 
     @staticmethod
     def _is_gpt_oss_model(model_path: str) -> bool:
@@ -162,12 +164,20 @@ class TokenGenerator:
         - GPT-OSS models: Uses Harmony format.
         - Other models: Uses the model's native chat template.
         """
-        prompt_str = self._prepare_prompt(
-            prompt_tokens=prompt_tokens,
-            messages=messages,
-            prompt=prompt,
-            system_message=system_message,
-        )
+        # For Harmony models, get token IDs directly (don't convert to string and back)
+        # This avoids double-encoding: Harmony encoding tokens -> string -> native tokenizer tokens
+        if self.use_harmony and self.encoding and messages:
+            prompt_token_ids = self._harmony_messages_to_token_ids(messages, system_message)
+            # Pass token IDs directly to stream_generate (it accepts list[int])
+            prompt_input = prompt_token_ids
+        else:
+            # For non-Harmony models, use string prompt (will be encoded by stream_generate)
+            prompt_input = self._prepare_prompt(
+                prompt_tokens=prompt_tokens,
+                messages=messages,
+                prompt=prompt,
+                system_message=system_message,
+            )
 
         cfg = self.prompt_config
 
@@ -227,39 +237,28 @@ class TokenGenerator:
         if resolved_max_tokens > 0:
             kwargs["max_tokens"] = resolved_max_tokens
 
-        # For Harmony models, automatically add Harmony stop tokens (<|return|>, <|call|>)
-        # These are required for proper generation stopping - the model generates analysis,
-        # then final channel, then stops with <|return|> or <|call|>
-        # Note: MLX-LM's stream_generate doesn't accept 'stop' parameter, so we handle it manually
-        stop_strings_list = []
-
-        # Add user-provided stop tokens (converted to strings)
-        if stop_tokens:
-            stop_strings_list.extend(self._tokens_to_stop_strings(stop_tokens))
-
-        # For Harmony models, add Harmony stop tokens
-        if self.use_harmony:
-            # These are the Harmony stop tokens: <|return|> (done) and <|call|> (tool call)
-            harmony_stops = ["<|return|>", "<|call|>"]
-            # Only add if not already present
-            for stop in harmony_stops:
-                if stop not in stop_strings_list:
-                    stop_strings_list.append(stop)
-
-        # Convert stop strings to token IDs (flatten all stop tokens into a single list)
-        # Our standalone stream_generate handles stop tokens internally
+        # For Harmony models, use HarmonyEncoding.stop_tokens() to get token IDs directly
+        # BUT: Filter out <|end|> (200007) - it's just a message separator, not a generation stopper
+        # Only <|return|> (200002) and <|call|> (200012) should stop generation
         stop_token_ids: List[int] = []
-        if stop_strings_list:
-            for stop_str in stop_strings_list:
-                try:
-                    stop_ids = self.tokenizer.encode(stop_str, add_special_tokens=False)
-                    if stop_ids:
-                        # For now, add all token IDs - multi-token sequences not yet fully supported
-                        # but single tokens work fine
-                        stop_token_ids.extend(list(stop_ids))
-                except Exception:
-                    # Skip if encoding fails
-                    pass
+        if self.use_harmony and self.encoding:
+            # Use HarmonyEncoding's stop_tokens() method to get token IDs directly
+            # This handles multi-token sequences correctly (e.g., <|return|>)
+            harmony_stop_ids = self.encoding.stop_tokens()
+            # Filter out <|end|> (200007) - it separates messages but doesn't stop generation
+            # The model generates: analysis<|end|> then final<|return|>
+            # We should only stop on <|return|> or <|call|>, not on <|end|>
+            end_token_id = 200007  # <|end|>
+            filtered_stop_ids = [tid for tid in harmony_stop_ids if tid != end_token_id]
+            stop_token_ids.extend(filtered_stop_ids)
+
+        # Add user-provided stop tokens
+        if stop_tokens:
+            stop_token_ids.extend(stop_tokens)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        stop_token_ids = [x for x in stop_token_ids if x not in seen and not seen.add(x)]
 
         # Track generated tokens and timing
         generated_tokens: List[int] = []
@@ -268,7 +267,7 @@ class TokenGenerator:
         for response in stream_generate(
             self.model,
             self.tokenizer,
-            prompt_str,
+            prompt_input,
             sampler=sampler,
             logits_processors=logits_processors if logits_processors else None,
             max_tokens=resolved_max_tokens,
@@ -286,25 +285,35 @@ class TokenGenerator:
 
             # Yield token with timing info
             if return_logprobs:
+                # Defensive check: ensure logprobs exists and token_id is in it
+                logprob = None
+                if response.logprobs is not None:
+                    # Check if token_id is accessible in logprobs
+                    # logprobs might be a dict keyed by token_id, or an array
+                    if isinstance(response.logprobs, dict):
+                        if token_id in response.logprobs:
+                            logprob_val = response.logprobs[token_id]
+                            # MLX arrays can be directly converted to Python scalars (no .item() needed)
+                            logprob = float(logprob_val) if hasattr(logprob_val, '__float__') else logprob_val
+                    elif hasattr(response.logprobs, '__getitem__'):
+                        # Assume it's array-like and token_id is an index
+                        try:
+                            logprob_val = response.logprobs[token_id]
+                            # MLX arrays can be directly converted to Python scalars (no .item() needed)
+                            logprob = float(logprob_val) if hasattr(logprob_val, '__float__') else logprob_val
+                        except (IndexError, KeyError, TypeError):
+                            pass
+
                 yield {
                     "token": token_id,
-                    "logprob": response.logprobs[token_id].item() if response.logprobs is not None else None,
+                    "logprob": logprob,
                 }
             else:
                 yield token_id
 
-        # After generation completes, keep parameters active to prevent deallocation
+        # After generation completes, keep parameters active (if mlock enabled)
         # This ensures buffers stay wired and don't get swapped out
-        if hasattr(self.model, "_mlx_harmony_param_refs"):
-            # Periodically access parameters to keep them "active" and prevent deallocation
-            # This is a workaround to prevent MLX from freeing parameter buffers
-            try:
-                # Touch all parameter arrays to keep them active
-                for param in self.model._mlx_harmony_param_refs:
-                    # Access the array data to prevent deallocation
-                    _ = param.shape  # Access a property to keep reference alive
-            except Exception:
-                pass  # Ignore errors - not critical
+        self.keepalive()
 
         # Calculate and store generation stats
         end_time = time.perf_counter()
@@ -330,22 +339,37 @@ class TokenGenerator:
     ) -> str:
         """Prepare a text prompt from tokens/messages/plain text."""
         if messages:
-            return self._messages_to_prompt(messages, system_message)
-        if prompt_tokens:
-            return self.tokenizer.decode(prompt_tokens)
+            return self.render_prompt(messages, system_message)
+        # Check if prompt_tokens is actually a string (common mistake when passing positional arg)
+        if prompt_tokens is not None:
+            if isinstance(prompt_tokens, str):
+                # User passed string as positional argument, treat as prompt
+                prompt = prompt_tokens
+                prompt_tokens = None
+            elif isinstance(prompt_tokens, (list, tuple)) and all(isinstance(x, int) for x in prompt_tokens):
+                # Valid prompt_tokens (list of ints)
+                # Use HarmonyEncoding.decode() if Harmony is enabled, otherwise use native tokenizer
+                if self.use_harmony and self.encoding:
+                    return self.encoding.decode(prompt_tokens)
+                return self.tokenizer.decode(prompt_tokens)
         if prompt is not None:
             if self.use_harmony:
                 messages = [{"role": "user", "content": prompt}]
-                return self._messages_to_prompt(messages, system_message)
+                return self.render_prompt(messages, system_message)
             return prompt
         raise ValueError("Must provide prompt_tokens, messages, or prompt")
 
-    def _messages_to_prompt(
+    def render_prompt(
         self,
         messages: List[Dict[str, str]],
         system_message: Optional[str] = None,
     ) -> str:
-        """Convert messages to a model prompt using the appropriate format."""
+        """
+        Convert messages to a model prompt using the appropriate format.
+
+        Public method for rendering prompts (e.g., for debug output).
+        Previously _messages_to_prompt, made public to avoid brittle private calls.
+        """
         # Apply placeholders to message content if provided in config.
         if self.prompt_config and self.prompt_config.placeholders:
             messages = [
@@ -475,7 +499,126 @@ class TokenGenerator:
         prompt_tokens = self.encoding.render_conversation_for_completion(
             conversation, Role.ASSISTANT
         )
-        return self.tokenizer.decode(prompt_tokens)
+        # Use HarmonyEncoding.decode() to properly handle Harmony special tokens
+        # This correctly decodes tokens including <|start|>, <|end|>, <|message|>, etc.
+        return self.encoding.decode(prompt_tokens)
+
+    def _harmony_messages_to_token_ids(
+        self,
+        messages: List[Dict[str, str]],
+        system_message: Optional[str] = None,
+    ) -> List[int]:
+        """Convert messages to token IDs using Harmony format (for direct token ID passing)."""
+        # Reuse the same logic as _harmony_messages_to_prompt, but return token IDs instead of string
+        harmony_messages: List[Message] = []
+
+        # Build SystemContent with sensible defaults plus optional overrides.
+        sys_content = SystemContent.new()
+        cfg = self.prompt_config
+
+        # Model identity: CLI system_message wins, then config, then default.
+        if system_message:
+            sys_content = sys_content.with_model_identity(system_message)
+        elif cfg and cfg.system_model_identity:
+            sys_content = sys_content.with_model_identity(cfg.system_model_identity)
+
+        # Reasoning effort.
+        if cfg and cfg.reasoning_effort:
+            try:
+                effort = ReasoningEffort(cfg.reasoning_effort.capitalize())
+                sys_content = sys_content.with_reasoning_effort(effort)
+            except ValueError:
+                # Ignore invalid value; keep default.
+                pass
+
+        # Conversation start date (config or default to today for GPT-OSS).
+        if cfg and cfg.conversation_start_date:
+            sys_content = sys_content.with_conversation_start_date(
+                cfg.conversation_start_date
+            )
+        else:
+            sys_content = sys_content.with_conversation_start_date(
+                datetime.now().strftime("%Y-%m-%d")
+            )
+
+        # Knowledge cutoff.
+        if cfg and cfg.knowledge_cutoff:
+            sys_content = sys_content.with_knowledge_cutoff(cfg.knowledge_cutoff)
+
+        # Add system message first.
+        harmony_messages.append(
+            Message.from_role_and_content(Role.SYSTEM, sys_content),
+        )
+
+        # Optional developer message.
+        if cfg and cfg.developer_instructions:
+            dev_content = DeveloperContent.new().with_instructions(
+                cfg.developer_instructions
+            )
+            harmony_messages.append(
+                Message.from_role_and_content(Role.DEVELOPER, dev_content),
+            )
+
+        # Add example dialogues (few-shot examples) before actual conversation
+        # These are part of the prompt but not sent every time like system/developer
+        if cfg and cfg.example_dialogues:
+            for example_turns in cfg.example_dialogues:
+                for turn in example_turns:
+                    role_str = turn.get("role", "user").strip().lower()
+                    if role_str == "tool":
+                        # Handle tool messages in examples
+                        tool_name = turn.get("name")
+                        if tool_name:
+                            author = Author(role=Role.TOOL, name=tool_name)
+                            content = TextContent(text=turn.get("content", ""))
+                            tool_msg = Message.from_author_and_content(author, content)
+                            if turn.get("recipient"):
+                                tool_msg = tool_msg.with_recipient(turn["recipient"])
+                            harmony_messages.append(tool_msg)
+                    else:
+                        # Standard messages in examples
+                        role = Role(role_str)
+                        content = TextContent(text=turn.get("content", ""))
+                        harmony_messages.append(
+                            Message.from_role_and_content(role, content),
+                        )
+
+        for msg in messages:
+            role_str = msg.get("role", "user").strip().lower()
+
+            # Handle tool messages: Role.TOOL with name in Author.name
+            # Only treat as tool message if role is explicitly "tool"
+            if role_str == "tool":
+                tool_name = msg.get("name")
+                if not tool_name:
+                    # Tool messages require a name field; skip invalid message
+                    continue
+                author = Author(role=Role.TOOL, name=tool_name)
+                content_text = msg.get("content", "")
+                content = TextContent(text=content_text)
+                tool_msg = Message.from_author_and_content(author, content)
+                # Set recipient if specified (tool results go to assistant)
+                if msg.get("recipient"):
+                    tool_msg = tool_msg.with_recipient(msg["recipient"])
+                # Set channel if specified (e.g., "commentary")
+                if msg.get("channel"):
+                    tool_msg = tool_msg.with_channel(msg["channel"])
+                harmony_messages.append(tool_msg)
+            else:
+                # Standard message: user, assistant, system, developer
+                role = Role(role_str)
+                content_text = msg.get("content", "")
+                content = TextContent(text=content_text)
+                harmony_messages.append(
+                    Message.from_role_and_content(role, content),
+                )
+
+        conversation = Conversation.from_messages(harmony_messages)
+        prompt_tokens = self.encoding.render_conversation_for_completion(
+            conversation, Role.ASSISTANT
+        )
+        # Return token IDs directly (don't decode to string)
+        return prompt_tokens
 
     def _native_messages_to_prompt(
         self,
@@ -499,30 +642,39 @@ class TokenGenerator:
         """Convert stop token IDs to stop strings."""
         stop_strings: List[str] = []
         for token_id in stop_tokens:
-            text = self.tokenizer.decode([token_id])
+            # Use HarmonyEncoding.decode() if Harmony is enabled (handles special tokens correctly)
+            # Otherwise use native tokenizer
+            if self.use_harmony and self.encoding:
+                text = self.encoding.decode([token_id])
+            else:
+                text = self.tokenizer.decode([token_id])
             if text:
                 stop_strings.append(text)
         return stop_strings
 
-    def _extract_token_id(self, response: object) -> int:
+    def keepalive(self) -> None:
         """
-        Extract the last token id from an MLX-LM streaming response.
+        Keep model parameters active to prevent deallocation (for mlock mode).
 
-        Today the Response object exposes `.text`; we re-tokenize this text
-        and take the last token id.
+        This is a no-op if mlock is disabled or parameters are not tracked.
+        Call this periodically (e.g., after generation) to prevent MLX from
+        freeing parameter buffers when mlock is enabled.
         """
-        if hasattr(response, "text"):
-            encoded = self.tokenizer.encode(response.text)
-            if encoded:
-                return int(encoded[-1])
-        if isinstance(response, int):
-            return response
-        if isinstance(response, str):
-            encoded = self.tokenizer.encode(response)
-            if encoded:
-                return int(encoded[-1])
-        # Fallback - should rarely be hit.
-        return 0
+        if not self.mlock:
+            return
+
+        if not hasattr(self.model, "_mlx_harmony_param_refs"):
+            return
+
+        try:
+            # Touch all parameter arrays to keep them active
+            # This is a lightweight operation that prevents deallocation
+            for param in self.model._mlx_harmony_param_refs:
+                # Access the array data to prevent deallocation
+                _ = param.shape
+        except Exception:
+            # Ignore errors - not critical
+            pass
 
     def parse_messages_from_tokens(
         self, tokens: List[int]

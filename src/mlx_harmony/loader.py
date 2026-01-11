@@ -2,7 +2,8 @@
 Standalone model loading for MLX Harmony.
 
 This module provides model loading without depending on mlx-lm's high-level load function.
-We still use mlx-lm model architectures, but load models directly with proper memory management.
+For GPT-OSS models, we use our own model architecture (no mlx_lm dependency).
+For other models, we fall back to mlx-lm model architectures (can be extracted later).
 """
 
 import glob
@@ -15,8 +16,6 @@ import mlx.core as mx
 import mlx.nn as nn
 from huggingface_hub import snapshot_download
 from mlx.utils import tree_flatten
-
-from mlx_harmony.cache import KVCache, make_prompt_cache
 
 # Model type remapping (matches mlx-lm)
 MODEL_REMAPPING = {
@@ -105,6 +104,15 @@ def _get_model_classes(config: dict[str, Any]) -> tuple[type[nn.Module], type]:
     model_type = config["model_type"]
     model_type = MODEL_REMAPPING.get(model_type, model_type)
 
+    # For GPT-OSS models, use our local model architecture (no mlx_lm dependency)
+    if model_type == "gpt_oss":
+        try:
+            from mlx_harmony.models.gpt_oss import Model, ModelArgs
+            return Model, ModelArgs
+        except ImportError as e:
+            raise ValueError(f"Failed to load GPT-OSS model architecture: {e}") from e
+
+    # For other models, fall back to mlx_lm (for now - can be extracted later)
     try:
         # Import model architecture from mlx_lm.models
         arch = importlib.import_module(f"mlx_lm.models.{model_type}")
@@ -156,10 +164,21 @@ def _apply_quantization(model: nn.Module, config: dict[str, Any], weights: dict[
         )
 
     elif quantization_config:
-        # Legacy quantization format
+        # Legacy quantization format (quantization_config)
         quant_method = quantization_config.get("quant_method")
         if quant_method == "mxfp4":
             quantization = {"group_size": 32, "bits": 4, "mode": "mxfp4"}
+            config["quantization"] = quantization
+            _apply_quantization(model, config, weights)
+        elif quant_method == "mxfp8":
+            # New: mxfp8 quantization format (added in MLX upgrade)
+            quantization = {"group_size": 32, "bits": 8, "mode": "mxfp8"}
+            config["quantization"] = quantization
+            _apply_quantization(model, config, weights)
+        elif quant_method == "nvfp4":
+            # New: nvfp4 quantization format (added in MLX upgrade)
+            # Note: nvfp4 requires group_size=16 (not 32 like mxfp4/mxfp8)
+            quantization = {"group_size": 16, "bits": 4, "mode": "nvfp4"}
             config["quantization"] = quantization
             _apply_quantization(model, config, weights)
         elif quant_method in ("awq", "gptq"):
@@ -214,10 +233,6 @@ def load_model_standalone(
     Returns:
         Tuple of (model, tokenizer) or (model, tokenizer, config) if return_config=True
     """
-    # Import tokenizer loader from mlx_lm (we still use this, it's just tokenizer loading)
-    from mlx_lm.tokenizer_utils import TokenizerWrapper
-    from mlx_lm.tokenizer_utils import load as load_tokenizer
-
     # Download model if needed
     model_path = _download_model(path_or_hf_repo, revision)
 
@@ -298,18 +313,25 @@ def load_model_standalone(
     # Get model architecture classes
     model_class, model_args_class = _get_model_classes(config)
 
-    # Instantiate model
+    # Load weights before instantiating model (need to check for quantized weights)
+    weights = _load_weights(model_path)
+
+    # Check if model has quantized expert weights (GPT-OSS specific)
+    # Check by looking for quantized expert weight keys in the loaded weights
+    model_type = config.get("model_type", "")
+    model_type = MODEL_REMAPPING.get(model_type, model_type)
+
+    # Instantiate model (always use regular layers, let nn.quantize() handle quantization)
     model_args = model_args_class.from_dict(config)
     model = model_class(model_args)
-
-    # Load weights
-    weights = _load_weights(model_path)
 
     # Sanitize weights if model has sanitize method
     if hasattr(model, "sanitize"):
         weights = model.sanitize(weights)
 
-    # Apply quantization if needed
+    # Apply quantization if needed (nn.quantize() will handle conversion of layers)
+    # This matches mlx_lm and mlx-examples approach: use regular layers, then nn.quantize()
+    # SwitchLinear has to_quantized() method, so nn.quantize() will convert it when scales are in weights
     _apply_quantization(model, config, weights)
 
     # Load weights into model
@@ -321,13 +343,11 @@ def load_model_standalone(
 
     model.eval()
 
-    # Load tokenizer
-    tokenizer = load_tokenizer(
-        model_path,
-        tokenizer_config,
-        eos_token_ids=config.get("eos_token_id"),
-    )
-    tokenizer = TokenizerWrapper(tokenizer)
+    # Load tokenizer using pure Python native implementation
+    # No mlx-lm, no transformers, no PyTorch - just pure Python + MLX
+    from mlx_harmony.tokenizer_native import load_tokenizer_native
+
+    tokenizer = load_tokenizer_native(model_path)
 
     # CRITICAL STEP 4: After loading, ensure parameters are allocated and stay wired
     if mlock and not lazy:

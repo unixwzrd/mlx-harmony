@@ -91,7 +91,14 @@ def stream_generate(
 
         # Forward pass through model to build cache
         _ = model(chunk[None], cache=prompt_cache)
-        mx.eval([c.state[0] for c in prompt_cache if c.state[0] is not None])
+        # Initialize cache state - both KVCache and RotatingKVCache have state property
+        cache_keys = []
+        for c in prompt_cache:
+            state = c.state
+            if state[0] is not None:
+                cache_keys.append(state[0])
+        if cache_keys:
+            mx.eval(cache_keys)
         mx.clear_cache()
 
         processed_tokens += chunk_size
@@ -135,7 +142,9 @@ def stream_generate(
 
         # Sample next token
         next_token = sampler(logprobs)
-        token_id = int(next_token.item())
+        # MLX arrays can be directly converted to Python scalars (no .item() needed)
+        # mx.random.categorical returns a scalar array, just convert directly
+        token_id = int(next_token)
 
         # Check for stop tokens (simple single-token check)
         # TODO: Support multi-token stop sequences
@@ -177,13 +186,18 @@ def stream_generate(
                 except Exception:
                     new_text = ""
 
-        # Yield response
+        # Yield response - check if this is the last token (hit max_tokens)
+        is_last_token = (n == max_tokens - 1)
         yield GenerationResponse(
             token=token_id,
             text=new_text,
             logprobs=logprobs,
-            finish_reason=None,
+            finish_reason="length" if is_last_token else None,
         )
+
+        # If we hit max_tokens, we're done (don't continue loop)
+        if is_last_token:
+            break
 
         # Periodic cache clearing
         if n > 0 and n % 256 == 0:
@@ -194,16 +208,7 @@ def stream_generate(
         detokenizer.finalize()
         last_segment = detokenizer.last_segment
 
-    # Final response if we hit max_tokens
-    if len(generated_tokens) > 0 and n == max_tokens - 1:
-        if use_detokenizer:
-            final_text = last_segment
-        else:
-            final_text = tokenizer.decode(generated_tokens)
-            final_text = final_text[last_decode_length:] if 'last_decode_length' in locals() else final_text
-        yield GenerationResponse(
-            token=generated_tokens[-1],
-            text=final_text,
-            logprobs=logprobs if 'logprobs' in locals() else None,
-            finish_reason="length",
-        )
+    # Note: We no longer yield a final response here because:
+    # 1. The loop already yields all tokens including the last one
+    # 2. The last token has finish_reason="length" when we hit max_tokens
+    # 3. Yielding again here was causing an extra duplicate token

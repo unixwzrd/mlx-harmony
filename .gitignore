@@ -607,3 +607,4 @@ configs/*
 !configs/conversation.example.json
 !configs/dialogue.example.txt
 docs/archive*
+docs/dependency-updates*

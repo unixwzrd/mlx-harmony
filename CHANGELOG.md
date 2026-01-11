@@ -5,6 +5,24 @@ All notable changes to mlx-harmony will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2025-01-28 - v0.3.0
+
+### Fixed
+
+- **Harmony model generation stopping prematurely**: Fixed issue where generation was stopping after analysis channel instead of continuing to final channel. The `<|end|>` token (200007) is now correctly filtered out from stop tokens, as it's only a message separator. Only `<|return|>` (200002) and `<|call|>` (200012) now stop generation, allowing models to generate both analysis and final channels properly.
+- **Duplicate output for Harmony models**: Removed streaming display during token generation for Harmony models to prevent duplicate output. All output is now displayed after parsing completes, ensuring proper ordering (thinking first, then response) and consistent formatting with name prefix.
+- **Output ordering**: Fixed display order so thinking/analysis content displays before the final assistant response.
+
+### Changed
+
+- **Enhanced thinking/analysis display**: Added Rich markdown rendering support for thinking messages, matching the assistant response formatting. Thinking messages now support headers, lists, code blocks, and other markdown features, and respect the `--no-markdown` flag.
+- **Improved stop token handling**: Harmony models now correctly distinguish between message separators (`<|end|>`) and generation stoppers (`<|return|>`, `<|call|>`).
+
+### Technical
+
+- Updated linting: Fixed all type annotations in `chat.py` to use modern Python 3.12 syntax (`dict` instead of `Dict`, `list` instead of `List`, `X | None` instead of `Optional[X]`).
+- Code cleanup: Removed unused imports (`StreamState`) and fixed whitespace issues.
+
 ## 2026-01-09 - v0.2.0
 
 ### Added
@@ -86,5 +104,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The infrastructure for parsing and executing tools is complete and ready for implementation
 - Tests are provided but may require environment-specific MLX setup
 
+[0.3.0]: https://github.com/unixwzrd/mlx-harmony/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/unixwzrd/mlx-harmony/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/unixwzrd/mlx-harmony/releases/tag/v0.1.0

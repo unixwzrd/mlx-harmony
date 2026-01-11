@@ -3,22 +3,19 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Literal, TypedDict
 
-try:
-    from rich.console import Console
-    from rich.markdown import Markdown
-
-    RICH_AVAILABLE = True
-except ImportError:
-    RICH_AVAILABLE = False
-
+from openai_harmony import Role, StreamableParser
+from rich.console import Console
+from rich.console import Console as RichConsole
+from rich.markdown import Markdown
 from unicodefix.transforms import clean_text
 
-from mlx_harmony.config import apply_placeholders, load_prompt_config
+from mlx_harmony.config import apply_placeholders, load_profiles, load_prompt_config
 from mlx_harmony.generator import TokenGenerator
 from mlx_harmony.tools import (
     execute_tool_call,
@@ -26,11 +23,185 @@ from mlx_harmony.tools import (
     parse_tool_calls_from_messages,
 )
 
-# Create a console instance for rich rendering (only if rich is available)
-_console = Console() if RICH_AVAILABLE else None
+# Create a console instance for rich rendering
+_console = Console()
 
 
-def _render_markdown(text: str, render_markdown: bool = True) -> None:
+# Type definitions for message records
+class MessageDict(TypedDict, total=False):
+    """Type definition for conversation messages."""
+    role: Literal["user", "assistant", "tool", "system", "developer"]
+    content: str
+    timestamp: str
+    name: str  # Optional: for tool messages
+    recipient: str  # Optional: for tool messages
+    channel: str  # Optional: for Harmony messages (e.g., "commentary", "analysis", "final")
+    analysis: str  # Optional: for assistant messages with thinking/analysis
+    hyperparameters: dict[str, float | int]  # Optional: hyperparameters used for generation
+
+
+def get_assistant_name(prompt_config: Any | None) -> str:
+    """Get assistant name from prompt config, defaulting to 'Assistant'."""
+    if prompt_config and prompt_config.placeholders:
+        return prompt_config.placeholders.get("assistant", "Assistant")
+    return "Assistant"
+
+
+def get_truncate_limits(prompt_config: Any | None) -> tuple[int, int]:
+    """
+    Get truncate limits from prompt config.
+
+    Returns:
+        (thinking_limit, response_limit) tuple with defaults (1000, 1000)
+    """
+    thinking_limit = (
+        prompt_config.truncate_thinking
+        if prompt_config and prompt_config.truncate_thinking is not None
+        else 1000
+    )
+    response_limit = (
+        prompt_config.truncate_response
+        if prompt_config and prompt_config.truncate_response is not None
+        else 1000
+    )
+    return (thinking_limit, response_limit)
+
+
+def truncate_text(text: str, limit: int) -> str:
+    """Truncate text to limit, appending '... [truncated]' if needed."""
+    if len(text) > limit:
+        return text[:limit] + "... [truncated]"
+    return text
+
+
+def display_assistant(
+    text: str,
+    assistant_name: str,
+    render_markdown: bool = True,
+) -> None:
+    """
+    Display assistant text with consistent formatting.
+
+    Args:
+        text: Assistant response text
+        assistant_name: Name to display (e.g., "Assistant", "Mia")
+        render_markdown: Whether to render as markdown (default: True)
+    """
+    if not text:
+        return
+
+    if render_markdown:
+        prefix = f"{assistant_name}: "
+        print(prefix, end="")
+        # Create a console with reduced width to account for the prefix
+        # Rich needs to know the available width after the prefix
+        # Get console width (Rich Console has a size property that returns (width, height))
+        if _console and hasattr(_console, "size"):
+            console_width = _console.size.width
+        elif _console and hasattr(_console, "width"):
+            console_width = _console.width
+        else:
+            console_width = 80  # Default terminal width
+        prefix_length = len(prefix)
+        available_width = max(console_width - prefix_length, 40)  # Minimum 40 chars
+        # Create a temporary console with adjusted width for this output
+        temp_console = RichConsole(width=available_width, legacy_windows=False)
+        _render_markdown(text, render_markdown=True, console=temp_console)
+        print()  # Extra newline after markdown
+    else:
+        print(f"{assistant_name}: {text}")
+
+
+def display_thinking(text: str, render_markdown: bool = True) -> None:
+    """Display thinking/analysis text with [THINKING - ...] prefix, optionally rendered as markdown."""
+    if not text.strip():
+        return
+
+    prefix = "[THINKING - "
+    print(prefix, end="")
+
+    if render_markdown:
+        # Create a console with reduced width to account for the prefix
+        if _console and hasattr(_console, "size"):
+            console_width = _console.size.width
+        elif _console and hasattr(_console, "width"):
+            console_width = _console.width
+        else:
+            console_width = 80  # Default terminal width
+        prefix_length = len(prefix)
+        available_width = max(console_width - prefix_length, 40)  # Minimum 40 chars
+        temp_console = RichConsole(width=available_width, legacy_windows=False)
+        _render_markdown(text, render_markdown=True, console=temp_console)
+        print("]")  # Close the thinking bracket
+    else:
+        # Plain text fallback
+        print(f"{text}]")
+
+    print()  # Extra newline after thinking
+
+
+def normalize_chat_name(chat_input: str) -> str:
+    """
+    Normalize chat name by stripping directory and .json suffixes.
+
+    Args:
+        chat_input: User-provided chat name (may include path or .json)
+
+    Returns:
+        Normalized chat name without directory or .json extension
+    """
+    chat_path = Path(chat_input)
+    chat_name = chat_path.name  # Extract just filename
+    # Strip .json suffix(es)
+    while chat_name.endswith(".json"):
+        chat_name = chat_name[:-5]
+    return chat_name
+
+
+def normalize_dir_path(path_str: str) -> Path:
+    """
+    Normalize directory path to prevent nested logs/log/ structures.
+
+    Uses Path.parts to properly handle path components and removes
+    redundant segments deterministically.
+    """
+    if not path_str:
+        return Path("logs")
+
+    path = Path(path_str)
+    # If absolute, use as-is
+    if path.is_absolute():
+        return path
+
+    # Convert to parts, normalize separators
+    parts = path.parts
+    # Remove empty and "." segments
+    parts = [p for p in parts if p and p != "."]
+
+    # Collapse repeated "logs" segments
+    cleaned_parts = []
+    prev_was_logs = False
+    for part in parts:
+        if part == "logs":
+            if not prev_was_logs:
+                cleaned_parts.append(part)
+                prev_was_logs = True
+        else:
+            cleaned_parts.append(part)
+            prev_was_logs = False
+
+    # Handle suffix ("logs", "log") -> ("logs",)
+    if len(cleaned_parts) >= 2 and cleaned_parts[-2] == "logs" and cleaned_parts[-1] == "log":
+        cleaned_parts = cleaned_parts[:-1]
+
+    # If empty or still problematic, default to "logs"
+    if not cleaned_parts or (len(cleaned_parts) == 1 and cleaned_parts[0] == "log"):
+        cleaned_parts = ["logs"]
+
+    return Path(*cleaned_parts)
+
+
+def _render_markdown(text: str, render_markdown: bool = True, console: Any | None = None) -> None:
     """
     Render text as markdown using rich (similar to glow/mdless) if enabled and rich is available.
 
@@ -45,16 +216,21 @@ def _render_markdown(text: str, render_markdown: bool = True) -> None:
     Args:
         text: Text content to render
         render_markdown: If True, attempt to render as markdown. If False, print as plain text.
+        console: Optional Rich Console instance to use (for custom width). If None, uses module-level _console.
     """
     if not text:
         return
 
-    # Always try to render with rich if available and enabled
+    # Use provided console or fall back to module-level console
+    render_console = console if console is not None else _console
+
+    # Render with rich if enabled
     # Rich handles both markdown and plain text gracefully
-    if RICH_AVAILABLE and render_markdown:
+    if render_markdown and render_console is not None:
         try:
             # Normalize markdown: add newlines before markdown elements for proper formatting
             # This handles cases where the model generates markdown syntax but without explicit newlines
+            # Only normalize headers and lists - do NOT touch code fences (risky regex)
             normalized_text = text
 
             # Add newline before headers if not already present
@@ -62,27 +238,23 @@ def _render_markdown(text: str, render_markdown: bool = True) -> None:
             normalized_text = re.sub(r"(.)(#{2,6}\s)", r"\1\n\2", normalized_text)
 
             # Add newline before list items if not already present
-            # Pattern: match "1. " or "- " or "* " not preceded by newline
-            normalized_text = re.sub(r"(.)(\d+\.\s+)", r"\1\n\2", normalized_text)  # Numbered lists
-            normalized_text = re.sub(r"(.)([-*+]\s+)", r"\1\n\2", normalized_text)  # Bullet lists
+            # IMPORTANT: Only normalize if list marker is at start of line (not mid-sentence dashes)
+            # Numbered lists: only if at start of line or after whitespace (not mid-sentence)
+            normalized_text = re.sub(r"(\S)(\d+\.\s+)", r"\1\n\2", normalized_text)  # Numbered lists after word
 
-            # Ensure code blocks have proper newlines for Rich markdown rendering
-            # Code blocks need newlines around them for Rich to recognize them
-            # Add newline before opening ``` if not already present
-            normalized_text = re.sub(r"([^\n])(```)", r"\1\n\2", normalized_text)
-            # Add newline after opening ``` with optional language identifier (e.g., ```python)
-            # Pattern: ```python -> ```python\n
-            normalized_text = re.sub(r"(```\w*?)([^\n])", r"\1\n\2", normalized_text)
-            # Add newline before closing ``` if not already present
-            normalized_text = re.sub(r"([^\n])(```)", r"\1\n\2", normalized_text)
-            # Ensure there's a newline after closing ``` for proper code block termination
-            normalized_text = re.sub(r"(```)([^\n])", r"\1\n\2", normalized_text)
+            # Bullet lists: Rich's markdown parser only recognizes bullets at start of line
+            # So we should NOT normalize mid-sentence dashes like "text - item" (that's a hyphen, not a bullet)
+            # Only add newline if pattern is preceded by whitespace AND we're normalizing (mid-text case)
+            # Actually, simpler: don't normalize bullets at all - Rich handles them correctly if they're at line start
+            # The issue is Rich is interpreting "evening - cook" as a bullet because of our normalization
+            # So let's remove bullet normalization entirely - only normalize numbered lists
+            # Rich will correctly handle "- item" if it's already at the start of a line
 
             # Use rich to render markdown beautifully
             # Rich will format markdown elements including code blocks with syntax highlighting
-            # code_theme="monokai" enables syntax highlighting for code blocks
-            markdown = Markdown(normalized_text, code_theme="monokai")
-            _console.print(markdown)
+            # Let Rich handle code blocks - don't try to normalize them (risky)
+            markdown = Markdown(normalized_text)  # Use Rich default theme instead of hardcoding
+            render_console.print(markdown)
         except Exception:
             # Fallback to plain text if rich rendering fails
             print(text, end="")
@@ -91,50 +263,13 @@ def _render_markdown(text: str, render_markdown: bool = True) -> None:
         print(text, end="")
 
 
-def _extract_content_from_raw_harmony(raw_text: str) -> Optional[str]:
-    """
-    Extract message content from raw Harmony format text when parsing fails.
-
-    Tries to extract:
-    - Analysis channel content: <|channel|>analysis<|message|>...<|end|>
-    - Final channel content: <|channel|>final<|message|>...<|end|>
-    - Messages without channel: <|message|>...<|end|>
-
-    Returns the extracted content or None if extraction fails.
-    """
-    if not raw_text:
-        return None
-
-    # Pattern to match Harmony message format
-    # Matches: <|channel|>analysis<|message|>content<|end|>
-    # or: <|message|>content<|end|>
-    patterns = [
-        # Final channel messages (preferred)
-        r'<\|channel\|>final<\|message\|>(.*?)<\|end\|>',
-        # Messages without channel
-        r'<\|start\|>assistant<\|message\|>(.*?)<\|end\|>',
-        # Analysis channel (fallback)
-        r'<\|channel\|>analysis<\|message\|>(.*?)<\|end\|>',
-    ]
-
-    for pattern in patterns:
-        matches = re.findall(pattern, raw_text, re.DOTALL)
-        if matches:
-            # Return the last match (most recent message)
-            content = matches[-1].strip()
-            if content:
-                return content
-
-    return None
-
-
 def save_conversation(
     path: str | Path,
-    messages: List[Dict[str, str]],
+    messages: list[MessageDict | dict[str, Any]],
     model_path: str,
-    prompt_config_path: Optional[str] = None,
-    tools: Optional[List] = None,
-    hyperparameters: Optional[Dict[str, Optional[float | int]]] = None,
+    prompt_config_path: str | None = None,
+    tools: list | None = None,
+    hyperparameters: dict[str, float | int | None] | None = None,
 ) -> None:
     """
     Save conversation to a JSON file.
@@ -178,7 +313,7 @@ def save_conversation(
     created_at = datetime.utcnow().isoformat() + "Z"
     if path.exists():
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 existing = json.load(f)
                 created_at = existing.get("metadata", {}).get("created_at", created_at)
         except Exception:
@@ -220,7 +355,7 @@ def save_conversation(
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def load_conversation(path: str | Path) -> tuple[List[Dict[str, str]], Dict[str, any]]:
+def load_conversation(path: str | Path) -> tuple[list[MessageDict | dict[str, Any]], dict[str, Any]]:
     """
     Load conversation from a JSON file.
 
@@ -233,7 +368,7 @@ def load_conversation(path: str | Path) -> tuple[List[Dict[str, str]], Dict[str,
     if not path.exists():
         raise FileNotFoundError(f"Conversation file not found: {path}")
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     messages = data.get("messages", [])
@@ -345,10 +480,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--mlock",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=None,
         help="Lock model weights in memory using MLX's wired limit (mlock equivalent, macOS Metal only). "
-        "Can also be set in prompt config JSON. Default: False",
+        "Can also be set in prompt config JSON. Use --mlock to enable or --no-mlock to disable. Default: None (use config or False)",
     )
     parser.add_argument(
         "--no-markdown",
@@ -362,8 +497,6 @@ def main() -> None:
     profile_model = None
     profile_prompt_cfg = None
     if args.profile:
-        from .config import load_profiles
-
         profiles = load_profiles(args.profiles_file)
         if args.profile not in profiles:
             raise SystemExit(
@@ -385,54 +518,6 @@ def main() -> None:
     # Resolve directories from config (defaults to "logs" if not specified)
     # Normalize paths to avoid nested directories like logs/log/
     # These will be re-resolved after loading chat if prompt_config changes
-    def normalize_dir_path(path_str: str) -> Path:
-        """Normalize directory path to prevent nested logs/log/ structures."""
-        if not path_str:
-            return Path("logs")
-        path = Path(path_str)
-        # If it's absolute, use as-is
-        if path.is_absolute():
-            return path
-
-        # Convert to string and normalize - handle both forward and backslash
-        path_str_norm = str(path).replace("\\", "/")
-
-        # Remove nested logs/log/ patterns
-        # Handle: logs/log, logs/logs, logs/log/log, etc.
-        # Keep normalizing until no more nested patterns exist
-        max_iterations = 10  # Prevent infinite loops
-        iteration = 0
-        while iteration < max_iterations:
-            iteration += 1
-            original = path_str_norm
-
-            # Replace any occurrence of logs/log with logs
-            if "/logs/log" in path_str_norm or path_str_norm.startswith("logs/log"):
-                path_str_norm = path_str_norm.replace("/logs/log", "/logs")
-                path_str_norm = path_str_norm.replace("logs/log", "logs")
-
-            # If path contains multiple "logs" segments, simplify to just "logs"
-            # Count how many times "logs" appears as a complete path component
-            parts = path_str_norm.split("/")
-            logs_count = sum(1 for p in parts if p == "logs")
-            if logs_count > 1:
-                # Multiple "logs" - simplify to just "logs"
-                path_str_norm = "logs"
-                break
-
-            # If no changes were made, we're done
-            if path_str_norm == original:
-                break
-
-        # Clean up any double slashes or trailing slashes
-        path_str_norm = path_str_norm.replace("//", "/").rstrip("/")
-
-        # Final check: if it's empty or still contains nested patterns, default to "logs"
-        if not path_str_norm or "/logs/log" in path_str_norm or path_str_norm.startswith("logs/log"):
-            path_str_norm = "logs"
-
-        return Path(path_str_norm)
-
     chats_dir_str = prompt_config.chats_dir if prompt_config and prompt_config.chats_dir else "logs"
     logs_dir_str = prompt_config.logs_dir if prompt_config and prompt_config.logs_dir else "logs"
 
@@ -445,23 +530,16 @@ def main() -> None:
     # Resolve chat file path if specified
     # Handle case where user might provide filename with or without .json extension
     # Also handle cases where user includes directory path (extract just filename)
-    chat_file_path: Optional[Path] = None
-    load_file_path: Optional[Path] = None
+    chat_file_path: Path | None = None
+    load_file_path: Path | None = None
 
     if args.chat:
-        # Extract just the filename from the path (handle cases like "log/mia-chat.json" or "logs/log/mia-chat.json")
-        chat_input = args.chat
-        # Convert to Path to extract filename
-        chat_path = Path(chat_input)
-        chat_filename = chat_path.name  # Extract just the filename (e.g., "mia-chat.json" or "mia-chat.json.json")
+        # Store original input for search (before normalization)
+        chat_input_path = Path(args.chat)
+        chat_input_filename = chat_input_path.name
 
-        # Strip .json extension(s) if present (handle both ".json" and ".json.json")
-        chat_name = chat_filename
-        if chat_name.endswith(".json.json"):
-            chat_name = chat_name[:-10]  # Remove ".json.json"
-        elif chat_name.endswith(".json"):
-            chat_name = chat_name[:-5]  # Remove ".json"
-
+        # Normalize chat name (strip directory and .json suffixes)
+        chat_name = normalize_chat_name(args.chat)
         # Always use normalized chats_dir for saving (ignore any directory in user input)
         chat_file_path = chats_dir / f"{chat_name}.json"
         load_file_path = chat_file_path  # Default: load from expected location
@@ -481,8 +559,8 @@ def main() -> None:
             ]
 
             # If user provided a path with directory, also search there
-            if chat_path.parent != Path(".") and str(chat_path.parent) != ".":
-                search_dirs.append(chat_path.parent)
+            if chat_input_path.parent != Path(".") and str(chat_input_path.parent) != ".":
+                search_dirs.append(chat_input_path.parent)
 
             # Remove duplicates while preserving order
             seen = set()
@@ -521,8 +599,8 @@ def main() -> None:
                     load_file_path = found_file_path  # Load from found location
                     break
                 # Also try the original filename from user input (in case they passed "log/mia-chat.json.json")
-                if chat_filename != f"{chat_name}.json":
-                    candidate = search_dir / chat_filename
+                if chat_input_filename != f"{chat_name}.json":
+                    candidate = search_dir / chat_input_filename
                     if candidate.exists():
                         expected_path = chats_dir / f"{chat_name}.json"
                         print(f"[INFO] Found chat file at: {candidate} (will save to: {expected_path})")
@@ -532,7 +610,7 @@ def main() -> None:
                         break
 
     # Load conversation if chat file exists
-    conversation: List[Dict[str, str]] = []
+    conversation: list[MessageDict | dict[str, Any]] = []
     loaded_metadata = {}
     loaded_hyperparameters = {}
     if load_file_path and load_file_path.exists():
@@ -567,30 +645,14 @@ def main() -> None:
                 chats_dir = normalize_dir_path(chats_dir_str)
                 logs_dir = normalize_dir_path(logs_dir_str)
 
-                # Ensure directories are normalized (double-check)
-                if str(chats_dir).endswith("/logs/log") or str(chats_dir).endswith("\\logs\\log") or "logs/log" in str(chats_dir):
-                    chats_dir = Path("logs")
-                if str(logs_dir).endswith("/logs/log") or str(logs_dir).endswith("\\logs\\log") or "logs/log" in str(logs_dir):
-                    logs_dir = Path("logs")
-
                 chats_dir.mkdir(parents=True, exist_ok=True)
                 logs_dir.mkdir(parents=True, exist_ok=True)
 
                 # Re-resolve chat file path with updated directory
                 # Always use normalized path for consistency (extract just filename, ignore directory from user input)
                 if args.chat:
-                    # Extract just the filename from user input (same logic as above)
-                    chat_input = args.chat
-                    chat_path = Path(chat_input)
-                    chat_filename = chat_path.name
-
-                    # Strip .json extension(s) if present
-                    chat_name = chat_filename
-                    if chat_name.endswith(".json.json"):
-                        chat_name = chat_name[:-10]  # Remove ".json.json"
-                    elif chat_name.endswith(".json"):
-                        chat_name = chat_name[:-5]  # Remove ".json"
-
+                    # Normalize chat name (strip directory and .json suffixes)
+                    chat_name = normalize_chat_name(args.chat)
                     # Always use normalized chats_dir (ignore any directory in user input)
                     new_chat_file_path = chats_dir / f"{chat_name}.json"
                     # If we loaded from a different location, inform the user
@@ -604,7 +666,7 @@ def main() -> None:
                 print(f"[INFO] Loaded hyperparameters from chat: {loaded_hyperparameters}")
         except Exception as e:
             print(f"[ERROR] Failed to load chat: {e}")
-            raise SystemExit(1)
+            raise SystemExit(1) from e
     elif chat_file_path:
         print(f"[INFO] Creating new chat: {chat_file_path}")
 
@@ -644,9 +706,13 @@ def main() -> None:
         print(f"[INFO] Chat will be saved to: {chat_file_path}\n")
 
     # Get assistant name for display (need this before resume display)
-    assistant_name = "Assistant"
-    if prompt_config and prompt_config.placeholders:
-        assistant_name = prompt_config.placeholders.get("assistant", "Assistant")
+    assistant_name = get_assistant_name(prompt_config)
+
+    # Get truncate limits once (used multiple times)
+    thinking_limit, response_limit = get_truncate_limits(prompt_config)
+
+    # Get render_markdown setting once (used multiple times)
+    render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
 
     # If resuming a prior chat, display resume message and last assistant output
     # Skip greeting if we have any conversation history
@@ -672,18 +738,9 @@ def main() -> None:
                 if analysis:
                     # Analysis from JSON already has newlines preserved as \n characters
                     # Don't call clean_text() again - content was already cleaned when saved
-                    display_analysis = analysis
-                    truncate_thinking = (
-                        prompt_config.truncate_thinking
-                        if prompt_config and prompt_config.truncate_thinking is not None
-                        else 1000
-                    )
-                    if len(display_analysis) > truncate_thinking:
-                        display_analysis = display_analysis[:truncate_thinking] + "... [truncated]"
+                    display_analysis = truncate_text(analysis, thinking_limit)
                     if display_analysis.strip():  # Only print if there's actual analysis
-                        # Plain text mode - preserve newlines exactly as they are
-                        # Python's print() will automatically process \n characters as newlines
-                        print(f"[THINKING - {display_analysis}]")
+                        display_thinking(display_analysis)
                         print("\n[WARNING] Previous turn only generated analysis. Check max_tokens or repetition_penalty.\n")
             elif content:  # Has content and it's not a special marker
                 # Display the last assistant response
@@ -691,50 +748,18 @@ def main() -> None:
                 # JSON.load() converts \n escape sequences to actual newlines
                 # Don't call clean_text() again - content was already cleaned when saved
                 # This ensures newlines are preserved exactly as saved
-                display_content = content
-                # Truncate if needed (use config default or 1000)
-                truncate_response = (
-                    prompt_config.truncate_response
-                    if prompt_config and prompt_config.truncate_response is not None
-                    else 1000
-                )
-                if len(display_content) > truncate_response:
-                    # When truncating, try to preserve newlines by truncating at a safe boundary
-                    # If truncation point is in the middle of content, it's fine - newlines before it will be preserved
-                    display_content = display_content[:truncate_response] + "... [truncated]"
+                display_content = truncate_text(content, response_limit)
                 # Always print if we have content (even if it's short)
-                # Use markdown rendering if enabled (default unless --no-markdown is set)
-                render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
-                if render_markdown and RICH_AVAILABLE:
-                    # Rich markdown rendering preserves newlines automatically
-                    print(f"{assistant_name}: ", end="")
-                    _render_markdown(display_content, render_markdown=True)
-                    print()  # Extra newline after markdown
-                else:
-                    # Plain text mode (--no-markdown) - preserve newlines exactly as they are
-                    # Python's print() will automatically process \n characters in the string as newlines
-                    # Just print directly - no special handling needed
-                    print(f"{assistant_name}: {display_content}")
-                    print()  # Extra blank line for readability
+                display_assistant(display_content, assistant_name, render_markdown)
             else:
                 # Content is empty - check if there's analysis we can show
                 analysis = last_assistant_msg.get("analysis", "")
                 if analysis:
                     # Analysis from JSON already has newlines preserved as \n characters
                     # Don't call clean_text() again - content was already cleaned when saved
-                    display_analysis = analysis
-                    truncate_thinking = (
-                        prompt_config.truncate_thinking
-                        if prompt_config and prompt_config.truncate_thinking is not None
-                        else 1000
-                    )
-                    if len(display_analysis) > truncate_thinking:
-                        display_analysis = display_analysis[:truncate_thinking] + "... [truncated]"
+                    display_analysis = truncate_text(analysis, thinking_limit)
                     if display_analysis.strip():
-                        # Plain text mode - preserve newlines exactly as they are
-                        # Python's print() will automatically process \n characters as newlines
-                        print(f"[THINKING - {display_analysis}]")
-                        print()  # Extra blank line for readability
+                        display_thinking(display_analysis)
         else:
             print("[INFO] No assistant messages found in conversation history.\n")
 
@@ -746,13 +771,7 @@ def main() -> None:
             prompt_config.assistant_greeting, prompt_config.placeholders
         )
         # Use markdown rendering for greeting if enabled
-        render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
-        if render_markdown and RICH_AVAILABLE:
-            print(f"{assistant_name}: ", end="")
-            _render_markdown(greeting_text, render_markdown=True)
-            print()  # Extra newline after markdown
-        else:
-            print(f"{assistant_name}: {greeting_text}")
+        display_assistant(greeting_text, assistant_name, render_markdown)
         conversation.append(
             {
                 "role": "assistant",
@@ -829,17 +848,23 @@ def main() -> None:
     # Remove None values
     hyperparameters = {k: v for k, v in hyperparameters.items() if v is not None}
 
-    # Debug file setup: if --debug-file is provided, enable debug automatically
-    debug_enabled = bool(args.debug or args.debug_file)
-    debug_path = None
-    if debug_enabled:
-        if args.debug_file:
-            # If user provided a path, use it (may be absolute or relative)
-            debug_path = Path(args.debug_file)
+    # Debug file setup: always write debug log by default
+    # --debug enables console output, --debug-file overrides the file path
+    # Path resolution: absolute paths used as-is, relative paths resolved relative to logs_dir
+    # This matches --chat behavior (relative paths resolved relative to chats_dir)
+    # Always write to debug file by default (unless explicitly disabled in future)
+    if args.debug_file:
+        debug_file_path = Path(args.debug_file)
+        # If absolute path, use as-is; otherwise resolve relative to logs_dir (consistent with --chat)
+        if debug_file_path.is_absolute():
+            debug_path = debug_file_path
         else:
-            # Default to logs_dir/prompt-debug.log
-            debug_path = logs_dir / "prompt-debug.log"
-        debug_path.parent.mkdir(parents=True, exist_ok=True)
+            # Relative path: resolve relative to logs_dir (like --chat resolves relative to chats_dir)
+            debug_path = logs_dir / debug_file_path
+    else:
+        # Default to logs_dir/prompt-debug.log (always write debug logs)
+        debug_path = logs_dir / "prompt-debug.log"
+    debug_path.parent.mkdir(parents=True, exist_ok=True)
 
     while True:
         try:
@@ -855,19 +880,23 @@ def main() -> None:
         user_input_stripped = user_input.strip()
         user_input_lower = user_input_stripped.lower()
 
-        # Handle help command: \help or /help
-        if user_input_lower in ("\\help", "/help", "help"):
-            print("\n[INFO] Out-of-band commands:")
-            print("  q, Control-D           - Quit the chat")
-            print("  \\help, /help          - Show this help message")
-            print("  \\list, /list          - List current hyperparameters")
-            print("  \\show, /show          - List current hyperparameters (alias for \\list)")
-            print("  \\set <param>=<value>  - Set a hyperparameter")
-            print("                          Example: \\set temperature=0.7")
-            print("                          Valid parameters: temperature, top_p, min_p, top_k,")
-            print("                          max_tokens, min_tokens_to_keep, repetition_penalty,")
-            print("                          repetition_context_size, xtc_probability, xtc_threshold")
-            print()
+        # Store help text in constant to avoid duplication
+        HELP_TEXT = (
+            "\n[INFO] Out-of-band commands:\n"
+            "  q, Control-D           - Quit the chat\n"
+            "  \\help, /help          - Show this help message\n"
+            "  \\list, /list          - List current hyperparameters\n"
+            "  \\show, /show          - List current hyperparameters (alias for \\list)\n"
+            "  \\set <param>=<value>  - Set a hyperparameter\n"
+            "                          Example: \\set temperature=0.7\n"
+            "                          Valid parameters: temperature, top_p, min_p, top_k,\n"
+            "                          max_tokens, min_tokens_to_keep, repetition_penalty,\n"
+            "                          repetition_context_size, xtc_probability, xtc_threshold\n"
+        )
+
+        # Handle help command: \help or /help (require prefix)
+        if user_input_lower in ("\\help", "/help"):
+            print(HELP_TEXT)
             continue
 
         # Handle hyperparameter listing: \list or \show
@@ -891,12 +920,10 @@ def main() -> None:
                 param_name = param_name.strip().lower()
                 param_value = param_value.strip()
 
-                # Try to parse as float first, then int
+                # Try to parse as float first (handles scientific notation, decimals, negatives)
+                # Then cast to int if needed for int parameters
                 try:
-                    if "." in param_value:
-                        parsed_value = float(param_value)
-                    else:
-                        parsed_value = int(param_value)
+                    parsed_value = float(param_value)  # Handles scientific notation, decimals, negatives
                 except ValueError:
                     print(f"[ERROR] Invalid value '{param_value}' for parameter '{param_name}'. Must be a number.")
                     continue
@@ -951,7 +978,11 @@ def main() -> None:
                 print("\n[ERROR] Invalid \\set command format.")
                 print("[INFO] Usage: \\set <param>=<value>")
                 print("[INFO] Example: \\set temperature=0.7")
-                valid_params = "temperature, top_p, min_p, top_k, max_tokens, min_tokens_to_keep, repetition_penalty, repetition_context_size, xtc_probability, xtc_threshold"
+                valid_params = (
+                    "temperature, top_p, min_p, top_k, max_tokens, "
+                    "min_tokens_to_keep, repetition_penalty, "
+                    "repetition_context_size, xtc_probability, xtc_threshold"
+                )
                 print(f"[INFO] Valid parameters: {valid_params}")
                 print()
                 continue
@@ -959,17 +990,7 @@ def main() -> None:
         # Handle invalid out-of-band commands (starts with \ or / but not recognized)
         if user_input_stripped.startswith("\\") or user_input_stripped.startswith("/"):
             print("\n[ERROR] Unknown out-of-band command.")
-            print("[INFO] Valid out-of-band commands:")
-            print("  q, Control-D           - Quit the chat")
-            print("  \\help, /help          - Show help message")
-            print("  \\list, /list          - List current hyperparameters")
-            print("  \\show, /show          - List current hyperparameters (alias for \\list)")
-            print("  \\set <param>=<value>  - Set a hyperparameter")
-            print("                          Example: \\set temperature=0.7")
-            print("                          Valid parameters: temperature, top_p, min_p, top_k,")
-            print("                          max_tokens, min_tokens_to_keep, repetition_penalty,")
-            print("                          repetition_context_size, xtc_probability, xtc_threshold")
-            print()
+            print(HELP_TEXT)
             continue
 
         # Add timestamp to user message (turn)
@@ -983,28 +1004,46 @@ def main() -> None:
         # Main generation loop with tool call handling
         tool_iteration = 0
         while tool_iteration < max_tool_iterations:
-            tokens: List[int] = []
+            tokens: list[int] = []
 
-            # Debug: output raw prompt (to file only, unless --debug is explicitly set)
-            if debug_enabled:
-                raw_prompt = generator._messages_to_prompt(conversation, None)
-                if args.debug:  # Only print to console if --debug flag is set
-                    print("\n[DEBUG] Raw prompt sent to LLM:")
-                    print("-" * 80)
-                    print(raw_prompt)
-                    print("-" * 80)
-                if debug_path:
-                    with open(debug_path, "a", encoding="utf-8") as df:
-                        df.write("\n[DEBUG] Raw prompt sent to LLM:\n")
-                        df.write("-" * 80 + "\n")
-                        df.write(raw_prompt + "\n")
-                        df.write("-" * 80 + "\n")
+            # system_message parameter is for CLI override (if we add --system flag later)
+            # The generator's render_prompt() already handles system_model_identity from prompt_config
+            # So we pass None here and let the generator handle the fallback
+            system_message = None  # Could be overridden by CLI --system flag in the future
+
+            # Debug: always write raw prompt to file, print to console only if --debug is set
+            raw_prompt = generator.render_prompt(conversation, system_message)
+            if args.debug:  # Only print to console if --debug flag is set
+                print("\n[DEBUG] Raw prompt sent to LLM:")
+                print("-" * 80)
+                print(raw_prompt)
+                print("-" * 80)
+            # Always write to debug file (debug_path is always set now)
+            with open(debug_path, "a", encoding="utf-8") as df:
+                df.write("\n[DEBUG] Raw prompt sent to LLM:\n")
+                df.write("-" * 80 + "\n")
+                df.write(raw_prompt + "\n")
+                df.write("-" * 80 + "\n")
 
             # Use hyperparameters dict (CLI args already merged with loaded values)
             # For Harmony models, we'll parse messages to extract final channel content
+            # For Harmony models, use StreamableParser for incremental parsing
             # For non-Harmony models, stream tokens directly
             generation_start_time = time.perf_counter()
-            parsed_messages = None  # Will be set for Harmony models
+            # Initialize these early to avoid scope issues (used outside Harmony branch)
+            parsed_messages: Any | None = None  # Will be set for Harmony models
+            analysis_text_parts: list[str] = []
+            assistant_text = ""
+            # Accumulate streamed text for non-Harmony models (avoid decoding twice)
+            streamed_text_parts: list[str] = []
+
+            # For Harmony models, reset StreamableParser for this generation
+            if generator.is_gpt_oss and generator.use_harmony and generator.encoding:
+                # Create a fresh parser for this generation (reset state)
+                generator.streamable_parser = StreamableParser(generator.encoding, Role.ASSISTANT, strict=False)
+
+            # Collect all tokens for debugging
+            all_generated_tokens = []
             for token_id in generator.generate(
                 messages=conversation,
                 temperature=hyperparameters.get("temperature"),
@@ -1014,29 +1053,36 @@ def main() -> None:
                 top_k=hyperparameters.get("top_k"),
                 repetition_penalty=hyperparameters.get("repetition_penalty"),
                 repetition_context_size=hyperparameters.get("repetition_context_size"),
+                system_message=system_message,
             ):
-                tokens.append(int(token_id))
-                # For non-Harmony models, stream tokens directly
-                if not generator.is_gpt_oss or not generator.use_harmony:
+                token_int = int(token_id)
+                tokens.append(token_int)
+                all_generated_tokens.append(token_int)
+
+                # For Harmony models, use StreamableParser to parse incrementally
+                # StreamableParser handles all Harmony token decoding internally - we just display the text deltas
+                if generator.is_gpt_oss and generator.use_harmony and generator.streamable_parser:
+                    # For Harmony models, don't display during streaming
+                    # We'll extract and display all channels (analysis + final) after parsing is complete
+                    # This avoids duplicate output and ensures proper formatting
+                    try:
+                        # Process token through Harmony parser (handles Harmony special tokens correctly)
+                        generator.streamable_parser.process(int(token_id))
+                    except Exception as e:
+                        # If parsing fails, log but continue - will try to parse messages after generation
+                        if args.debug:
+                            print(f"\n[DEBUG] Streaming parser error: {e}", file=sys.stderr)
+                else:
+                    # For non-Harmony models, use native tokenizer to decode tokens
                     text = generator.tokenizer.decode([int(token_id)])
                     text = clean_text(text)  # Clean Unicode and remove replacement chars
                     print(text, end="", flush=True)
+                    streamed_text_parts.append(text)  # Accumulate for saving
 
             # After generation, keep model parameters active to prevent swapping
             # This ensures buffers stay wired and don't get swapped out
-            if hasattr(generator.model, "_mlx_harmony_param_refs"):
-                try:
-                    # Force evaluation of a dummy operation on parameters to keep them active
-                    # This prevents MLX from freeing parameter buffers
-                    import mlx.core as mx
-                    # Touch parameters to ensure they stay allocated
-                    param_sample = generator.model._mlx_harmony_param_refs[0] if generator.model._mlx_harmony_param_refs else None
-                    if param_sample is not None:
-                        # Access parameters to prevent deallocation
-                        _ = mx.sum(param_sample)  # Small computation to keep params active
-                        mx.eval(_)  # Force evaluation
-                except Exception:
-                    pass  # Ignore errors - not critical
+            # Use generator's keepalive() method (unified behavior)
+            generator.keepalive()
 
             generation_end_time = time.perf_counter()
             generation_elapsed = generation_end_time - generation_start_time
@@ -1046,208 +1092,153 @@ def main() -> None:
             # Display generation stats
             print(f"\n[INFO] Generated {num_generated_tokens} tokens in {generation_elapsed:.2f}s ({tokens_per_second:.2f} tokens/s)")
 
+            # Write all generated tokens to debug file (once, not duplicated)
+            if all_generated_tokens:
+                with open(debug_path, "a", encoding="utf-8") as df:
+                    df.write(f"\n[DEBUG] All {len(all_generated_tokens)} tokens generated (token IDs):\n")
+                    df.write("-" * 80 + "\n")
+                    df.write(str(all_generated_tokens) + "\n")
+                    df.write("-" * 80 + "\n")
+                    if generator.encoding:
+                        decoded_all = generator.encoding.decode(all_generated_tokens)
+                        df.write("\n[DEBUG] All tokens decoded (raw response from model):\n")
+                        df.write("-" * 80 + "\n")
+                        df.write(decoded_all + "\n")
+                        df.write("-" * 80 + "\n")
+
             # For Harmony models, parse messages and extract final channel content
             if generator.is_gpt_oss and generator.use_harmony:
-                # Get assistant name from prompt config for display
-                assistant_name = "Assistant"
-                if prompt_config and prompt_config.placeholders:
-                    assistant_name = prompt_config.placeholders.get("assistant", "Assistant")
-
-                # Initialize these before try block so they're available in finally/except
+                # Reset for this generation
                 final_text_parts = []
-                analysis_text_parts = []
-                assistant_text = ""
+                analysis_text_parts = []  # Reset (was initialized above)
+                assistant_text = ""  # Reset (was initialized above)
 
-                try:
+                # Note: assistant_name already computed above, don't recompute
+                # For Harmony models, we already streamed text during generation via StreamableParser
+                # Now we need to extract the properly parsed messages for saving and analysis channel display
+                # Use StreamableParser's messages if available (most reliable - incremental parsing)
+                if generator.streamable_parser:
+                    # Check parser state before finalizing
+                    parser_state = generator.streamable_parser.state
+                    if args.debug:
+                        print(f"\n[DEBUG] Parser state before process_eos(): {parser_state}")
+                        print(f"[DEBUG] Parser current_role: {generator.streamable_parser.current_role}")
+                        print(f"[DEBUG] Parser current_channel: {generator.streamable_parser.current_channel}")
+                        print(f"[DEBUG] Parser tokens processed: {len(generator.streamable_parser.tokens)}")
+                        if generator.streamable_parser.tokens:
+                            # Decode first few tokens to see what the model started with
+                            first_tokens = generator.streamable_parser.tokens[:20]
+                            decoded_start = generator.encoding.decode(first_tokens) if generator.encoding else "N/A"
+                            print(f"[DEBUG] First 20 tokens decoded: {decoded_start[:200]}")
+
+                    # Finalize parser (process EOS if needed)
+                    try:
+                        generator.streamable_parser.process_eos()
+                        parsed_messages = generator.streamable_parser.messages
+                    except Exception as e:
+                        # Fail fast with clear error message and debugging info
+                        error_msg = str(e)
+                        print(f"\n[ERROR] Harmony parsing failed: {error_msg}")
+                        print(f"[ERROR] Parser state: {parser_state}")
+                        print(f"[ERROR] Tokens processed: {len(generator.streamable_parser.tokens)}")
+                        if generator.streamable_parser.tokens and generator.encoding:
+                            first_tokens = generator.streamable_parser.tokens[:50]
+                            decoded_start = generator.encoding.decode(first_tokens)
+                            print(f"[ERROR] First 50 tokens decoded: {decoded_start[:500]}")
+                            print(f"[ERROR] First 20 token IDs: {generator.streamable_parser.tokens[:20]}")
+                            # Check what token ID corresponds to <|channel|> (should be 200005)
+                            channel_token_id = 200005  # From Harmony format docs
+                            if channel_token_id in generator.streamable_parser.tokens[:20]:
+                                idx = generator.streamable_parser.tokens[:20].index(channel_token_id)
+                                print(f"[ERROR] Found <|channel|> token (200005) at position {idx}")
+                            else:
+                                print("[ERROR] <|channel|> token (200005) NOT found in first 20 tokens")
+                        print("\nThis error indicates the model output is malformed/incomplete:")
+                        print("  - The parser was waiting for a message header to complete")
+                        print("  - Model output does not conform to Harmony format structure")
+                        raise RuntimeError(f"Failed to parse Harmony messages: {error_msg}") from e
+                else:
+                    # Fallback: parse from tokens using HarmonyEncoding
                     parsed_messages = generator.parse_messages_from_tokens(tokens)
-                    # Extract text from final channel messages (or messages without channel)
-                    # Format analysis channel as [THINKING - ...]
 
-                    for msg in parsed_messages:
-                        channel = getattr(msg, "channel", None)
-                        # Extract text content from message
-                        msg_text = ""
-                        for content in msg.content:
-                            if hasattr(content, "text"):
-                                msg_text += content.text
+                # Extract text from messages for saving and display
+                # NOTE: During streaming, we only displayed final channel content (filtered by current_channel)
+                # Here we extract all channels properly from parsed messages
+                # For final channel, we want the LAST message (most recent), not all of them
+                final_channel_messages = []
+                if args.debug:
+                    print(f"\n[DEBUG] Parsed {len(parsed_messages)} messages from parser")
+                for msg in parsed_messages:
+                    channel = getattr(msg, "channel", None)
+                    # Extract text content from message
+                    msg_text = ""
+                    for content in msg.content:
+                        if hasattr(content, "text"):
+                            msg_text += content.text
 
-                        if channel == "final" or channel is None:
-                            # Prefer final channel or no-channel messages
-                            # Clean Unicode to normalize problematic characters
-                            final_text_parts.append(clean_text(msg_text))
-                        elif channel == "analysis":
-                            # Collect analysis channel content
-                            # Clean Unicode to normalize problematic characters
-                            analysis_text_parts.append(clean_text(msg_text))
+                    if args.debug:
+                        author = getattr(msg, "author", None)
+                        print(f"[DEBUG] Message: channel={channel}, author={author}, text_length={len(msg_text)}")
 
-                    # Display formatted output
-                    # Show analysis/thinking first if present
-                    if analysis_text_parts:
-                        # Join with newlines to preserve structure, then strip only leading/trailing whitespace
-                        thinking_text = "\n".join(analysis_text_parts).strip()
-                        # Truncate if too long (use config default or 1000)
-                        truncate_thinking = (
-                            prompt_config.truncate_thinking
-                            if prompt_config and prompt_config.truncate_thinking is not None
-                            else 1000
-                        )
-                        if len(thinking_text) > truncate_thinking:
-                            thinking_text = (
-                                thinking_text[:truncate_thinking] + "... [truncated]"
-                            )
-                        if thinking_text:
-                            print(f"\n[THINKING - {thinking_text}]\n")
+                    if channel == "final" or channel is None:
+                        # Final channel messages - collect all, we'll take the last one
+                        final_channel_messages.append(clean_text(msg_text))
+                    elif channel in ("analysis", "commentary"):
+                        # Analysis/commentary channel - extract for [THINKING] display (was NOT streamed)
+                        analysis_text_parts.append(clean_text(msg_text))
 
-                    # Show final channel message with assistant name
-                    if final_text_parts:
-                        # Join with empty string to preserve newlines, then strip only leading/trailing whitespace
-                        assistant_text = "".join(final_text_parts).strip()
-                        # Truncate if too long (use config default or 1000)
-                        truncate_response = (
-                            prompt_config.truncate_response
-                            if prompt_config and prompt_config.truncate_response is not None
-                            else 1000
-                        )
-                        if len(assistant_text) > truncate_response:
-                            assistant_text = (
-                                assistant_text[:truncate_response] + "... [truncated]"
-                            )
-                        # Use markdown rendering if enabled
-                        render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
-                        if render_markdown and RICH_AVAILABLE:
-                            print(f"{assistant_name}: ", end="")
-                            _render_markdown(assistant_text, render_markdown=True)
-                            print()  # Extra newline after markdown
-                        else:
-                            print(f"{assistant_name}: {assistant_text}\n")
-                    elif analysis_text_parts:
-                        # Only analysis channel content was found (no final channel)
-                        # Don't display analysis as if it were the response - just warn
-                        assistant_text = ""  # No final response
-                        print(
-                            "\n[WARNING] Model generated only analysis channel - "
-                            "no final response. The thinking process is shown above.\n"
-                            "Possible causes:\n"
-                            "  - max_tokens too low (try increasing --max-tokens)\n"
-                            "  - repetition_penalty may need adjustment (try lowering if too high, raising if stuck)\n"
-                            "  - Model may need a nudge to transition to final channel\n"
-                        )
-                    else:
-                        # Fallback: if no messages found, try to decode raw tokens
-                        # and strip Harmony tags manually
-                        raw_text = generator.tokenizer.decode(tokens)
-                        raw_text = clean_text(raw_text)  # Clean Unicode and remove replacement chars
-                        # Try to extract content from raw text if parsing failed
-                        assistant_text = _extract_content_from_raw_harmony(raw_text)
-                        if assistant_text:
-                            assistant_text = clean_text(assistant_text)
-                            # Use markdown rendering if enabled
-                            render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
-                            if render_markdown and RICH_AVAILABLE:
-                                print(f"{assistant_name}: ", end="")
-                                _render_markdown(assistant_text, render_markdown=True)
-                                print()  # Extra newline after markdown
-                            else:
-                                print(f"{assistant_name}: {assistant_text}")
-                        else:
-                            assistant_text = raw_text  # Last resort (already cleaned)
-                            print(raw_text)
-                except Exception as e:
-                    # Fallback: if parsing fails, decode raw tokens and try to extract content
-                    raw_text = generator.tokenizer.decode(tokens)
-                    raw_text = clean_text(raw_text)  # Clean Unicode and remove replacement chars
-                    # Extract analysis and final channels separately
-                    analysis_matches = re.findall(
-                        r'<\|channel\|>analysis<\|message\|>(.*?)<\|end\|>', raw_text, re.DOTALL
-                    )
-                    final_matches = re.findall(
-                        r'<\|channel\|>final<\|message\|>(.*?)<\|end\|>', raw_text, re.DOTALL
-                    )
+                # For final channel, only take the LAST message (most recent completion)
+                # Earlier messages might be partial or from previous turns
+                if final_channel_messages:
+                    final_text_parts = [final_channel_messages[-1]]  # Only the last final channel message
 
-                    # Show analysis/thinking if present
-                    if analysis_matches:
-                        # Join with newlines to preserve structure, clean but don't strip (preserve newlines)
-                        thinking_text = "\n".join(clean_text(m) for m in analysis_matches).strip()
-                        # Truncate if too long (use config default or 1000)
-                        truncate_thinking = (
-                            prompt_config.truncate_thinking
-                            if prompt_config and prompt_config.truncate_thinking is not None
-                            else 1000
-                        )
-                        if len(thinking_text) > truncate_thinking:
-                            thinking_text = (
-                                thinking_text[:truncate_thinking] + "... [truncated]"
-                            )
-                        if thinking_text:
-                            print(f"\n[THINKING - {thinking_text}]\n")
+                # Display analysis/thinking if present (this was NOT displayed during streaming)
+                if analysis_text_parts:
+                    # Join with newlines and preserve structure - only strip spaces/tabs (not newlines)
+                    joined_analysis = "\n".join(analysis_text_parts)
+                    thinking_text = truncate_text(joined_analysis.lstrip(" \t").rstrip(" \t"), thinking_limit)
+                    if thinking_text:
+                        display_thinking(thinking_text, render_markdown=not args.no_markdown)
 
-                    # Show final channel message with assistant name
-                    if final_matches:
-                        # Clean but don't strip (preserve newlines), only strip leading/trailing whitespace
-                        assistant_text = clean_text(final_matches[-1]).strip()
-                        # Truncate if too long (use config default or 1000)
-                        truncate_response = (
-                            prompt_config.truncate_response
-                            if prompt_config and prompt_config.truncate_response is not None
-                            else 1000
-                        )
-                        if len(assistant_text) > truncate_response:
-                            assistant_text = assistant_text[:truncate_response] + "... [truncated]"
-                        # Use markdown rendering if enabled
-                        render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
-                        if render_markdown and RICH_AVAILABLE:
-                            print(f"{assistant_name}: ", end="")
-                            _render_markdown(assistant_text, render_markdown=True)
-                            print()  # Extra newline after markdown
-                        else:
-                            print(f"{assistant_name}: {assistant_text}\n")
-                    elif analysis_matches:
-                        # Only analysis channel found - don't display as response
-                        assistant_text = ""  # No final response
-                        # Join with newlines to preserve structure, clean but don't strip (preserve newlines)
-                        thinking_text = "\n".join(clean_text(m) for m in analysis_matches).strip()
-                        # Truncate if too long (use config default or 1000)
-                        truncate_thinking = (
-                            prompt_config.truncate_thinking
-                            if prompt_config and prompt_config.truncate_thinking is not None
-                            else 1000
-                        )
-                        if len(thinking_text) > truncate_thinking:
-                            thinking_text = (
-                                thinking_text[:truncate_thinking] + "... [truncated]"
-                            )
-                        if thinking_text and not analysis_text_parts:
-                            # Show thinking if we haven't already
-                            print(f"\n[THINKING - {thinking_text}]\n")
-                        print(
-                            "\n[WARNING] Model generated only analysis channel - "
-                            "no final response. The thinking process is shown above.\n"
-                            "Possible causes:\n"
-                            "  - max_tokens too low (try increasing --max-tokens)\n"
-                            "  - repetition_penalty may need adjustment (try lowering if too high, raising if stuck)\n"
-                            "  - Model may need a nudge to transition to final channel\n"
-                        )
-                    else:
-                        # Try to extract any assistant message
-                        assistant_text = _extract_content_from_raw_harmony(raw_text)
-                        if assistant_text:
-                            # Use markdown rendering if enabled
-                            render_markdown = not args.no_markdown if hasattr(args, "no_markdown") else True
-                            if render_markdown and RICH_AVAILABLE:
-                                print(f"{assistant_name}: ", end="")
-                                _render_markdown(assistant_text, render_markdown=True)
-                                print()  # Extra newline after markdown
-                            else:
-                                print(f"{assistant_name}: {assistant_text}")
-                        else:
-                            # Last resort: show raw text (shouldn't happen often)
-                            assistant_text = raw_text
-                            print(f"\n[WARNING] Failed to parse Harmony messages: {e}")
-                            print(raw_text)
+                # Extract final channel text for display and saving
+                if final_text_parts:
+                    # Join parts and preserve newlines - only strip leading/trailing whitespace (not newlines)
+                    joined_text = "".join(final_text_parts)
+                    # Strip only leading/trailing spaces/tabs, preserve newlines
+                    assistant_text = truncate_text(joined_text.lstrip(" \t").rstrip(" \t"), response_limit)
+                    # Display final response (it may not have been displayed during streaming if model only generated analysis)
+                    if assistant_text:
+                        display_assistant(assistant_text, assistant_name, render_markdown=not args.no_markdown)
+                elif analysis_text_parts:
+                    # Only analysis channel content was found (no final channel)
+                    assistant_text = ""  # No final response
+                    if args.debug:
+                        print("\n[DEBUG] Only analysis channel found in parsed_messages")
+                        print(f"[DEBUG] Total parsed messages: {len(parsed_messages)}")
+                        for i, msg in enumerate(parsed_messages):
+                            channel = getattr(msg, "channel", None)
+                            print(f"[DEBUG] Message {i}: channel={channel}, role={getattr(msg, 'author', None)}")
+                elif streamed_text_parts:
+                    # No parsed messages but we have streamed content - use it
+                    streamed_content = "".join(streamed_text_parts).strip()
+                    assistant_text = truncate_text(streamed_content, response_limit)
+                    print()  # Newline after streaming
+                else:
+                    # No parsed messages and no streamed content - fail fast
+                    print("\n[ERROR] Failed to parse Harmony messages: no parsed messages and no streamed content")
+                    print("This indicates either:")
+                    print("  - openai_harmony package is incorrectly installed")
+                    print("  - Model output is malformed")
+                    print("  - Parsing logic has a bug")
+                    if args.debug:
+                        raw_text = generator.encoding.decode(tokens) if generator.encoding else "[encoding not available]"
+                        print(f"[DEBUG] Raw decoded text: {raw_text[:500]}...")
+                    raise RuntimeError("Failed to parse Harmony messages: no parsed messages and no streamed content")
             else:
                 # Non-Harmony model: already printed during streaming
+                # Use accumulated streamed text (avoid decoding twice)
                 print()  # Newline after streaming
-                assistant_text = clean_text(generator.tokenizer.decode(tokens))
+                assistant_text = "".join(streamed_text_parts)
 
             # For GPT-OSS models with tools, check for tool calls
             # (We already parsed messages above for Harmony models, so reuse if available)
@@ -1272,12 +1263,14 @@ def main() -> None:
                             # Add tool result to conversation in Harmony format
                             # Format: <|start|>{tool_name} to=assistant<|channel|>commentary<|message|>{result}<|end|>
                             # Use role="tool" with name field for proper Harmony message construction
+                            # Harmony expects tool results in "commentary" channel
                             # Record hyperparameters used for this generation cycle
                             tool_result_msg = {
                                 "role": "tool",
                                 "name": tool_call.tool_name,  # Tool name goes in Author.name
                                 "content": result,
                                 "recipient": "assistant",  # Tool results are sent to assistant
+                                "channel": "commentary",  # Harmony expects tool results in commentary channel
                                 "timestamp": datetime.utcnow().isoformat() + "Z",
                                 "hyperparameters": hyperparameters.copy()
                                 if hyperparameters
@@ -1294,26 +1287,48 @@ def main() -> None:
             # No tool calls or non-GPT-OSS model: assistant_text already set above
             # (For Harmony models, it's the final channel content; for others, it's decoded tokens)
 
-            # Debug: output raw response (to file only, unless --debug is explicitly set)
-            if debug_enabled:
+            # For Harmony models, raw response already written to debug file above
+            # Only write raw response for non-Harmony models to avoid duplication
+            if not (generator.is_gpt_oss and generator.use_harmony):
+                # Non-Harmony models: decode and write raw response
                 raw_response = generator.tokenizer.decode(tokens)
-                # Clean Unicode for display, but keep original for file
                 cleaned_response = clean_text(raw_response)
                 if args.debug:  # Only print to console if --debug flag is set
                     print("\n[DEBUG] Raw response from LLM:")
                     print("-" * 80)
                     print(cleaned_response)
                     print("-" * 80)
-                if debug_path:
-                    with open(debug_path, "a", encoding="utf-8") as df:
-                        df.write("\n[DEBUG] Raw response from LLM:\n")
-                        df.write("-" * 80 + "\n")
-                        df.write(raw_response + "\n")  # Keep original for debugging
-                        df.write("-" * 80 + "\n")
+                # Write to debug file
+                with open(debug_path, "a", encoding="utf-8") as df:
+                    df.write("\n[DEBUG] Raw response from LLM:\n")
+                    df.write("-" * 80 + "\n")
+                    df.write(raw_response + "\n")
+                    df.write("-" * 80 + "\n")
 
             # Record hyperparameters used for this generation
-            # Only save assistant turn if we have actual content (not just analysis)
-            if assistant_text or (not generator.is_gpt_oss or not generator.use_harmony):
+            # Check if tool calls exist (for Harmony models) and handle empty assistant_text
+            has_tool_calls = (
+                generator.is_gpt_oss
+                and tools
+                and generator.use_harmony
+                and parsed_messages is not None
+            )
+
+            tool_calls_detected = False
+            if has_tool_calls:
+                try:
+                    tool_calls_check = parse_tool_calls_from_messages(parsed_messages, tools)
+                    tool_calls_detected = bool(tool_calls_check)
+                except Exception:
+                    pass
+
+            # Only save assistant turn if we have actual content (not just analysis or tool calls)
+            # If tool calls exist and assistant_text is empty/whitespace, skip saving junk
+            if tool_calls_detected and not assistant_text.strip():
+                # Tool call issued without meaningful final content - skip saving
+                # The tool results will be added in the next iteration (already handled above)
+                pass
+            elif assistant_text or (not generator.is_gpt_oss or not generator.use_harmony):
                 # For non-Harmony models, always save; for Harmony models, only if we have final response
                 assistant_turn = {
                     "role": "assistant",
@@ -1324,7 +1339,7 @@ def main() -> None:
                 # For Harmony models, also record analysis channel if present
                 if generator.is_gpt_oss and generator.use_harmony and analysis_text_parts:
                     # Join with newlines to preserve structure when saving
-                    assistant_turn["analysis"] = "\n".join(analysis_text_parts).strip()
+                    assistant_turn["analysis"] = "\n".join(analysis_text_parts).lstrip(" \t").rstrip(" \t")
                 conversation.append(assistant_turn)
             else:
                 # Harmony model with only analysis channel - save analysis separately
@@ -1333,7 +1348,7 @@ def main() -> None:
                     assistant_turn = {
                         "role": "assistant",
                         "content": "[Analysis only - no final response]",
-                        "analysis": "\n".join(analysis_text_parts).strip(),
+                        "analysis": "\n".join(analysis_text_parts).lstrip(" \t").rstrip(" \t"),
                         "timestamp": datetime.utcnow().isoformat() + "Z",
                         "hyperparameters": hyperparameters.copy() if hyperparameters else {},
                     }
