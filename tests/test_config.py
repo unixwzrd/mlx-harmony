@@ -97,13 +97,33 @@ class TestPromptConfigLoading:
 
         config = load_prompt_config(str(config_file))
         assert config is not None
-        assert config.system_model_identity == sample_prompt_config["system_model_identity"]
+        assert config.system_model_identity == "You are TestBot, a helpful AI assistant."
         assert config.temperature == 0.7
         assert config.max_tokens == 100
         assert config.truncate_thinking == 500
         assert config.truncate_response == 500
         assert config.logs_dir == "test_logs"
         assert config.chats_dir == "test_chats"
+
+    def test_load_example_dialogues(self, temp_dir: Path):
+        """Test loading example_dialogues as a list of conversations."""
+        config_file = temp_dir / "examples.json"
+        config_data = {
+            "placeholders": {"assistant": "Mia"},
+            "example_dialogues": [
+                [
+                    {"role": "user", "content": "Hello {assistant}"},
+                    {"role": "assistant", "content": "Hi there!"},
+                ]
+            ],
+        }
+        config_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+        config = load_prompt_config(str(config_file))
+        assert config is not None
+        assert config.example_dialogues is not None
+        assert isinstance(config.example_dialogues, list)
+        assert config.example_dialogues[0][0]["content"] == "Hello Mia"
 
     def test_load_nonexistent_config(self):
         """Test loading a non-existent config returns None."""

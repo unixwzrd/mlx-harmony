@@ -12,7 +12,10 @@ from typing import Optional, Tuple, Union
 
 # Use our standalone loader instead of mlx_lm to avoid PyTorch dependency
 from mlx_harmony.loader import load_model_standalone
+from mlx_harmony.logging import get_logger
 from mlx_harmony.tokenizer_native import ByteLevelBPETokenizer
+
+logger = get_logger(__name__)
 
 
 def _prewarm_filesystem_cache(file_path: Path) -> None:
@@ -48,10 +51,10 @@ def prewarm_model_cache(model_path: Path) -> None:
     if not weight_files:
         return
 
-    print(f"[INFO] Pre-warming filesystem cache for {len(weight_files)} weight file(s)...")
+    logger.info("Pre-warming filesystem cache for %d weight file(s)...", len(weight_files))
     for wf in weight_files:
         _prewarm_filesystem_cache(Path(wf))
-    print("[INFO] Filesystem cache pre-warming complete.")
+    logger.info("Filesystem cache pre-warming complete.")
 
 
 def load_optimized(

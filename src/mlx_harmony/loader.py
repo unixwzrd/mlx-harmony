@@ -17,6 +17,10 @@ import mlx.nn as nn
 from huggingface_hub import snapshot_download
 from mlx.utils import tree_flatten
 
+from mlx_harmony.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Model type remapping (matches mlx-lm)
 MODEL_REMAPPING = {
     "mistral": "llama",
@@ -184,7 +188,10 @@ def _apply_quantization(model: nn.Module, config: dict[str, Any], weights: dict[
         elif quant_method in ("awq", "gptq"):
             # Transform AutoAWQ/GPTQ weights - this is complex, for now just apply basic quantization
             # TODO: Implement proper AWQ/GPTQ transformation if needed
-            print(f"[WARNING] {quant_method} quantization detected but transformation not fully implemented")
+            logger.warning(
+                "%s quantization detected but transformation not fully implemented",
+                quant_method,
+            )
             quantization = {"group_size": 32, "bits": 4, "mode": "affine"}
             config["quantization"] = quantization
             _apply_quantization(model, config, weights)
@@ -246,7 +253,7 @@ def load_model_standalone(
 
     if mlock:
         if not mx.metal.is_available():
-            print("[WARNING] Wired memory requires macOS 15.0+ with Metal backend.")
+            logger.warning("Wired memory requires macOS 15.0+ with Metal backend.")
             mlock = False
         else:
             try:
@@ -271,34 +278,37 @@ def load_model_standalone(
 
                     # Don't exceed system maximum
                     if wired_limit > max_rec_size:
-                        print(
-                            f"[WARNING] Model size ({estimated_model_size / (1024**3):.2f} GB) + margin "
-                            f"exceeds max recommended ({max_rec_size / (1024**3):.2f} GB). "
-                            f"Using max recommended instead."
+                        logger.warning(
+                            "Model size %.2f GB + margin exceeds max recommended %.2f GB. "
+                            "Using max recommended instead.",
+                            estimated_model_size / (1024**3),
+                            max_rec_size / (1024**3),
                         )
                         wired_limit = max_rec_size
 
                     old_wired_limit = mx.set_wired_limit(wired_limit)
-                    print(
-                        f"[INFO] Set wired memory limit to {wired_limit / (1024**3):.2f} GB "
-                        f"(model size: {estimated_model_size / (1024**3):.2f} GB + 10% margin). "
-                        f"Cache disabled to prevent unwiring."
+                    logger.info(
+                        "Set wired memory limit to %.2f GB (model size: %.2f GB + 10%% margin). "
+                        "Cache disabled to prevent unwiring.",
+                        wired_limit / (1024**3),
+                        estimated_model_size / (1024**3),
                     )
                 else:
                     # Fallback: use max recommended if we can't estimate model size
                     max_rec_size = mx.metal.device_info()["max_recommended_working_set_size"]
                     old_wired_limit = mx.set_wired_limit(max_rec_size)
-                    print(
-                        f"[INFO] Could not estimate model size, using max recommended: "
-                        f"{max_rec_size / (1024**3):.2f} GB. Cache disabled to prevent unwiring."
+                    logger.info(
+                        "Could not estimate model size, using max recommended: %.2f GB. "
+                        "Cache disabled to prevent unwiring.",
+                        max_rec_size / (1024**3),
                     )
 
                 if lazy:
-                    print(
-                        "[WARNING] Lazy loading enabled. Use lazy=False for best wired memory effectiveness."
+                    logger.warning(
+                        "Lazy loading enabled. Use lazy=False for best wired memory effectiveness."
                     )
             except Exception as e:
-                print(f"[WARNING] Failed to set wired limit: {e}")
+                logger.warning("Failed to set wired limit: %s", e)
                 mlock = False
                 if old_cache_limit is not None:
                     mx.set_cache_limit(old_cache_limit)
@@ -376,18 +386,18 @@ def load_model_standalone(
 
                 # Report model size
                 actual_bytes = sum(p.nbytes for p in param_arrays)
-                print(
-                    f"[INFO] Model loaded: {actual_bytes / (1024**3):.2f} GB. "
-                    f"Wired limit remains set - parameters should stay wired as long as model is alive."
+                logger.info(
+                    "Model loaded: %.2f GB. Wired limit remains set - parameters should stay wired as long as model is alive.",
+                    actual_bytes / (1024**3),
                 )
-                print(
-                    f"[INFO] To verify wired memory, check Activity Monitor: "
-                    f"Python process should show ~{actual_bytes / (1024**3):.2f} GB in 'Wired Memory' column."
+                logger.info(
+                    "To verify wired memory, check Activity Monitor: Python process should show ~%.2f GB in 'Wired Memory' column.",
+                    actual_bytes / (1024**3),
                 )
             else:
-                print("[WARNING] No parameter arrays found in model.")
+                logger.warning("No parameter arrays found in model.")
         except Exception as e:
-            print(f"[WARNING] Could not wire model parameters: {e}")
+            logger.warning("Could not wire model parameters: %s", e)
 
     # NOTE: We intentionally do NOT restore the wired limit here.
     # The wired limit must stay set for the lifetime of the model to keep buffers wired.

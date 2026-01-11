@@ -608,3 +608,4 @@ configs/*
 !configs/dialogue.example.txt
 docs/archive*
 docs/dependency-updates*
+AGENTS.md

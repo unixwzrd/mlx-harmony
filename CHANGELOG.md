@@ -1,9 +1,31 @@
 # Changelog
 
+**Created**: 2026-01-11
+**Updated**: 2026-01-11
+
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 2026-01-11 - Unreleased
+
+### Added
+
+- Debug logging now captures full prompts and full responses for Harmony runs, with optional token logging for prompt/response (`--debug-tokens in|out|both`).
+- New helper modules for chat decomposition and Harmony parsing to keep `chat.py` focused.
+- Test guard to skip `@requires_model` tests unless `MLX_HARMONY_RUN_MODEL_TESTS=1` is set.
+
+### Changed
+
+- Prompt config is Pydantic-based, with explicit validation and corrected `example_dialogues` shape.
+- Harmony prompt construction is consolidated to reduce duplication.
+- Tool parsing now handles list-based message content and aligns with Harmony `Author` requirements.
+
+### Fixed
+
+- Placeholder parsing now supports lower-case `<|assistant|>` and similar variants.
+- Server profile loading can be patched in tests with consistent imports.
 
 ## 2025-01-28 - v0.3.0
 

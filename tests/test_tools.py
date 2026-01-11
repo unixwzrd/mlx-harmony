@@ -15,7 +15,7 @@ class TestToolParsing:
 
     def test_parse_simple_tool_call(self):
         """Test parsing a simple tool call."""
-        from openai_harmony import Message, Role, TextContent
+        from openai_harmony import Author, Message, Role, TextContent
 
         from mlx_harmony.tools import ToolConfig
 
@@ -23,6 +23,7 @@ class TestToolParsing:
         tool_content = TextContent(text='{"url": "https://example.com"}')
         msg = Message(
             role=Role.ASSISTANT,
+            author=Author(role=Role.ASSISTANT),
             content=[tool_content],
             recipient="browser.navigate",
         )
@@ -36,17 +37,19 @@ class TestToolParsing:
 
     def test_parse_multiple_tool_calls(self):
         """Test parsing multiple tool calls."""
-        from openai_harmony import Message, Role, TextContent
+        from openai_harmony import Author, Message, Role, TextContent
 
         from mlx_harmony.tools import ToolConfig
 
         msg1 = Message(
             role=Role.ASSISTANT,
+            author=Author(role=Role.ASSISTANT),
             content=[TextContent(text='{"url": "https://example.com"}')],
             recipient="browser.navigate",
         )
         msg2 = Message(
             role=Role.ASSISTANT,
+            author=Author(role=Role.ASSISTANT),
             content=[TextContent(text='{"code": "print(\\"hello\\")"}')],
             recipient="python.execute",
         )
@@ -63,13 +66,13 @@ class TestToolParsing:
 
     def test_parse_no_tool_calls(self):
         """Test parsing messages with no tool calls."""
-        from openai_harmony import Message, Role, TextContent
+        from openai_harmony import Author, Message, Role, TextContent
 
         from mlx_harmony.tools import ToolConfig
 
         messages = [
-            Message(role=Role.USER, content=[TextContent(text="Hello")]),
-            Message(role=Role.ASSISTANT, content=[TextContent(text="Hi there!")]),
+            Message(role=Role.USER, author=Author(role=Role.USER), content=[TextContent(text="Hello")]),
+            Message(role=Role.ASSISTANT, author=Author(role=Role.ASSISTANT), content=[TextContent(text="Hi there!")]),
         ]
         enabled_tools = [ToolConfig(name="browser", enabled=True)]
         tool_calls = parse_tool_calls_from_messages(messages, enabled_tools)
@@ -89,14 +92,18 @@ class TestToolExecution:
 
     def test_execute_browser_tool(self):
         """Test executing browser tool (stub)."""
-        from openai_harmony import Message, Role, TextContent
+        from openai_harmony import Author, Message, Role, TextContent
 
         from mlx_harmony.tools import ToolCall
 
         tool_call = ToolCall(
             tool_name="browser",
             arguments={"url": "https://example.com"},
-            raw_message=Message(role=Role.ASSISTANT, content=[TextContent(text="")]),
+            raw_message=Message(
+                role=Role.ASSISTANT,
+                author=Author(role=Role.ASSISTANT),
+                content=[TextContent(text="")],
+            ),
         )
         result = execute_tool_call(tool_call)
         # Currently stubbed, should return a JSON string
@@ -108,14 +115,18 @@ class TestToolExecution:
 
     def test_execute_python_tool(self):
         """Test executing Python tool (stub)."""
-        from openai_harmony import Message, Role, TextContent
+        from openai_harmony import Author, Message, Role, TextContent
 
         from mlx_harmony.tools import ToolCall
 
         tool_call = ToolCall(
             tool_name="python",
             arguments={"code": "print('hello')"},
-            raw_message=Message(role=Role.ASSISTANT, content=[TextContent(text="")]),
+            raw_message=Message(
+                role=Role.ASSISTANT,
+                author=Author(role=Role.ASSISTANT),
+                content=[TextContent(text="")],
+            ),
         )
         result = execute_tool_call(tool_call)
         # Currently stubbed, should return a JSON string

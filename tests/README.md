@@ -1,15 +1,18 @@
 # Test Suite
 
+**Created**: 2026-01-11
+**Updated**: 2026-01-11
+
 This directory contains the test suite for `mlx-harmony`.
 
 ## Test Structure
 
-- `test_imports.py` - Basic import tests (fast, no model required)
-- `test_config.py` - Config loading, placeholder expansion, profile management
-- `test_generator.py` - TokenGenerator tests (requires model download)
-- `test_tools.py` - Tool parsing and execution tests
-- `test_chat.py` - Conversation save/load and integration tests
-- `conftest.py` - Shared fixtures and test configuration
+- [test_imports.py](test_imports.py) - Basic import tests (fast, no model required)
+- [test_config.py](test_config.py) - Config loading, placeholder expansion, profile management
+- [test_generator.py](test_generator.py) - TokenGenerator tests (requires model download)
+- [test_tools.py](test_tools.py) - Tool parsing and execution tests
+- [test_chat.py](test_chat.py) - Conversation save/load and integration tests
+- [conftest.py](conftest.py) - Shared fixtures and test configuration
 
 ## Running Tests
 
@@ -35,6 +38,14 @@ pytest tests/test_config.py
 
 # Run specific test
 pytest tests/test_config.py::TestPlaceholderExpansion::test_date_placeholder
+```
+
+### Run Model Tests
+
+Model tests are skipped by default. To enable them, set `MLX_HARMONY_RUN_MODEL_TESTS=1`.
+
+```bash
+MLX_HARMONY_RUN_MODEL_TESTS=1 pytest -m "requires_model"
 ```
 
 ### Run Tests by Category
@@ -65,31 +76,31 @@ This model is small enough for CI/CD and local testing while still exercising th
 
 Current test coverage includes:
 
-- ✅ **Config Module**
+- [x] **Config Module**
   - Placeholder expansion (date, time, user-defined)
   - Config loading from JSON
   - Profile loading
   - Dialogue parsing
 
-- ✅ **Generator Module**
+- [x] **Generator Module**
   - Model loading
   - Format detection (GPT-OSS vs other models)
   - Token generation
   - Sampling parameters
   - Stop sequences
 
-- ✅ **Tools Module**
+- [x] **Tools Module**
   - Tool call parsing
   - Tool execution (stubs)
   - Tool configuration
 
-- ✅ **Chat Module**
+- [x] **Chat Module**
   - Conversation save/load
   - Metadata preservation
   - Timestamps
   - Hyperparameters per turn
 
-- ⏳ **Integration Tests** (planned)
+- [ ] **Integration Tests** (planned)
   - End-to-end chat flow
   - Tool call integration
   - Server API endpoints
@@ -125,7 +136,7 @@ def test_integration():
 
 ### Fixtures
 
-Common fixtures are available in `conftest.py`:
+Common fixtures are available in [conftest.py](conftest.py):
 
 - `test_model_path` - HuggingFace model path for testing
 - `temp_dir` - Temporary directory for test output

@@ -1,6 +1,7 @@
 """
 Pytest configuration and shared fixtures for mlx-harmony tests.
 """
+import os
 from pathlib import Path
 
 import pytest
@@ -79,3 +80,20 @@ def sample_conversation() -> list:
             "hyperparameters": {"temperature": 0.7, "max_tokens": 100},
         },
     ]
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """
+    Skip model-dependent tests unless explicitly enabled.
+
+    Set MLX_HARMONY_RUN_MODEL_TESTS=1 to run tests marked with @pytest.mark.requires_model.
+    """
+    if os.environ.get("MLX_HARMONY_RUN_MODEL_TESTS") == "1":
+        return
+
+    skip_marker = pytest.mark.skip(
+        reason="requires_model tests disabled unless MLX_HARMONY_RUN_MODEL_TESTS=1"
+    )
+    for item in items:
+        if "requires_model" in item.keywords:
+            item.add_marker(skip_marker)

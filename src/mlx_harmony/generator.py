@@ -19,9 +19,6 @@ from openai_harmony import (
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
-from mlx_harmony.generate_standalone import stream_generate
-from mlx_harmony.loader import load_model_standalone
-from mlx_harmony.sampling import make_logits_processors, make_sampler
 
 
 class TokenGenerator:
@@ -53,6 +50,9 @@ class TokenGenerator:
                 (mlock equivalent, macOS Metal only). Default: False
         """
         # Use standalone loader (no pre-warming, filesystem cache handles it naturally)
+        # Imported lazily to avoid initializing MLX during module import.
+        from mlx_harmony.loader import load_model_standalone
+
         self.model, self.tokenizer = load_model_standalone(
             model_path,
             lazy=lazy,
@@ -164,6 +164,10 @@ class TokenGenerator:
         - GPT-OSS models: Uses Harmony format.
         - Other models: Uses the model's native chat template.
         """
+        # Imported lazily to avoid MLX initialization during module import.
+        from mlx_harmony.generate_standalone import stream_generate
+        from mlx_harmony.sampling import make_logits_processors, make_sampler
+
         # For Harmony models, get token IDs directly (don't convert to string and back)
         # This avoids double-encoding: Harmony encoding tokens -> string -> native tokenizer tokens
         if self.use_harmony and self.encoding and messages:
@@ -386,116 +390,39 @@ class TokenGenerator:
             return self._harmony_messages_to_prompt(messages, system_message)
         return self._native_messages_to_prompt(messages, system_message)
 
+    def render_prompt_tokens(
+        self,
+        messages: List[Dict[str, str]],
+        system_message: Optional[str] = None,
+    ) -> List[int]:
+        """
+        Convert messages to token IDs using the appropriate format.
+        Uses Harmony encoding tokens for GPT-OSS and native tokenizer tokens otherwise.
+        """
+        if self.prompt_config and self.prompt_config.placeholders:
+            messages = [
+                {
+                    **msg,
+                    "content": apply_placeholders(
+                        msg.get("content"), self.prompt_config.placeholders
+                    ),
+                }
+                for msg in messages
+            ]
+
+        if self.use_harmony and self.encoding is not None:
+            return self._harmony_messages_to_token_ids(messages, system_message)
+
+        prompt_text = self._native_messages_to_prompt(messages, system_message)
+        return self.tokenizer.encode(prompt_text)
+
     def _harmony_messages_to_prompt(
         self,
         messages: List[Dict[str, str]],
         system_message: Optional[str] = None,
     ) -> str:
         """Convert messages using Harmony format (GPT-OSS only)."""
-        harmony_messages: List[Message] = []
-
-        # Build SystemContent with sensible defaults plus optional overrides.
-        sys_content = SystemContent.new()
-        cfg = self.prompt_config
-
-        # Model identity: CLI system_message wins, then config, then default.
-        if system_message:
-            sys_content = sys_content.with_model_identity(system_message)
-        elif cfg and cfg.system_model_identity:
-            sys_content = sys_content.with_model_identity(cfg.system_model_identity)
-
-        # Reasoning effort.
-        if cfg and cfg.reasoning_effort:
-            try:
-                effort = ReasoningEffort(cfg.reasoning_effort.capitalize())
-                sys_content = sys_content.with_reasoning_effort(effort)
-            except ValueError:
-                # Ignore invalid value; keep default.
-                pass
-
-        # Conversation start date (config or default to today for GPT-OSS).
-        if cfg and cfg.conversation_start_date:
-            sys_content = sys_content.with_conversation_start_date(
-                cfg.conversation_start_date
-            )
-        else:
-            sys_content = sys_content.with_conversation_start_date(
-                datetime.now().strftime("%Y-%m-%d")
-            )
-
-        # Knowledge cutoff.
-        if cfg and cfg.knowledge_cutoff:
-            sys_content = sys_content.with_knowledge_cutoff(cfg.knowledge_cutoff)
-
-        # Add system message first.
-        harmony_messages.append(
-            Message.from_role_and_content(Role.SYSTEM, sys_content),
-        )
-
-        # Optional developer message.
-        if cfg and cfg.developer_instructions:
-            dev_content = DeveloperContent.new().with_instructions(
-                cfg.developer_instructions
-            )
-            harmony_messages.append(
-                Message.from_role_and_content(Role.DEVELOPER, dev_content),
-            )
-
-        # Add example dialogues (few-shot examples) before actual conversation
-        # These are part of the prompt but not sent every time like system/developer
-        if cfg and cfg.example_dialogues:
-            for example_turns in cfg.example_dialogues:
-                for turn in example_turns:
-                    role_str = turn.get("role", "user").strip().lower()
-                    if role_str == "tool":
-                        # Handle tool messages in examples
-                        tool_name = turn.get("name")
-                        if tool_name:
-                            author = Author(role=Role.TOOL, name=tool_name)
-                            content = TextContent(text=turn.get("content", ""))
-                            tool_msg = Message.from_author_and_content(author, content)
-                            if turn.get("recipient"):
-                                tool_msg = tool_msg.with_recipient(turn["recipient"])
-                            harmony_messages.append(tool_msg)
-                    else:
-                        # Standard messages in examples
-                        role = Role(role_str)
-                        content = TextContent(text=turn.get("content", ""))
-                        harmony_messages.append(
-                            Message.from_role_and_content(role, content),
-                        )
-
-        for msg in messages:
-            role_str = msg.get("role", "user").strip().lower()
-
-            # Handle tool messages: Role.TOOL with name in Author.name
-            # Only treat as tool message if role is explicitly "tool"
-            if role_str == "tool":
-                tool_name = msg.get("name")
-                if not tool_name:
-                    # Tool messages require a name field; skip invalid message
-                    continue
-                author = Author(role=Role.TOOL, name=tool_name)
-                content_text = msg.get("content", "")
-                content = TextContent(text=content_text)
-                tool_msg = Message.from_author_and_content(author, content)
-                # Set recipient if specified (tool results go to assistant)
-                if msg.get("recipient"):
-                    tool_msg = tool_msg.with_recipient(msg["recipient"])
-                # Set channel if specified (e.g., "commentary")
-                if msg.get("channel"):
-                    tool_msg = tool_msg.with_channel(msg["channel"])
-                harmony_messages.append(tool_msg)
-            else:
-                # Standard message: user, assistant, system, developer
-                role = Role(role_str)
-                content_text = msg.get("content", "")
-                content = TextContent(text=content_text)
-                harmony_messages.append(
-                    Message.from_role_and_content(role, content),
-                )
-
-        conversation = Conversation.from_messages(harmony_messages)
+        conversation = self._build_harmony_conversation(messages, system_message)
         prompt_tokens = self.encoding.render_conversation_for_completion(
             conversation, Role.ASSISTANT
         )
@@ -509,29 +436,34 @@ class TokenGenerator:
         system_message: Optional[str] = None,
     ) -> List[int]:
         """Convert messages to token IDs using Harmony format (for direct token ID passing)."""
-        # Reuse the same logic as _harmony_messages_to_prompt, but return token IDs instead of string
-        harmony_messages: List[Message] = []
+        conversation = self._build_harmony_conversation(messages, system_message)
+        prompt_tokens = self.encoding.render_conversation_for_completion(
+            conversation, Role.ASSISTANT
+        )
+        # Return token IDs directly (don't decode to string)
+        return prompt_tokens
 
-        # Build SystemContent with sensible defaults plus optional overrides.
+    def _build_harmony_conversation(
+        self,
+        messages: List[Dict[str, str]],
+        system_message: Optional[str],
+    ) -> Conversation:
+        harmony_messages: List[Message] = []
         sys_content = SystemContent.new()
         cfg = self.prompt_config
 
-        # Model identity: CLI system_message wins, then config, then default.
         if system_message:
             sys_content = sys_content.with_model_identity(system_message)
         elif cfg and cfg.system_model_identity:
             sys_content = sys_content.with_model_identity(cfg.system_model_identity)
 
-        # Reasoning effort.
         if cfg and cfg.reasoning_effort:
             try:
                 effort = ReasoningEffort(cfg.reasoning_effort.capitalize())
                 sys_content = sys_content.with_reasoning_effort(effort)
             except ValueError:
-                # Ignore invalid value; keep default.
                 pass
 
-        # Conversation start date (config or default to today for GPT-OSS).
         if cfg and cfg.conversation_start_date:
             sys_content = sys_content.with_conversation_start_date(
                 cfg.conversation_start_date
@@ -541,16 +473,13 @@ class TokenGenerator:
                 datetime.now().strftime("%Y-%m-%d")
             )
 
-        # Knowledge cutoff.
         if cfg and cfg.knowledge_cutoff:
             sys_content = sys_content.with_knowledge_cutoff(cfg.knowledge_cutoff)
 
-        # Add system message first.
         harmony_messages.append(
             Message.from_role_and_content(Role.SYSTEM, sys_content),
         )
 
-        # Optional developer message.
         if cfg and cfg.developer_instructions:
             dev_content = DeveloperContent.new().with_instructions(
                 cfg.developer_instructions
@@ -559,14 +488,11 @@ class TokenGenerator:
                 Message.from_role_and_content(Role.DEVELOPER, dev_content),
             )
 
-        # Add example dialogues (few-shot examples) before actual conversation
-        # These are part of the prompt but not sent every time like system/developer
         if cfg and cfg.example_dialogues:
             for example_turns in cfg.example_dialogues:
                 for turn in example_turns:
                     role_str = turn.get("role", "user").strip().lower()
                     if role_str == "tool":
-                        # Handle tool messages in examples
                         tool_name = turn.get("name")
                         if tool_name:
                             author = Author(role=Role.TOOL, name=tool_name)
@@ -576,7 +502,6 @@ class TokenGenerator:
                                 tool_msg = tool_msg.with_recipient(turn["recipient"])
                             harmony_messages.append(tool_msg)
                     else:
-                        # Standard messages in examples
                         role = Role(role_str)
                         content = TextContent(text=turn.get("content", ""))
                         harmony_messages.append(
@@ -585,27 +510,20 @@ class TokenGenerator:
 
         for msg in messages:
             role_str = msg.get("role", "user").strip().lower()
-
-            # Handle tool messages: Role.TOOL with name in Author.name
-            # Only treat as tool message if role is explicitly "tool"
             if role_str == "tool":
                 tool_name = msg.get("name")
                 if not tool_name:
-                    # Tool messages require a name field; skip invalid message
                     continue
                 author = Author(role=Role.TOOL, name=tool_name)
                 content_text = msg.get("content", "")
                 content = TextContent(text=content_text)
                 tool_msg = Message.from_author_and_content(author, content)
-                # Set recipient if specified (tool results go to assistant)
                 if msg.get("recipient"):
                     tool_msg = tool_msg.with_recipient(msg["recipient"])
-                # Set channel if specified (e.g., "commentary")
                 if msg.get("channel"):
                     tool_msg = tool_msg.with_channel(msg["channel"])
                 harmony_messages.append(tool_msg)
             else:
-                # Standard message: user, assistant, system, developer
                 role = Role(role_str)
                 content_text = msg.get("content", "")
                 content = TextContent(text=content_text)
@@ -613,12 +531,7 @@ class TokenGenerator:
                     Message.from_role_and_content(role, content),
                 )
 
-        conversation = Conversation.from_messages(harmony_messages)
-        prompt_tokens = self.encoding.render_conversation_for_completion(
-            conversation, Role.ASSISTANT
-        )
-        # Return token IDs directly (don't decode to string)
-        return prompt_tokens
+        return Conversation.from_messages(harmony_messages)
 
     def _native_messages_to_prompt(
         self,

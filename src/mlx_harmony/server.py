@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from mlx_harmony.config import load_profiles, load_prompt_config
 from mlx_harmony.generator import TokenGenerator
 
 app = FastAPI(title="MLX Harmony API")
@@ -44,8 +45,6 @@ def _get_generator(model: str, prompt_config_path: Optional[str]) -> TokenGenera
         or _generator.model_path != model
         or _generator_prompt_config_path != prompt_config_path
     ):
-        from .config import load_prompt_config
-
         prompt_cfg = load_prompt_config(prompt_config_path) if prompt_config_path else None
         _generator = TokenGenerator(model, prompt_config=prompt_cfg)
         _generator_prompt_config_path = prompt_config_path
@@ -67,8 +66,6 @@ async def chat_completions(request: ChatRequest):
     model_path = request.model
     prompt_config_path = request.prompt_config
     if request.profile:
-        from .config import load_profiles
-
         profiles = load_profiles("configs/profiles.example.json")
         if request.profile not in profiles:
             raise HTTPException(
@@ -142,4 +139,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

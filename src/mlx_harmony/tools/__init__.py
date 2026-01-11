@@ -9,23 +9,25 @@ with results fed back into the conversation.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from openai_harmony import Message, TextContent
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass
-class ToolConfig:
+class ToolConfig(BaseModel):
     """Lightweight description of an enabled tool."""
+
+    model_config = ConfigDict(extra="ignore")
 
     name: str
     enabled: bool
 
 
-@dataclass
-class ToolCall:
+class ToolCall(BaseModel):
     """Represents a parsed tool call from a Harmony message."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     tool_name: str
     arguments: Dict[str, Any]
@@ -56,13 +58,18 @@ def parse_tool_calls_from_messages(
 
         # Extract arguments from message content
         content = msg.content
+        text = ""
         if isinstance(content, TextContent):
             text = content.text or ""
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, TextContent):
+                    text += part.text or ""
+
+        if text:
             try:
-                # Try to parse as JSON
                 arguments = json.loads(text)
             except (json.JSONDecodeError, TypeError):
-                # Fallback: treat as raw string argument
                 arguments = {"input": text}
         else:
             arguments = {}

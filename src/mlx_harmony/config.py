@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, ConfigDict, Field
 
-@dataclass
-class PromptConfig:
+
+class PromptConfig(BaseModel):
     """
     Configuration for Harmony prompt fragments and default sampling parameters.
     """
+
+    model_config = ConfigDict(extra="ignore")
 
     # Harmony system/developer fields (GPT-OSS only)
     system_model_identity: Optional[str] = None
@@ -22,39 +24,92 @@ class PromptConfig:
     developer_instructions: Optional[str] = None
     assistant_greeting: Optional[str] = None
 
-    # Example dialogues (few-shot examples) - list of conversation turns
-    # Format: [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}, ...]
-    example_dialogues: Optional[List[Dict[str, str]]] = None
+    # Example dialogues (few-shot examples) - list of conversations, each with turns
+    # Format: [[{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}], ...]
+    example_dialogues: Optional[List[List[Dict[str, str]]]] = None
 
     # User-defined placeholders for template expansion
-    placeholders: Dict[str, str] = field(default_factory=dict)
+    placeholders: Dict[str, str] = Field(default_factory=dict)
 
     # Sampling defaults (any model)
-    max_tokens: Optional[int] = None  # Maximum tokens to generate (default: 1024 for Harmony, 512 otherwise)
-    temperature: Optional[float] = None  # Sampling temperature (0.0-2.0, higher = more creative)
-    top_p: Optional[float] = None  # Nucleus sampling (0.0-1.0, keep tokens with cumulative probability <= top_p)
-    min_p: Optional[float] = None  # Minimum probability threshold (0.0-1.0, filter low-probability tokens)
-    min_tokens_to_keep: Optional[int] = None  # Minimum tokens to keep after filtering (default: 1)
-    top_k: Optional[int] = None  # Top-k sampling (keep only top k tokens, 0 = disabled)
-    xtc_probability: Optional[float] = None  # XTC sampling probability (0.0-1.0, experimental)
-    xtc_threshold: Optional[float] = None  # XTC sampling threshold (experimental)
+    max_tokens: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Maximum tokens to generate (default: 1024 for Harmony, 512 otherwise)",
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature (0.0-2.0, higher = more creative)",
+    )
+    top_p: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Nucleus sampling (0.0-1.0, keep tokens with cumulative probability <= top_p)",
+    )
+    min_p: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum probability threshold (0.0-1.0, filter low-probability tokens)",
+    )
+    min_tokens_to_keep: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Minimum tokens to keep after filtering (default: 1)",
+    )
+    top_k: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Top-k sampling (keep only top k tokens, 0 = disabled)",
+    )
+    xtc_probability: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="XTC sampling probability (0.0-1.0, experimental)",
+    )
+    xtc_threshold: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=0.5,
+        description="XTC sampling threshold (experimental)",
+    )
     xtc_special_tokens: Optional[List[int]] = None  # Token IDs to exclude from XTC filtering (e.g., EOS, newline). Auto-detected if None.
-    repetition_penalty: Optional[float] = None  # Repetition penalty (>1.0 penalizes repetition, 1.0 = no penalty)
-    repetition_context_size: Optional[int] = None  # Number of previous tokens to consider for repetition penalty
+    repetition_penalty: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description="Repetition penalty (>1.0 penalizes repetition, 1.0 = no penalty)",
+    )
+    repetition_context_size: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Number of previous tokens to consider for repetition penalty",
+    )
 
     # Model loading optimizations
     mlock: Optional[bool] = None  # Lock model weights in memory using mlock (macOS Metal only, default: False)
 
     # Display truncation limits
-    truncate_thinking: Optional[int] = None  # Truncate thinking/analysis text to N chars (default: 1000)
-    truncate_response: Optional[int] = None  # Truncate final response text to N chars (default: 1000)
+    truncate_thinking: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Truncate thinking/analysis text to N chars (default: 1000)",
+    )
+    truncate_response: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Truncate final response text to N chars (default: 1000)",
+    )
 
     # Directory configuration
     logs_dir: Optional[str] = None  # Directory for debug logs (default: "logs")
     chats_dir: Optional[str] = None  # Directory for chat history files (default: "logs")
 
 
-_PLACEHOLDER_RE = re.compile(r"<\|([A-Z_]+)\|>")
+_PLACEHOLDER_RE = re.compile(r"<\|([A-Za-z_]+)\|>")
 
 
 def _render_placeholders(value: str, user_placeholders: Dict[str, str]) -> str:
