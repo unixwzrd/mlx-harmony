@@ -7,12 +7,24 @@
   "assistant_greeting": "Hello {user}, I'm {assistant}. How can I help you today?",
   "example_dialogues": [
     [
-      {"role": "user", "content": "Hello, how can you help me?"},
-      {"role": "assistant", "content": "Hello {user}! I'm {assistant} and I'm here to help with any questions or tasks you have. What can I do for you today?"}
+      {
+        "role": "user",
+        "content": "Hello, how can you help me?"
+      },
+      {
+        "role": "assistant",
+        "content": "Hello {user}! I'm {assistant} and I'm here to help with any questions or tasks you have. What can I do for you today?"
+      }
     ],
     [
-      {"role": "user", "content": "What's the weather like?"},
-      {"role": "assistant", "content": "I don't have access to real-time weather data, but I can help you find weather information or answer other questions. What else can I help with?"}
+      {
+        "role": "user",
+        "content": "What's the weather like?"
+      },
+      {
+        "role": "assistant",
+        "content": "I don't have access to real-time weather data, but I can help you find weather information or answer other questions. What else can I help with?"
+      }
     ]
   ],
   "placeholders": {
@@ -21,6 +33,7 @@
     "user": "Morgan"
   },
   "max_tokens": 1024,
+  "max_context_tokens": 4096,
   "temperature": 0.8,
   "top_p": 0.9,
   "top_k": 40,
@@ -32,6 +45,9 @@
   "repetition_penalty": 1.0,
   "repetition_context_size": 20,
   "mlock": true,
+  "lazy": false,
+  "seed": -1,
+  "reseed_each_turn": false,
   "truncate_thinking": 1000,
   "truncate_response": 1000,
   "logs_dir": "logs",

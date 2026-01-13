@@ -6,7 +6,12 @@ Tests conversation saving/loading, hyperparameter changes, and chat flow.
 import json
 from pathlib import Path
 
+from mlx_harmony import chat_io
 from mlx_harmony.chat import load_conversation, save_conversation
+from mlx_harmony.chat_history import normalize_dir_path
+from mlx_harmony.chat_io import read_user_input
+from mlx_harmony.chat_prompt import truncate_conversation_for_context
+from mlx_harmony.chat_utils import parse_command
 
 
 class TestConversationIO:
@@ -25,9 +30,12 @@ class TestConversationIO:
         )
         assert chat_file.exists()
         data = json.loads(chat_file.read_text(encoding="utf-8"))
-        assert "metadata" in data
-        assert "messages" in data
-        assert len(data["messages"]) == 2
+        assert data["schema_version"] == 2
+        assert "chats" in data
+        assert "chat_order" in data
+        chat_id = data["active_chat_id"]
+        assert chat_id in data["chats"]
+        assert len(data["chats"][chat_id]["messages"]) == 2
 
     def test_load_conversation(self, sample_conversation: list, temp_dir: Path):
         """Test loading a conversation from JSON."""
@@ -46,6 +54,7 @@ class TestConversationIO:
         assert len(messages) == 2
         assert metadata["model_path"] == "test-model"
         assert "hyperparameters" in metadata
+        assert "chat_id" in metadata
 
     def test_conversation_metadata(self, sample_conversation: list, temp_dir: Path):
         """Test that conversation metadata is preserved."""
@@ -64,6 +73,7 @@ class TestConversationIO:
         assert "browser" in metadata["tools"]
         assert metadata["hyperparameters"]["temperature"] == 0.7
         assert metadata["hyperparameters"]["max_tokens"] == 100
+        assert metadata["last_prompt_config_path"] == "test-config.json"
 
     def test_conversation_timestamps(self, sample_conversation: list, temp_dir: Path):
         """Test that timestamps are preserved in conversations."""
@@ -91,6 +101,59 @@ class TestConversationIO:
         assistant_msg = next((m for m in messages if m["role"] == "assistant"), None)
         assert assistant_msg is not None
         assert "hyperparameters" in assistant_msg
+
+
+class TestChatHelpers:
+    """Test chat helper utilities."""
+
+    def test_normalize_dir_path(self):
+        """Normalize logs path to avoid nested logs/log."""
+        assert str(normalize_dir_path("logs/log")) == "logs"
+        assert str(normalize_dir_path("logs/logs")) == "logs"
+
+    def test_parse_command_set(self):
+        """Ensure parse_command handles \\set updates."""
+        handled, should_apply, _, updates = parse_command(
+            "\\set temperature=0.7", {}
+        )
+        assert handled is True
+        assert should_apply is True
+        assert updates["temperature"] == 0.7
+
+    def test_read_user_input_continuation(self, monkeypatch):
+        """Allow multi-line input using a trailing backslash."""
+        inputs = iter(["first line\\", "second line"])
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+        monkeypatch.setattr(chat_io.select, "select", lambda *_: ([], [], []))
+        assert read_user_input(">> ") == "first line\nsecond line"
+
+    def test_read_user_input_block(self, monkeypatch):
+        """Allow block input using \\ start/end markers."""
+        inputs = iter(["\\", "first line", "second line", "\\"])
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+        assert read_user_input(">> ") == "first line\nsecond line"
+
+    def test_truncate_conversation_for_context(self):
+        """Truncate oldest messages to respect max_context_tokens."""
+        class StubGenerator:
+            def render_prompt_tokens(self, messages, _system_message=None):
+                return list(range(len(messages) * 4))
+
+        generator = StubGenerator()
+        conversation = [
+            {"role": "user", "content": "oldest"},
+            {"role": "assistant", "content": "reply"},
+            {"role": "user", "content": "newest"},
+        ]
+        trimmed, prompt_tokens = truncate_conversation_for_context(
+            generator=generator,
+            conversation=conversation,
+            system_message=None,
+            max_context_tokens=8,
+        )
+        assert len(trimmed) == 2
+        assert prompt_tokens <= 8
+        assert trimmed[0]["content"] == "reply"
 
 
 class TestChatIntegration:
@@ -133,3 +196,37 @@ class TestChatIntegration:
         assert len(messages) == 3
         # created_at should be preserved
         assert "created_at" in metadata
+
+    def test_chat_history_round_trip(self, temp_dir: Path):
+        """Ensure timestamps and hyperparameters are preserved after save/load."""
+        chat_file = temp_dir / "round_trip.json"
+        conversation = [
+            {
+                "role": "user",
+                "content": "Hi",
+                "timestamp": "2025-01-07T12:00:00Z",
+            },
+            {
+                "role": "assistant",
+                "content": "Hello",
+                "timestamp": "2025-01-07T12:00:01Z",
+                "hyperparameters": {"temperature": 0.5, "max_tokens": 42},
+            },
+        ]
+        save_conversation(
+            chat_file,
+            conversation,
+            model_path="test-model",
+            hyperparameters={"temperature": 0.5, "max_tokens": 42},
+        )
+        messages, metadata = load_conversation(chat_file)
+        assert len(messages) == 2
+        assert messages[0].get("id")
+        assert messages[0].get("cache_key")
+        assert messages[1].get("id")
+        assert messages[1].get("cache_key")
+        assert messages[1].get("parent_id") == messages[0]["id"]
+        assert messages[0]["timestamp"]["iso"] == "2025-01-07T12:00:00Z"
+        assert messages[1]["hyperparameters"]["temperature"] == 0.5
+        assert metadata["hyperparameters"]["max_tokens"] == 42
+        assert metadata["last_hyperparameters"]["max_tokens"] == 42

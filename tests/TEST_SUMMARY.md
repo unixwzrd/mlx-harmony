@@ -1,7 +1,7 @@
 # Test Suite Summary
 
-**Created**: 2026-01-07  
-**Last Updated**: 2026-01-07
+**Created**: 2026-01-07
+**Updated**: 2026-01-12
 
 ## Overview
 
@@ -9,13 +9,13 @@ The `mlx-harmony` test suite provides comprehensive coverage of core functionali
 
 ## Test Files
 
-### `test_imports.py`
+### [test_imports.py](./test_imports.py)
 
 - **Purpose**: Basic import smoke tests
 - **Speed**: Fast (no model required)
 - **Coverage**: Verifies all modules can be imported
 
-### `test_config.py`
+### [test_config.py](./test_config.py)
 
 - **Purpose**: Config module testing
 - **Speed**: Fast (no model required)
@@ -25,7 +25,7 @@ The `mlx-harmony` test suite provides comprehensive coverage of core functionali
   - Profile loading
   - Dialogue text parsing
 
-### `test_generator.py`
+### [test_generator.py](./test_generator.py)
 
 - **Purpose**: TokenGenerator testing
 - **Speed**: Slow (requires model download on first run)
@@ -38,7 +38,7 @@ The `mlx-harmony` test suite provides comprehensive coverage of core functionali
   - Stop sequences
   - Prompt config integration
 
-### `test_tools.py`
+### [test_tools.py](./test_tools.py)
 
 - **Purpose**: Tool parsing and execution
 - **Speed**: Fast (no model required)
@@ -47,7 +47,7 @@ The `mlx-harmony` test suite provides comprehensive coverage of core functionali
   - Tool execution (stubs)
   - Tool configuration
 
-### `test_chat.py`
+### [test_chat.py](./test_chat.py)
 
 - **Purpose**: Chat module integration tests
 - **Speed**: Fast (no model required)
@@ -58,7 +58,7 @@ The `mlx-harmony` test suite provides comprehensive coverage of core functionali
   - Hyperparameters per turn
   - Conversation appending
 
-### `test_server.py`
+### [test_server.py](./test_server.py)
 
 - **Purpose**: HTTP API server tests
 - **Speed**: Fast (with mocks) / Slow (with real model)
@@ -117,9 +117,17 @@ pytest -m "requires_model"
 pytest -m "not integration"
 ```
 
+## Profiling
+
+For performance profiling with deterministic inputs (no typing delays), use the stdin harness described in [scripts/README.md](../scripts/README.md):
+
+```bash
+scripts/profile_chat_stdin.sh models/your-model
+```
+
 ## Test Coverage
 
-### ✅ Covered
+### Covered
 
 - Config loading and validation
 - Placeholder expansion (all types)
@@ -132,8 +140,9 @@ pytest -m "not integration"
 - Tool parsing
 - Conversation save/load
 - Metadata preservation
+- Chat schema migration (v1 to v2)
 
-### ⏳ Planned
+### Planned
 
 - End-to-end chat flow with model
 - Server API endpoints
@@ -143,7 +152,7 @@ pytest -m "not integration"
 
 ## Fixtures
 
-Common fixtures in `conftest.py`:
+Common fixtures in [conftest.py](./conftest.py):
 
 - `test_model_path` - HuggingFace model path for testing
 - `temp_dir` - Temporary directory for test output
@@ -163,11 +172,11 @@ Tests are designed for CI/CD:
 
 ## Next Steps
 
-1. Add server API tests (`test_server.py`)
-2. Add end-to-end integration tests with full chat flow
-3. Set up CI/CD (GitHub Actions)
-4. Add coverage reporting
-5. Add performance benchmarks
+- [ ] Add server API tests ([test_server.py](./test_server.py))
+- [ ] Add end-to-end integration tests with full chat flow
+- [ ] Set up CI/CD (GitHub Actions)
+- [ ] Add coverage reporting
+- [ ] Add performance benchmarks
 
 ---
 

@@ -10,7 +10,9 @@ def stream_generation(
     generator: Any,
     conversation: list[dict[str, Any]],
     system_message: str | None,
-    hyperparameters: dict[str, float | int],
+    prompt_token_ids: list[int] | None,
+    hyperparameters: dict[str, float | int | bool],
+    seed: int | None,
     on_text: Callable[[str], None],
 ) -> tuple[list[int], list[int], list[str]]:
     tokens: list[int] = []
@@ -18,6 +20,7 @@ def stream_generation(
     streamed_text_parts: list[str] = []
 
     for token_id in generator.generate(
+        prompt_tokens=prompt_token_ids,
         messages=conversation,
         temperature=hyperparameters.get("temperature"),
         max_tokens=hyperparameters.get("max_tokens"),
@@ -27,6 +30,7 @@ def stream_generation(
         repetition_penalty=hyperparameters.get("repetition_penalty"),
         repetition_context_size=hyperparameters.get("repetition_context_size"),
         system_message=system_message,
+        seed=seed,
     ):
         token_int = int(token_id)
         tokens.append(token_int)

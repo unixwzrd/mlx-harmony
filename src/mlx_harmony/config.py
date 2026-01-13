@@ -37,6 +37,11 @@ class PromptConfig(BaseModel):
         ge=1,
         description="Maximum tokens to generate (default: 1024 for Harmony, 512 otherwise)",
     )
+    max_context_tokens: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Maximum prompt context tokens (truncate history to fit when set)",
+    )
     temperature: Optional[float] = Field(
         default=None,
         ge=0.0,
@@ -91,6 +96,9 @@ class PromptConfig(BaseModel):
 
     # Model loading optimizations
     mlock: Optional[bool] = None  # Lock model weights in memory using mlock (macOS Metal only, default: False)
+    lazy: Optional[bool] = None  # Lazy-load model weights (default: False)
+    seed: Optional[int] = None  # Random seed for generation (-1 = random each run)
+    reseed_each_turn: Optional[bool] = None  # Reseed before each generation when seed >= 0
 
     # Display truncation limits
     truncate_thinking: Optional[int] = Field(
@@ -109,7 +117,47 @@ class PromptConfig(BaseModel):
     chats_dir: Optional[str] = None  # Directory for chat history files (default: "logs")
 
 
-_PLACEHOLDER_RE = re.compile(r"<\|([A-Za-z_]+)\|>")
+_ANGLE_PREFIX = "<|"
+_ANGLE_SUFFIX = "|>"
+
+
+def _build_builtin_placeholders(
+    now: datetime, now_utc: datetime
+) -> Dict[str, str]:
+    return {
+        "DATE": now.strftime("%Y-%m-%d"),
+        "DATETIME": now.isoformat(timespec="seconds"),
+        "TIME": now.strftime("%H:%M:%S"),
+        "TIMEZ": now.strftime("%H:%M:%S"),
+        "TIMEA": now.strftime("%I:%M:%S %p"),
+        "TIMEU": now_utc.strftime("%H:%M:%S UTC"),
+    }
+
+
+def _replace_angle_tokens(value: str, replacements: Dict[str, str]) -> str:
+    """Replace <|TOKEN|> placeholders using the replacements map (case-insensitive)."""
+    parts: List[str] = []
+    idx = 0
+    length = len(value)
+    while idx < length:
+        start = value.find(_ANGLE_PREFIX, idx)
+        if start == -1:
+            parts.append(value[idx:])
+            break
+        end = value.find(_ANGLE_SUFFIX, start + 2)
+        if end == -1:
+            parts.append(value[idx:])
+            break
+        parts.append(value[idx:start])
+        token = value[start + 2 : end]
+        token_upper = token.upper()
+        replacement = replacements.get(token_upper)
+        if replacement is None:
+            parts.append(value[start : end + 2])
+        else:
+            parts.append(replacement)
+        idx = end + 2
+    return "".join(parts)
 
 
 def _render_placeholders(value: str, user_placeholders: Dict[str, str]) -> str:
@@ -120,42 +168,14 @@ def _render_placeholders(value: str, user_placeholders: Dict[str, str]) -> str:
     - User-defined: <|KEY|> or {key} (both formats supported)
     """
 
-    def repl(match: re.Match) -> str:
-        token = match.group(1)
+    if _ANGLE_PREFIX in value:
         now = datetime.now()
         now_utc = datetime.now(timezone.utc)
-
-        # Built-in placeholders (checked first)
-        if token == "DATE":
-            return now.strftime("%Y-%m-%d")
-        if token == "DATETIME":
-            return now.isoformat(timespec="seconds")
-        if token == "TIME":
-            # Default: 24-hour local time (HH:MM:SS)
-            return now.strftime("%H:%M:%S")
-        if token == "TIMEZ":
-            # 24-hour local time (HH:MM:SS)
-            return now.strftime("%H:%M:%S")
-        if token == "TIMEA":
-            # 12-hour local time with AM/PM (HH:MM:SS AM/PM)
-            return now.strftime("%I:%M:%S %p")
-        if token == "TIMEU":
-            # UTC time in 24-hour format (HH:MM:SS UTC)
-            return now_utc.strftime("%H:%M:%S UTC")
-
-        # User-defined placeholders in <|KEY|> format
-        # Normalize to uppercase for case-insensitive matching (consistent with built-ins)
-        token_upper = token.upper()
-        # Check normalized token against all keys (normalized)
+        replacements = _build_builtin_placeholders(now, now_utc)
         for key, replacement in user_placeholders.items():
-            if key.upper() == token_upper:
-                return replacement
+            replacements[key.upper()] = replacement
+        value = _replace_angle_tokens(value, replacements)
 
-        # Not found: return original (could be intentional or typo)
-        return match.group(0)
-
-    # First expand <|...|> format (built-in + user-defined)
-    value = _PLACEHOLDER_RE.sub(repl, value)
     # Then apply user-defined placeholders in {key} format (case-sensitive for curly braces)
     for key, replacement in user_placeholders.items():
         value = value.replace(f"{{{key}}}", replacement)
@@ -200,6 +220,7 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
       "repetition_penalty": 1.0,
       "repetition_context_size": 20,
       "max_tokens": 1024,
+      "max_context_tokens": 4096,
       "mlock": false,
       "truncate_thinking": 1000,
       "truncate_response": 1000,
@@ -275,6 +296,7 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
         example_dialogues=example_dialogues,
         placeholders=user_placeholders,
         max_tokens=data.get("max_tokens"),
+        max_context_tokens=data.get("max_context_tokens"),
         temperature=data.get("temperature"),
         top_p=data.get("top_p"),
         min_p=data.get("min_p"),
@@ -392,17 +414,19 @@ def parse_dialogue_file(path: str | Path) -> List[Dict[str, str]]:
 # Profiles --------------------------------------------------------------------
 
 
-def load_profiles(path: str | Path) -> Dict[str, Dict[str, str]]:
+def load_profiles(path: str | Path) -> Dict[str, Dict[str, Any]]:
     """
     Load profile map from JSON. Schema:
     {
       "gpt-oss-20b": {
         "model": "/path/to/model",
-        "prompt_config": "configs/prompt-config.example.json"
+        "prompt_config": "configs/prompt-config.example.json",
+        "max_context_tokens": 131072
       },
       "gpt-oss-120b": {
         "model": "/path/to/model120",
-        "prompt_config": "configs/prompt-config.example.json"
+        "prompt_config": "configs/prompt-config.example.json",
+        "max_context_tokens": 131072
       }
     }
     """

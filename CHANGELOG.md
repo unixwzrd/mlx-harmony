@@ -1,12 +1,36 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-11
+**Updated**: 2026-01-12
 
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 2026-01-16 - v0.4.0
+
+Major refactoring of the codebase to improve readability, maintainability, and performance. Extensive performance enhancements, including:
+
+- Prompt token caching with per-message token IDs for faster prompt construction in Harmony mode
+- Benchmarking harness using a standard data set of questions, from Alpaca Eval English dataset.
+- major performance improvements after refactoring an d reviewing generation code.
+
+### Added
+
+- Prompt token caching with per-message token IDs for faster prompt construction in Harmony mode.
+- Schema v2 chat log container with migration, consistency checks, and a migration CLI utility.
+- Deterministic generation controls: `seed` and `reseed_each_turn` in prompt config and CLI.
+- Dataset profiling scripts now accept extra CLI args for easier profiling sweeps.
+
+### Changed
+
+- Chat logs now store hyperparameters only when they change and track last-used metadata fields.
+- Standalone generation loop refactored for clarity and future optimization work.
+
+### Fixed
+
+- Memory stability during profiling runs by defaulting to non-lazy model loading.
 
 ## 2026-01-11 - Unreleased
 
@@ -126,6 +150,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The infrastructure for parsing and executing tools is complete and ready for implementation
 - Tests are provided but may require environment-specific MLX setup
 
-[0.3.0]: https://github.com/unixwzrd/mlx-harmony/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/unixwzrd/mlx-harmony/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/unixwzrd/mlx-harmony/releases/tag/v0.1.0

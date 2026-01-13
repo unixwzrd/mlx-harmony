@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "model": "models/old-model",
+    "prompt_config": "configs/old-config.json",
+    "hyperparameters": {
+      "temperature": 0.5,
+      "max_tokens": 64
+    },
+    "max_context_tokens": 2048,
+    "created_at": {
+      "unix": 1736251200.0,
+      "iso": "2025-01-07T00:00:00Z"
+    },
+    "updated_at": {
+      "unix": 1736251201.0,
+      "iso": "2025-01-07T00:00:01Z"
+    }
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello",
+      "timestamp": "2025-01-07T00:00:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi",
+      "timestamp": "2025-01-07T00:00:01Z",
+      "hyperparameters": {
+        "temperature": 0.5,
+        "max_tokens": 64
+      }
+    }
+  ]
+}

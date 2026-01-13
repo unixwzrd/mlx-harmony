@@ -1,5 +1,8 @@
 # MLX Harmony
 
+**Created**: 2026-01-12
+**Updated**: 2026-01-12
+
 ![MLX Harmony banner Image](docs/images/MLX_Harmony_Banner.png)
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.md) [![Release](https://img.shields.io/github/v/tag/unixwzrd/mlx-harmony?label=release)](https://github.com/unixwzrd/mlx-harmony/releases) [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-blue)](.github/workflows/ci.yml)
@@ -32,6 +35,7 @@ It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
   - `mlx-harmony-chat` – interactive chat with beautiful markdown rendering (like `glow`/`mdless`)
   - `mlx-harmony-generate` – single-shot text generation
   - `mlx-harmony-server` – OpenAI-style `/v1/chat/completions` endpoint
+  - `mlx-harmony-migrate-chat` – migrate chat logs to the latest schema
 
 - **Prompt configs and profiles**
   - JSON configs for system text, developer instructions, placeholders, examples, and sampler settings
@@ -51,7 +55,7 @@ It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
 - **Configurable directories**
   - Separate directories for logs, chats, and profiling stats (configurable in prompt config)
 
-See the docs in `docs/` for deeper details:
+See the docs in [docs/](docs/) for deeper details:
 
 - [`FEATURES_FROM_MLX.md`](docs/FEATURES_FROM_MLX.md) – useful ideas to port from `mlx-lm`
 - [`MEMORY_MANAGEMENT.md`](docs/MEMORY_MANAGEMENT.md) – wired memory (mlock) and multi-model notes
@@ -118,6 +122,33 @@ mlx-harmony-generate \
 
 ---
 
+## Profiling (Non-Interactive)
+
+For repeatable profiling without typing delays, use the stdin harness and deterministic config:
+
+```bash
+scripts/profile_chat_stdin.sh \
+  models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx
+```
+
+Deterministic config: [configs/prompt-config.deterministic.json](configs/prompt-config.deterministic.json)
+
+Override defaults with environment variables:
+
+```bash
+PROMPT_CONFIG=configs/prompt-config.deterministic.json \
+PROMPT_FILE=scripts/profile_chat_stdin.txt \
+PROFILE_OUTPUT=profile.stats \
+GRAPH_OUTPUT=profile.svg \
+DEBUG_FILE=debug.log \
+CHAT_FILE=profiling-chat.json \
+scripts/profile_chat_stdin.sh models/your-model
+```
+
+See [scripts/README.md](scripts/README.md) for profiling details and output formats.
+
+---
+
 ## Prompt configs
 
 Prompt configs let you define:
@@ -127,9 +158,15 @@ Prompt configs let you define:
 - Example dialogues (few-shot)
 - Placeholders (`{assistant}`, `<|DATE|>`, `<|TIME|>`, etc.)
 - Sampler parameters
+- Context window management (`max_context_tokens`)
 - Memory hints (`mlock`)
+- Deterministic seeding (`seed`, `reseed_each_turn`)
 
-Example (`configs/prompt-config.example.json`):
+`max_context_tokens` can also be overridden with `--max-context-tokens`. If unset,
+the chat CLI will auto-detect `model_max_length` from the model’s
+`tokenizer_config.json` when available.
+
+Example ([configs/prompt-config.example.json](configs/prompt-config.example.json)):
 
 ```json
 {
@@ -150,6 +187,7 @@ Example (`configs/prompt-config.example.json`):
     "user": "Morgan"
   },
   "max_tokens": 1024,
+  "max_context_tokens": 4096,
   "temperature": 0.8,
   "top_p": 0.9,
   "top_k": 40,
@@ -161,12 +199,16 @@ Example (`configs/prompt-config.example.json`):
   "repetition_penalty": 1.0,
   "repetition_context_size": 20,
   "mlock": false,
+  "seed": -1,
+  "reseed_each_turn": false,
   "truncate_thinking": 1000,
   "truncate_response": 1000,
   "logs_dir": "logs",
   "chats_dir": "logs"
 }
 ```
+
+`max_tokens` is the maximum number of **new** tokens to generate for a response.
 
 More detail (including all built-in date/time placeholders) is in [`PROMPT_CONFIG_REFERENCE.md`](docs/PROMPT_CONFIG_REFERENCE.md)
 
@@ -196,6 +238,8 @@ mlx-harmony-chat \
   --profile gpt-oss-20b \
   --profiles-file configs/profiles.example.json
 ```
+
+Profiles file example: [configs/profiles.example.json](configs/profiles.example.json)
 
 ---
 
@@ -252,7 +296,7 @@ You can change hyperparameters on the fly:
 [INFO] Set max_tokens = 2048
 ```
 
-Valid parameters: `temperature`, `top_p`, `min_p`, `top_k`, `max_tokens`, `min_tokens_to_keep`, `repetition_penalty`, `repetition_context_size`, `xtc_probability`, `xtc_threshold`
+Valid parameters: `temperature`, `top_p`, `min_p`, `top_k`, `max_tokens`, `min_tokens_to_keep`, `repetition_penalty`, `repetition_context_size`, `xtc_probability`, `xtc_threshold`, `seed`
 
 **Out-of-band commands:**
 
@@ -268,12 +312,18 @@ If you enter an invalid `\` command, you'll see an error message with the list o
 The conversation JSON includes:
 
 - Full message history (with timestamps)
-- Model + prompt config metadata
-- Hyperparameters per turn (including changes made during chat)
+- Model + prompt config metadata (schema versioned)
+- Hyperparameters per turn (only when they change)
 - Tool messages
 - Generation stats (tokens/second)
 
 Hyperparameters from the saved file are restored unless you override them via CLI or change them during chat.
+
+If you need to migrate older logs, use:
+
+```bash
+mlx-harmony-migrate-chat logs/my-chat.json --in-place
+```
 
 ---
 

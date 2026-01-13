@@ -185,6 +185,68 @@ class TestChatCompletions:
             assert mock_load_profiles.call_args[0][0] == "configs/profiles.example.json"
 
     @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_with_profiles_file_override(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Test chat completions with profiles_file override."""
+        profiles_data = {
+            "test-profile": {
+                "model": "profile-model",
+                "prompt_config": None,
+            }
+        }
+
+        mock_get_gen.return_value = mock_generator
+
+        with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
+            mock_load_profiles.return_value = profiles_data
+
+            request_data = {
+                "model": "test-model",
+                "profile": "test-profile",
+                "profiles_file": "configs/custom-profiles.json",
+                "messages": [{"role": "user", "content": "Hello!"}],
+                "max_tokens": 10,
+            }
+
+            response = client.post("/v1/chat/completions", json=request_data)
+            assert response.status_code == 200
+
+            mock_load_profiles.assert_called_once()
+            assert mock_load_profiles.call_args[0][0] == "configs/custom-profiles.json"
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_with_profiles_env_override(
+        self, mock_get_gen, client: TestClient, mock_generator, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Test chat completions with profiles file from environment."""
+        profiles_data = {
+            "test-profile": {
+                "model": "profile-model",
+                "prompt_config": None,
+            }
+        }
+
+        mock_get_gen.return_value = mock_generator
+        monkeypatch.setenv("MLX_HARMONY_PROFILES_FILE", "configs/env-profiles.json")
+
+        with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
+            mock_load_profiles.return_value = profiles_data
+
+            request_data = {
+                "model": "test-model",
+                "profile": "test-profile",
+                "messages": [{"role": "user", "content": "Hello!"}],
+                "max_tokens": 10,
+            }
+
+            response = client.post("/v1/chat/completions", json=request_data)
+            assert response.status_code == 200
+
+            mock_load_profiles.assert_called_once()
+            assert mock_load_profiles.call_args[0][0] == "configs/env-profiles.json"
+
+    @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_invalid_profile(self, mock_get_gen, client: TestClient):
         """Test chat completions with invalid profile."""
         # Mock load_profiles to return empty profiles

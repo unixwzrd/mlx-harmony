@@ -19,6 +19,7 @@ from openai_harmony import (
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
+from mlx_harmony.hyperparameters import resolve_param
 
 
 class TokenGenerator:
@@ -157,6 +158,7 @@ class TokenGenerator:
         logit_bias: Optional[Dict[int, float]] = None,
         return_logprobs: bool = False,
         system_message: Optional[str] = None,
+        seed: Optional[int] = None,
     ) -> Iterator[Union[int, Dict[str, Union[int, float, None]]]]:
         """
         Generate tokens with automatic format selection.
@@ -168,10 +170,15 @@ class TokenGenerator:
         from mlx_harmony.generate_standalone import stream_generate
         from mlx_harmony.sampling import make_logits_processors, make_sampler
 
+        # Use provided prompt token IDs when available (avoids re-rendering prompts).
+        if prompt_tokens is not None:
+            prompt_input = prompt_tokens
         # For Harmony models, get token IDs directly (don't convert to string and back)
         # This avoids double-encoding: Harmony encoding tokens -> string -> native tokenizer tokens
-        if self.use_harmony and self.encoding and messages:
-            prompt_token_ids = self._harmony_messages_to_token_ids(messages, system_message)
+        elif self.use_harmony and self.encoding and messages:
+            prompt_token_ids = self._harmony_messages_to_token_ids(
+                messages, system_message
+            )
             # Pass token IDs directly to stream_generate (it accepts list[int])
             prompt_input = prompt_token_ids
         else:
@@ -185,33 +192,36 @@ class TokenGenerator:
 
         cfg = self.prompt_config
 
-        def resolve(val, cfg_val, default):
-            return default if val is None and cfg_val is None else (val if val is not None else cfg_val)
+        if seed is not None and seed >= 0:
+            # Lazy import to avoid MLX initialization during module import.
+            import mlx.core as mx
+
+            mx.random.seed(seed)
 
         # Build sampler using MLX-LM's sampling utilities.
         sampler = make_sampler(
-            temp=resolve(temperature, cfg.temperature if cfg else None, 1.0),
-            top_p=resolve(top_p, cfg.top_p if cfg else None, 0.0),
-            min_p=resolve(min_p, cfg.min_p if cfg else None, 0.0),
-            min_tokens_to_keep=resolve(
+            temp=resolve_param(temperature, cfg.temperature if cfg else None, 1.0),
+            top_p=resolve_param(top_p, cfg.top_p if cfg else None, 0.0),
+            min_p=resolve_param(min_p, cfg.min_p if cfg else None, 0.0),
+            min_tokens_to_keep=resolve_param(
                 min_tokens_to_keep, cfg.min_tokens_to_keep if cfg else None, 1
             ),
-            top_k=resolve(top_k, cfg.top_k if cfg else None, 0),
-            xtc_probability=resolve(
+            top_k=resolve_param(top_k, cfg.top_k if cfg else None, 0),
+            xtc_probability=resolve_param(
                 xtc_probability, cfg.xtc_probability if cfg else None, 0.0
             ),
-            xtc_threshold=resolve(
+            xtc_threshold=resolve_param(
                 xtc_threshold, cfg.xtc_threshold if cfg else None, 0.0
             ),
             xtc_special_tokens=self._resolve_xtc_special_tokens(
                 cfg.xtc_special_tokens if cfg else None,
-                resolve(xtc_probability, cfg.xtc_probability if cfg else None, 0.0),
+                resolve_param(xtc_probability, cfg.xtc_probability if cfg else None, 0.0),
             ),
         )
 
         logits_processors = make_logits_processors(
             logit_bias=logit_bias,
-            repetition_penalty=resolve(
+            repetition_penalty=resolve_param(
                 repetition_penalty,
                 cfg.repetition_penalty if cfg else None,
                 0.0,
@@ -219,7 +229,7 @@ class TokenGenerator:
             if (repetition_penalty or 0.0) != 0.0
             or (cfg and cfg.repetition_penalty is not None)
             else None,
-            repetition_context_size=resolve(
+            repetition_context_size=resolve_param(
                 repetition_context_size,
                 cfg.repetition_context_size if cfg else None,
                 20,
@@ -374,18 +384,6 @@ class TokenGenerator:
         Public method for rendering prompts (e.g., for debug output).
         Previously _messages_to_prompt, made public to avoid brittle private calls.
         """
-        # Apply placeholders to message content if provided in config.
-        if self.prompt_config and self.prompt_config.placeholders:
-            messages = [
-                {
-                    **msg,
-                    "content": apply_placeholders(
-                        msg.get("content"), self.prompt_config.placeholders
-                    ),
-                }
-                for msg in messages
-            ]
-
         if self.use_harmony and self.encoding is not None:
             return self._harmony_messages_to_prompt(messages, system_message)
         return self._native_messages_to_prompt(messages, system_message)
@@ -399,17 +397,6 @@ class TokenGenerator:
         Convert messages to token IDs using the appropriate format.
         Uses Harmony encoding tokens for GPT-OSS and native tokenizer tokens otherwise.
         """
-        if self.prompt_config and self.prompt_config.placeholders:
-            messages = [
-                {
-                    **msg,
-                    "content": apply_placeholders(
-                        msg.get("content"), self.prompt_config.placeholders
-                    ),
-                }
-                for msg in messages
-            ]
-
         if self.use_harmony and self.encoding is not None:
             return self._harmony_messages_to_token_ids(messages, system_message)
 
@@ -448,14 +435,37 @@ class TokenGenerator:
         messages: List[Dict[str, str]],
         system_message: Optional[str],
     ) -> Conversation:
+        system_override: Optional[str] = None
+        developer_override: Optional[str] = None
+        for msg in messages:
+            role_str = msg.get("role", "user").strip().lower()
+            if role_str == "system":
+                system_override = msg.get("content", "")
+            elif role_str == "developer":
+                developer_override = msg.get("content", "")
+
+        if system_override or developer_override:
+            messages = [
+                msg
+                for msg in messages
+                if msg.get("role", "user").strip().lower()
+                not in ("system", "developer")
+            ]
+
         harmony_messages: List[Message] = []
         sys_content = SystemContent.new()
         cfg = self.prompt_config
 
         if system_message:
             sys_content = sys_content.with_model_identity(system_message)
+        elif system_override:
+            sys_content = sys_content.with_model_identity(system_override)
         elif cfg and cfg.system_model_identity:
-            sys_content = sys_content.with_model_identity(cfg.system_model_identity)
+            sys_content = sys_content.with_model_identity(
+                apply_placeholders(cfg.system_model_identity, cfg.placeholders)
+                if cfg.placeholders
+                else cfg.system_model_identity
+            )
 
         if cfg and cfg.reasoning_effort:
             try:
@@ -480,10 +490,16 @@ class TokenGenerator:
             Message.from_role_and_content(Role.SYSTEM, sys_content),
         )
 
-        if cfg and cfg.developer_instructions:
-            dev_content = DeveloperContent.new().with_instructions(
-                cfg.developer_instructions
+        if developer_override:
+            dev_content = DeveloperContent.new().with_instructions(developer_override)
+            harmony_messages.append(Message.from_role_and_content(Role.DEVELOPER, dev_content))
+        elif cfg and cfg.developer_instructions:
+            instructions = (
+                apply_placeholders(cfg.developer_instructions, cfg.placeholders)
+                if cfg.placeholders
+                else cfg.developer_instructions
             )
+            dev_content = DeveloperContent.new().with_instructions(instructions)
             harmony_messages.append(
                 Message.from_role_and_content(Role.DEVELOPER, dev_content),
             )

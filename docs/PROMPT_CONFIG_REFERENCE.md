@@ -1,5 +1,8 @@
 # Prompt Config Reference
 
+**Created**: 2026-01-07
+**Updated**: 2026-01-12
+
 This document explains all parameters available in the prompt configuration JSON file (`--prompt-config`).
 
 - [Prompt Config Reference](#prompt-config-reference)
@@ -20,6 +23,9 @@ This document explains all parameters available in the prompt configuration JSON
     - [Placeholder Guide Summary](#placeholder-guide-summary)
   - [Sampling Parameters](#sampling-parameters)
     - [`max_tokens` (integer, optional)](#max_tokens-integer-optional)
+    - [`max_context_tokens` (integer, optional)](#max_context_tokens-integer-optional)
+    - [`seed` (integer, optional)](#seed-integer-optional)
+    - [`reseed_each_turn` (boolean, optional)](#reseed_each_turn-boolean-optional)
     - [`temperature` (float, optional)](#temperature-float-optional)
     - [`top_p` (float, optional)](#top_p-float-optional)
     - [`min_p` (float, optional)](#min_p-float-optional)
@@ -32,6 +38,7 @@ This document explains all parameters available in the prompt configuration JSON
     - [`xtc_special_tokens` (array of integers, optional)](#xtc_special_tokens-array-of-integers-optional)
   - [Model Loading Optimizations](#model-loading-optimizations)
     - [`mlock` (boolean, optional)](#mlock-boolean-optional)
+    - [`lazy` (boolean, optional)](#lazy-boolean-optional)
   - [Display Configuration](#display-configuration)
     - [`truncate_thinking` (integer, optional)](#truncate_thinking-integer-optional)
     - [`truncate_response` (integer, optional)](#truncate_response-integer-optional)
@@ -257,7 +264,7 @@ You are Mia. Today is 2025-01-07 at 14:30:45 (local time) or 19:30:45 UTC (UTC).
 | `<\|TIMEZ\|>`     | `14:30:45`               | 24-hour local time, same as `<\|TIME\|>`                 | "Local time: <\|TIMEZ\|>"           |
 | `<\|TIMEA\|>`     | `02:30:45 PM`            | 12-hour local time with AM/PM, format: `HH:MM:SS AM/PM`  | "12-hour time: <\|TIMEA\|>"         |
 | `<\|TIMEU\|>`     | `19:30:45 UTC`           | 24-hour UTC time, format: `HH:MM:SS UTC`                 | "UTC time: <\|TIMEU\|>"             |
-| `\{key\}`         | Value from `placeholders`| User-defined, case-sensitive (`\{key\}` matches exactly) | "Agent: \{assistant\}"              |
+| `{key}`           | Value from `placeholders`| User-defined, case-sensitive (`{key}` matches exactly)   | "Agent: {assistant}"                |
 | `<\|KEY\|>`       | Value from `placeholders`| User-defined, case-insensitive (normalized to uppercase) | "Agent: <\|ASSISTANT\|>"            |
 
 **Notes:**
@@ -277,6 +284,42 @@ Maximum number of tokens to generate. **Default:** 1024 for Harmony models (to a
 
 ```json
 "max_tokens": 1024
+```
+
+### `max_context_tokens` (integer, optional)
+
+Maximum prompt context tokens to keep when building prompts. When set, older
+conversation turns are truncated (FIFO) to keep the prompt within this limit.
+
+**Example:**
+
+```json
+"max_context_tokens": 4096
+```
+
+### `seed` (integer, optional)
+
+Random seed for generation. Use `-1` for random behavior each run.
+
+**Default:** `-1`
+
+**Example:**
+
+```json
+"seed": 1234
+```
+
+### `reseed_each_turn` (boolean, optional)
+
+Reseed before each generation when `seed >= 0`. This is useful for deterministic
+benchmarking across turns.
+
+**Default:** `false`
+
+**Example:**
+
+```json
+"reseed_each_turn": false
 ```
 
 **Note:** For Harmony models, you may need higher values (1024-2048) to allow for both analysis (thinking) and final channel responses.
@@ -330,6 +373,11 @@ Minimum probability threshold. Filters out tokens with probability less than `mi
 - `0.05-0.1`: Light filtering
 - `>0.1`: More aggressive filtering
 
+**Notes:**
+
+- `min_p` is relative to the **most likely token**, not cumulative probability.
+- Useful for trimming the long tail without forcing a fixed top-k.
+
 **Example:**
 
 ```json
@@ -348,6 +396,11 @@ Top-k sampling. Keeps only the top k most likely tokens at each step.
 - `40-100`: Balanced
 - `>100`: More diverse
 
+**Notes:**
+
+- `top_k` is a hard cutoff; if `top_p` is already low, `top_k` may have little effect.
+- Combining low `top_p` with low `top_k` can over‑constrain outputs.
+
 **Example:**
 
 ```json
@@ -356,9 +409,17 @@ Top-k sampling. Keeps only the top k most likely tokens at each step.
 
 ### `min_tokens_to_keep` (integer, optional)
 
-Minimum number of tokens to keep after filtering (e.g., with min_p or top_k).
+Minimum number of tokens guaranteed to remain after sampling filters are applied.
+This acts as a safety floor when `top_p`, `min_p`, or `top_k` would otherwise
+mask too many tokens and produce an empty or overly narrow candidate set.
 
 **Default:** `1`
+
+**Notes:**
+
+- Applied after filtering (top_p/min_p/top_k) to ensure at least N tokens remain.
+- Higher values increase diversity but can reduce focus.
+- Keep this small unless you are intentionally widening the candidate set.
 
 **Example:**
 
@@ -389,6 +450,11 @@ Penalty for repeating tokens. Values > 1.0 reduce repetition, values < 1.0 encou
 Number of previous tokens to consider when calculating repetition penalty.
 
 **Default:** `20`
+
+**Notes:**
+
+- Larger values look further back and suppress repetition more aggressively.
+- Smaller values keep local coherence but allow more repeats.
 
 **Example:**
 
@@ -421,6 +487,11 @@ XTC (Experimental Token Control) sampling probability. This controls how often X
 
 **Note:** This is an experimental feature. XTC sampling filters tokens based on a probability threshold, keeping only tokens with probabilities above the minimum threshold that meets the `xtc_threshold` criterion. Use with caution and test thoroughly with your models.
 
+**Notes:**
+
+- XTC is applied only when `xtc_probability > 0.0`.
+- Use small values if you want occasional pruning rather than always-on filtering.
+
 ### `xtc_threshold` (float, optional)
 
 XTC (Experimental Token Control) sampling threshold. This sets the minimum probability threshold that tokens must meet to be considered for sampling when XTC is applied.
@@ -443,6 +514,10 @@ XTC (Experimental Token Control) sampling threshold. This sets the minimum proba
 ```
 
 **Note:** Must be used together with `xtc_probability > 0.0` to have any effect. When XTC sampling is triggered (based on `xtc_probability`), only tokens with probabilities above the minimum threshold meeting this `xtc_threshold` will be considered for sampling. This can help reduce low-quality token generation but may also reduce diversity. This is an experimental feature - use with caution.
+
+**Notes:**
+
+- Higher thresholds prune more aggressively and can reduce diversity.
 
 ### `xtc_special_tokens` (array of integers, optional)
 
@@ -503,6 +578,18 @@ Lock model weights in memory using MLX's wired limit (mlock equivalent). Prevent
 - Model size must fit within 90% of Metal's recommended working set size
 
 **Note:** This uses MLX's `set_wired_limit()` under the hood, which is the MLX equivalent of mlock.
+
+### `lazy` (boolean, optional)
+
+Enable or disable lazy loading of model weights. When `false`, model parameters are evaluated immediately, which is recommended when using `mlock`.
+
+**Default:** `false`
+
+**Example:**
+
+```json
+"lazy": false
+```
 
 ## Display Configuration
 
@@ -589,6 +676,7 @@ Or use a custom path:
     "user": "Morgan"
   },
   "max_tokens": 1024,
+  "max_context_tokens": 4096,
   "temperature": 0.8,
   "top_p": 0.9,
   "top_k": 40,
@@ -619,6 +707,7 @@ When a parameter is specified in multiple places, the priority is:
 ## Tips
 
 - **For Harmony models**: Set `max_tokens` to 1024-2048 to allow for both analysis and final channel responses
+- **For long chats**: Set `max_context_tokens` to your model context size to keep system/developer prompts in scope
 - **For creative tasks**: Use higher `temperature` (0.9-1.2) with `top_p` 0.9-0.95
 - **For focused tasks**: Use lower `temperature` (0.3-0.7) with `top_p` 0.7-0.9
 - **To reduce repetition**: Set `repetition_penalty` to 1.1-1.2

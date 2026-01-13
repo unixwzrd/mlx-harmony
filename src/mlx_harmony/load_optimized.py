@@ -17,6 +17,8 @@ from mlx_harmony.tokenizer_native import ByteLevelBPETokenizer
 
 logger = get_logger(__name__)
 
+_PREWARMED_MODELS: set[Path] = set()
+
 
 def _prewarm_filesystem_cache(file_path: Path) -> None:
     """Pre-warm filesystem cache by reading a file into OS cache."""
@@ -100,7 +102,9 @@ def load_optimized(
     if prewarm_cache:
         from mlx_harmony.loader import _download_model
         model_path = _download_model(path_or_hf_repo, revision=revision)
-        prewarm_model_cache(model_path)
+        if model_path not in _PREWARMED_MODELS:
+            prewarm_model_cache(model_path)
+            _PREWARMED_MODELS.add(model_path)
 
     # Use our standalone loader (handles mlock internally)
     if return_config:

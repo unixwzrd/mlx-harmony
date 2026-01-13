@@ -606,6 +606,7 @@ configs/*
 !configs/prompt-config.example.json
 !configs/conversation.example.json
 !configs/dialogue.example.txt
+!configs/prompt_config.deterministic.json
 docs/archive*
 docs/dependency-updates*
 AGENTS.md

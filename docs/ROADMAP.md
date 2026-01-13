@@ -1,6 +1,8 @@
 # MLX-Harmony Roadmap
 
-**Last Updated**: 2026-01-09  
+**Created**: 2026-01-07
+**Updated**: 2026-01-11
+
 **Project Status**: ✅ v0.2.0 - Standalone Implementation with Markdown Rendering
 
 ## Overview
@@ -151,6 +153,12 @@ The tool infrastructure is in place, but executors need real implementations.
   - [ ] Memory management and cleanup
   - [ ] Configurable cache size limits
   - [ ] Model unloading when not in use
+
+- [ ] **Prompt Token Count Caching**
+  - [ ] Cache per-message token counts in memory
+  - [ ] Key caches by message ID/UUID and tokenizer hash
+  - [ ] Invalidate cache on message edits or model/tokenizer change
+  - [ ] Use cached counts to speed up context trimming
 
 - [ ] **Speculative Decoding** (from mlx-lm)
   - [ ] Draft model support for faster generation

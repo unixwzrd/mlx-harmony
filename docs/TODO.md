@@ -1,6 +1,7 @@
 # TODO Checklist
 
-**Last Updated**: 2026-01-09
+**Created**: 2026-01-09
+**Updated**: 2026-01-12
 
 Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
 
@@ -10,6 +11,8 @@ Quick reference checklist for **active short-term work items**. For longer-term 
 
 - [ ] Testing and validation of mlock implementation
 - [ ] End-to-end integration tests (full chat flow with model)
+- [ ] Baseline performance notes for CLI/server output paths
+- [ ] Document any breaking changes or compatibility assumptions
 
 ---
 
@@ -48,11 +51,16 @@ _These are items actively planned for upcoming releases. For comprehensive long-
 
 - [ ] End-to-end integration tests (full chat flow with model)
 - [ ] Testing and validation of mlock implementation
+- [ ] Prompt rendering tests for Harmony vs non-Harmony path (stubbed, no model download)
+- [ ] Edge-case tests for empty prompts and mixed roles
 
 ### Documentation
 
 - [ ] API documentation setup (Sphinx/MkDocs)
 - [ ] Tool usage tutorial (when tool executors are implemented)
+- [ ] Update [README.md](../README.md) and [FEATURES_FROM_MLX.md](./FEATURES_FROM_MLX.md) if defaults/behavior change
+- [ ] Add architecture overview to [ROADMAP.md](./ROADMAP.md) if module boundaries change
+- [ ] Keep [tests/README.md](../tests/README.md) updated with new markers/requirements
 
 ---
 
@@ -65,6 +73,11 @@ _These are items actively planned for upcoming releases. For comprehensive long-
 _Add quick TODOs here as they come up during development:_
 
 - [ ] Server request/response logging (optional debug mode)
+- [ ] Add unit tests to validate Harmony vs non-Harmony decode paths (stubbed, no model downloads)
+- [ ] Handle stop token sequences that are multi-token in [generate_standalone.py](../src/mlx_harmony/generate_standalone.py)
+- [ ] Add per-turn IDs + parent/child links for chat logs
+- [ ] Add max context window handling from model config (with override)
+- [ ] Add seed support for deterministic chat/profiling runs
 
 ---
 

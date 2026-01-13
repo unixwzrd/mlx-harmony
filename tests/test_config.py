@@ -100,10 +100,31 @@ class TestPromptConfigLoading:
         assert config.system_model_identity == "You are TestBot, a helpful AI assistant."
         assert config.temperature == 0.7
         assert config.max_tokens == 100
+        assert config.max_context_tokens == 2048
         assert config.truncate_thinking == 500
         assert config.truncate_response == 500
         assert config.logs_dir == "test_logs"
         assert config.chats_dir == "test_chats"
+
+    def test_prompt_config_validation_ranges(self, temp_dir: Path):
+        """Invalid sampling fields should fail validation."""
+        config_file = temp_dir / "invalid.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "temperature": 3.0,
+                    "top_p": 1.5,
+                    "min_p": -0.1,
+                    "top_k": -1,
+                    "truncate_thinking": -5,
+                    "max_context_tokens": 0,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError):
+            load_prompt_config(str(config_file))
 
     def test_load_example_dialogues(self, temp_dir: Path):
         """Test loading example_dialogues as a list of conversations."""

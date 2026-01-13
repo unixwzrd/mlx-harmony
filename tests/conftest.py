@@ -57,6 +57,7 @@ def sample_prompt_config() -> dict:
         "temperature": 0.7,
         "top_p": 0.9,
         "max_tokens": 100,
+        "max_context_tokens": 2048,
         "truncate_thinking": 500,
         "truncate_response": 500,
         "logs_dir": "test_logs",

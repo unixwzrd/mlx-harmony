@@ -1,5 +1,8 @@
 # Profiling Scripts
 
+**Created**: 2026-01-07
+**Updated**: 2026-01-12
+
 ## Profile Running Chat (Real-World Usage) ⭐ Recommended
 
 Use `profile_chat.py` to profile the actual `mlx-harmony-chat` command as it runs. This captures **real-world performance** including:
@@ -36,6 +39,25 @@ python scripts/profile_chat.py \
 ```
 
 **Note**: This will start the actual chat interface. Interact with it normally (ask questions, have a conversation), then type 'q' to quit. The profiling data will be saved when you exit. All operations during the chat session are profiled.
+
+### Deterministic Dataset Runs (No Typing)
+
+If you have a JSON file with an `instruction` field (array of objects), you can stream it to the profiler:
+
+```bash
+scripts/profile_chat_dataset.sh path/to/english.json models/your-model 200
+```
+
+The optional last argument (`LIMIT`) caps the number of prompts. This uses [build_prompt_stream.py](./build_prompt_stream.py)
+to emit `\\` blocks and a final `q` for the chat loop.
+
+### Schema Migration Utility
+
+Use `migrate_chat_schema.py` to convert chat logs to the latest schema:
+
+```bash
+python scripts/migrate_chat_schema.py logs/profiling-chat.json --in-place
+```
 
 ### Output Files
 

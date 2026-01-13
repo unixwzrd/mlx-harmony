@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+from threading import Lock
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -30,25 +32,30 @@ class ChatRequest(BaseModel):
     repetition_context_size: int = 20
     profile: Optional[str] = None
     prompt_config: Optional[str] = None
+    profiles_file: Optional[str] = None
     stream: bool = False
 
 
 _generator: Optional[TokenGenerator] = None
 _generator_prompt_config_path: Optional[str] = None
+_generator_lock = Lock()
+
+DEFAULT_PROFILES_FILE = "configs/profiles.example.json"
 
 
 def _get_generator(model: str, prompt_config_path: Optional[str]) -> TokenGenerator:
     global _generator
     global _generator_prompt_config_path
-    if (
-        _generator is None
-        or _generator.model_path != model
-        or _generator_prompt_config_path != prompt_config_path
-    ):
-        prompt_cfg = load_prompt_config(prompt_config_path) if prompt_config_path else None
-        _generator = TokenGenerator(model, prompt_config=prompt_cfg)
-        _generator_prompt_config_path = prompt_config_path
-    return _generator
+    with _generator_lock:
+        if (
+            _generator is None
+            or _generator.model_path != model
+            or _generator_prompt_config_path != prompt_config_path
+        ):
+            prompt_cfg = load_prompt_config(prompt_config_path) if prompt_config_path else None
+            _generator = TokenGenerator(model, prompt_config=prompt_cfg)
+            _generator_prompt_config_path = prompt_config_path
+        return _generator
 
 
 @app.post("/v1/chat/completions")
@@ -66,7 +73,10 @@ async def chat_completions(request: ChatRequest):
     model_path = request.model
     prompt_config_path = request.prompt_config
     if request.profile:
-        profiles = load_profiles("configs/profiles.example.json")
+        profiles_path = request.profiles_file or os.getenv(
+            "MLX_HARMONY_PROFILES_FILE", DEFAULT_PROFILES_FILE
+        )
+        profiles = load_profiles(profiles_path)
         if request.profile not in profiles:
             raise HTTPException(
                 status_code=400,

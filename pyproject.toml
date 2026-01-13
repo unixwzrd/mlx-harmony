@@ -1,6 +1,6 @@
 [project]
 name = "mlx-harmony"
-version = "0.3.0"
+version = "0.4.0"
 description = "Multi-model MLX inference with GPT-OSS Harmony format and tools"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -40,6 +40,7 @@ mlx-harmony-chat = "mlx_harmony.chat:main"
 mlx-harmony-server = "mlx_harmony.server:main"
 mlx-harmony-generate = "mlx_harmony.generate:main"
 mlx-harmony-convert-dialogue = "mlx_harmony.convert_dialogue:main"
+mlx-harmony-migrate-chat = "mlx_harmony.chat_migration:main"
 
 [tool.black]
 line-length = 100

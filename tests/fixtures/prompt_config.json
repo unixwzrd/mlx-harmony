@@ -1,0 +1,30 @@
+{
+  "system_model_identity": "You are {assistant} speaking with {user}.",
+  "conversation_start_date": "<|DATE|>",
+  "knowledge_cutoff": "2024-06",
+  "developer_instructions": "Be concise and focus on correctness.",
+  "assistant_greeting": "Hi {user}, I am {assistant}.",
+  "example_dialogues": [
+    [
+      {"role": "user", "content": "Say hello."},
+      {"role": "assistant", "content": "Hello!"}
+    ]
+  ],
+  "placeholders": {
+    "assistant": "Harmony",
+    "user": "Tester"
+  },
+  "temperature": 0.0,
+  "top_p": 1.0,
+  "min_p": 0.0,
+  "top_k": 0,
+  "min_tokens_to_keep": 1,
+  "repetition_penalty": 1.0,
+  "repetition_context_size": 64,
+  "max_tokens": 256,
+  "mlock": false,
+  "truncate_thinking": 1000,
+  "truncate_response": 1000,
+  "logs_dir": "logs",
+  "chats_dir": "logs"
+}

@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "chat_order": [
+    "chat-001"
+  ],
+  "active_chat_id": "chat-001",
+  "chats": {
+    "chat-001": {
+      "chat_id": "chat-001",
+      "metadata": {
+        "chat_id": "chat-001",
+        "model_path": "models/new-model",
+        "prompt_config_path": "configs/new-config.json",
+        "last_model_path": "models/new-model",
+        "last_prompt_config_path": "configs/new-config.json",
+        "hyperparameters": {
+          "temperature": 0.7,
+          "max_tokens": 128
+        },
+        "last_hyperparameters": {
+          "temperature": 0.7,
+          "max_tokens": 128
+        },
+        "max_context_tokens": 4096,
+        "created_at": {
+          "unix": 1736251200.0,
+          "iso": "2025-01-07T00:00:00Z"
+        },
+        "updated_at": {
+          "unix": 1736251201.0,
+          "iso": "2025-01-07T00:00:01Z"
+        }
+      },
+      "messages": [
+        {
+          "id": "msg-1",
+          "parent_id": null,
+          "cache_key": "msg-1",
+          "role": "user",
+          "content": "Hello",
+          "timestamp": {
+            "unix": 1736251200.0,
+            "iso": "2025-01-07T00:00:00Z"
+          }
+        },
+        {
+          "id": "msg-2",
+          "parent_id": "msg-1",
+          "cache_key": "msg-2",
+          "role": "assistant",
+          "content": "Hi",
+          "timestamp": {
+            "unix": 1736251201.0,
+            "iso": "2025-01-07T00:00:01Z"
+          },
+          "hyperparameters": {
+            "temperature": 0.7,
+            "max_tokens": 128
+          }
+        }
+      ]
+    }
+  }
+}

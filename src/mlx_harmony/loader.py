@@ -253,7 +253,9 @@ def load_model_standalone(
 
     if mlock:
         if not mx.metal.is_available():
-            logger.warning("Wired memory requires macOS 15.0+ with Metal backend.")
+            logger.warning(
+                "Wired memory requires macOS 15.0+ with Metal backend; disable mlock or upgrade."
+            )
             mlock = False
         else:
             try:
@@ -296,6 +298,11 @@ def load_model_standalone(
                 else:
                     # Fallback: use max recommended if we can't estimate model size
                     max_rec_size = mx.metal.device_info()["max_recommended_working_set_size"]
+                    logger.warning(
+                        "Could not estimate model size; using max recommended %.2f GB. "
+                        "If wiring is inefficient, provide a valid index or disable mlock.",
+                        max_rec_size / (1024**3),
+                    )
                     old_wired_limit = mx.set_wired_limit(max_rec_size)
                     logger.info(
                         "Could not estimate model size, using max recommended: %.2f GB. "
@@ -308,7 +315,10 @@ def load_model_standalone(
                         "Lazy loading enabled. Use lazy=False for best wired memory effectiveness."
                     )
             except Exception as e:
-                logger.warning("Failed to set wired limit: %s", e)
+                logger.warning(
+                    "Failed to set wired limit: %s (disable mlock or check Metal availability)",
+                    e,
+                )
                 mlock = False
                 if old_cache_limit is not None:
                     mx.set_cache_limit(old_cache_limit)
@@ -395,9 +405,14 @@ def load_model_standalone(
                     actual_bytes / (1024**3),
                 )
             else:
-                logger.warning("No parameter arrays found in model.")
+                logger.warning(
+                    "No parameter arrays found in model (check model load or config)."
+                )
         except Exception as e:
-            logger.warning("Could not wire model parameters: %s", e)
+            logger.warning(
+                "Could not wire model parameters: %s (try mlock=False or lazy=False)",
+                e,
+            )
 
     # NOTE: We intentionally do NOT restore the wired limit here.
     # The wired limit must stay set for the lifetime of the model to keep buffers wired.

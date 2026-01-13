@@ -1,0 +1,7 @@
+\
+Summarize the following bullet points into a short paragraph:
+- Deterministic profiling run
+- Avoid interactive typing delays
+- Keep output concise
+\
+q

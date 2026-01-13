@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from mlx_harmony.config import load_prompt_config
+from mlx_harmony.config import load_profiles, load_prompt_config
 from mlx_harmony.generator import TokenGenerator
 
 
@@ -87,8 +87,6 @@ def main() -> None:
     profile_model = None
     profile_prompt_cfg = None
     if args.profile:
-        from mlx_harmony.config import load_profiles
-
         profiles = load_profiles(args.profiles_file)
         if args.profile not in profiles:
             raise SystemExit(
