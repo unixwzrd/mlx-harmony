@@ -570,6 +570,7 @@ external/
 workflow/
 workflows/
 .workflows/
+!.github/workflows/
 .workflow/
 tools/analysis-files.txt
 
