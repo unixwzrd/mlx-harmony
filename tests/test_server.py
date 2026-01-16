@@ -34,7 +34,7 @@ def mock_generator():
 class TestChatCompletions:
     """Test /v1/chat/completions endpoint."""
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_basic(self, mock_get_gen, client: TestClient, mock_generator):
         """Test basic chat completions request."""
         mock_get_gen.return_value = mock_generator
@@ -60,7 +60,7 @@ class TestChatCompletions:
         mock_get_gen.assert_called_once()
         mock_generator.generate.assert_called_once()
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_with_sampling_params(
         self, mock_get_gen, client: TestClient, mock_generator
     ):
@@ -92,7 +92,7 @@ class TestChatCompletions:
         assert call_kwargs["repetition_penalty"] == 1.2
         assert call_kwargs["repetition_context_size"] == 25
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_multiple_messages(
         self, mock_get_gen, client: TestClient, mock_generator
     ):
@@ -119,7 +119,7 @@ class TestChatCompletions:
         assert messages is not None
         assert len(messages) == 4
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_streaming(self, mock_get_gen, client: TestClient, mock_generator):
         """Test streaming chat completions."""
         mock_get_gen.return_value = mock_generator
@@ -150,7 +150,7 @@ class TestChatCompletions:
         # Verify final chunk is [DONE]
         assert any("data: [DONE]" in line for line in lines)
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_with_profile(
         self, mock_get_gen, client: TestClient, mock_generator
     ):
@@ -166,7 +166,7 @@ class TestChatCompletions:
 
         # Mock load_profiles to return our test profiles
         # The server loads from "configs/profiles.example.json" by default
-        with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
+        with patch("mlx_harmony.cli.server.load_profiles") as mock_load_profiles:
             mock_load_profiles.return_value = profiles_data
 
             request_data = {
@@ -184,7 +184,7 @@ class TestChatCompletions:
             # Verify it was called with the default profiles path
             assert mock_load_profiles.call_args[0][0] == "configs/profiles.example.json"
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_with_profiles_file_override(
         self, mock_get_gen, client: TestClient, mock_generator
     ):
@@ -198,7 +198,7 @@ class TestChatCompletions:
 
         mock_get_gen.return_value = mock_generator
 
-        with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
+        with patch("mlx_harmony.cli.server.load_profiles") as mock_load_profiles:
             mock_load_profiles.return_value = profiles_data
 
             request_data = {
@@ -215,7 +215,7 @@ class TestChatCompletions:
             mock_load_profiles.assert_called_once()
             assert mock_load_profiles.call_args[0][0] == "configs/custom-profiles.json"
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_with_profiles_env_override(
         self, mock_get_gen, client: TestClient, mock_generator, monkeypatch: pytest.MonkeyPatch
     ):
@@ -230,7 +230,7 @@ class TestChatCompletions:
         mock_get_gen.return_value = mock_generator
         monkeypatch.setenv("MLX_HARMONY_PROFILES_FILE", "configs/env-profiles.json")
 
-        with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
+        with patch("mlx_harmony.cli.server.load_profiles") as mock_load_profiles:
             mock_load_profiles.return_value = profiles_data
 
             request_data = {
@@ -246,11 +246,11 @@ class TestChatCompletions:
             mock_load_profiles.assert_called_once()
             assert mock_load_profiles.call_args[0][0] == "configs/env-profiles.json"
 
-    @patch("mlx_harmony.server._get_generator")
+    @patch("mlx_harmony.cli.server._get_generator")
     def test_chat_completions_invalid_profile(self, mock_get_gen, client: TestClient):
         """Test chat completions with invalid profile."""
         # Mock load_profiles to return empty profiles
-        with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
+        with patch("mlx_harmony.cli.server.load_profiles") as mock_load_profiles:
             mock_load_profiles.return_value = {}
 
             request_data = {

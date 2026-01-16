@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from mlx_harmony.chat_history import write_debug_prompt, write_debug_tokens
+from mlx_harmony.conversation.conversation_history import write_debug_prompt, write_debug_tokens
 from mlx_harmony.logging import get_logger
-from mlx_harmony.prompt_cache import PromptTokenCache
+from mlx_harmony.generation.prompt_cache import PromptTokenCache
 
 logger = get_logger(__name__)
 

@@ -1,7 +1,7 @@
 # TODO Checklist
 
 **Created**: 2026-01-09
-**Updated**: 2026-01-12
+**Updated**: 2026-01-15
 
 Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
 
@@ -13,6 +13,7 @@ Quick reference checklist for **active short-term work items**. For longer-term 
 - [ ] End-to-end integration tests (full chat flow with model)
 - [ ] Baseline performance notes for CLI/server output paths
 - [ ] Document any breaking changes or compatibility assumptions
+- [ ] Moshi voice integration sprint checklist (see [Moshi Integration Checklist](#moshi-integration-checklist))
 
 ---
 
@@ -80,6 +81,35 @@ _Add quick TODOs here as they come up during development:_
 - [ ] Add seed support for deterministic chat/profiling runs
 
 ---
+
+## Moshi Integration Checklist
+
+_Short-term checklist for integrating Moshi STT/TTS behind a CLI flag._
+
+- [ ] User action items (prereqs I can’t do for you)
+  - [ ] Install `moshi-mlx` (and any required system deps like `sounddevice`/`rustymimi`).
+  - [ ] Download local MLX STT model weights: `models/STT/stt-2.6b-en-mlx`.
+  - [ ] Download local MLX TTS model weights: `models/TTS/moshiko-mlx-q8`.
+  - [ ] (Optional) Download voice embeddings repo for TTS (`DEFAULT_DSM_TTS_VOICE_REPO`) if not bundled.
+  - [ ] Confirm mic permissions on macOS for terminal/CLI.
+  - [ ] Confirm audio output device works for playback (or provide output wav path).
+- [ ] Confirm Moshi dependencies installed (`moshi-mlx` and MLX models).
+- [ ] Read and reference [../moshi/README.md](../moshi/README.md) and [../moshi-dsm/README.md](../moshi-dsm/README.md).
+- [ ] Add `--moshi` CLI flag in [src/mlx_harmony/cli_args.py](../src/mlx_harmony/cli_args.py).
+- [ ] Add Moshi config file support (see [Moshi Config](./MOSHI_CONFIG.md)).
+- [ ] Auto-load `configs/moshi.json` when `--moshi` is set and no config path is supplied.
+- [ ] Add STT listen duration and optional VAD settings (CLI + config).
+- [ ] Add TTS chunking controls for sentence/length-based streaming.
+- [ ] Add Moshi smoke-test flag for quick validation.
+- [ ] Add voice status output and timing logs for STT/TTS.
+- [ ] Add Moshi config/unit tests (skip if deps missing).
+- [ ] Define Moshi adapter interfaces (STT/TTS) in a new voice module.
+- [ ] Implement MLX STT adapter (mic → partial/final text).
+- [ ] Implement MLX TTS adapter (text chunks → audio stream).
+- [ ] Wire `chat.py` to use Moshi adapters when `--moshi` is enabled.
+- [ ] Add minimal error handling when `moshi_mlx` is missing (fail fast with guidance).
+- [ ] Add basic smoke test or stub test for the Moshi flag path.
+- [ ] Document CLI usage and required models in [docs/ROADMAP.md](./ROADMAP.md) or README.
 
 ## 📋 Quick Add
 

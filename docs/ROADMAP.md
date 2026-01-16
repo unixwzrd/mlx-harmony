@@ -1,9 +1,9 @@
 # MLX-Harmony Roadmap
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-11
+**Updated**: 2026-01-16
 
-**Project Status**: ✅ v0.2.0 - Standalone Implementation with Markdown Rendering
+**Project Status**: ✅ v0.4.0 - Refactor + Performance + Moshi Voice Mode
 
 ## Overview
 
@@ -12,6 +12,22 @@ This roadmap tracks planned enhancements, improvements, and features for `mlx-ha
 ---
 
 ## 🎯 High Priority
+
+### Voice Mode (Moshi)
+
+- [x] Moshi CLI flags and JSON config support
+- [x] STT/TTS adapters with local MLX model paths
+- [x] TTS chunking controls (sentence/length)
+- [x] Barge-in support (interrupt TTS on user speech)
+- [x] Voice status output + timing logs
+- [x] Moshi config documentation
+- [ ] End-to-end voice integration test (with real models)
+- [ ] Possible: custom voice embedding workflow for DSM TTS (generate new voice embeddings)
+- [ ] Possible: voice cloning workflow (capture sample + derive voice embedding)
+
+**Reference**: [MOSHI_CONFIG.md](./MOSHI_CONFIG.md)
+
+---
 
 ### Model Management CLI
 
@@ -347,7 +363,21 @@ Inspired by `mlx-lm`'s `BatchGenerator` for concurrent requests.
 
 ## 📊 Version History
 
-### v0.2.0 (Current) ✅ - 2026-01-09
+### v0.4.0 (Current) ✅ - 2026-01-16
+
+- [x] Major refactor for clarity and performance
+- [x] Prompt token caching for Harmony mode
+- [x] Schema v2 chat logs + migration tooling
+- [x] Deterministic generation controls (seed + reseed)
+- [x] Moshi voice mode (STT/TTS adapters + config)
+
+### v0.3.0 ✅ - 2025-01-28
+
+- [x] Harmony stop token fixes and output ordering
+- [x] Thinking/analysis markdown rendering
+- [x] Improved sampling and display fixes
+
+### v0.2.0 ✅ - 2026-01-09
 
 - [x] Standalone generation and sampling implementation
 - [x] Beautiful markdown rendering with rich library
@@ -367,15 +397,6 @@ Inspired by `mlx-lm`'s `BatchGenerator` for concurrent requests.
 - [x] Basic documentation
 
 For detailed changelog, see [CHANGELOG.md](../CHANGELOG.md).
-
-### v0.3.0 (Planned)
-
-- [ ] Browser tool implementation
-- [ ] Python tool implementation
-- [ ] Apply patch tool
-- [ ] Model caching (ModelProvider pattern)
-- [ ] Prompt caching system
-- [ ] Enhanced server features
 
 See sections above for detailed roadmap items.
 

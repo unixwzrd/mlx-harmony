@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "stt_model_path": "models/STT/stt-2.6b-en-mlx",
+  "stt_config_path": null,
+  "stt_max_seconds": 8.0,
+  "stt_vad": false,
+  "stt_vad_threshold": 0.5,
+  "stt_vad_hits": 2,
+  "tts_model_path": "models/TTS/moshiko-mlx-q8",
+  "tts_config_path": null,
+  "tts_voice_path": null,
+  "quantize": 8,
+  "tts_chunk_chars": 180,
+  "tts_chunk_sentences": true,
+  "use_stt": true,
+  "use_tts": true,
+  "smoke_test": false,
+  "barge_in": false,
+  "barge_in_window_seconds": 2.0
+}

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mlx_harmony.prompt_cache import PromptTokenCache
+from mlx_harmony.generation.prompt_cache import PromptTokenCache
 
 
 class DummyGenerator:

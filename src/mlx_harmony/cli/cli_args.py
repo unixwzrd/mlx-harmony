@@ -153,4 +153,118 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Disable markdown rendering for assistant responses (display as plain text).",
     )
+    parser.add_argument(
+        "--moshi",
+        action="store_true",
+        default=False,
+        help="Enable Moshi STT/TTS voice mode (requires moshi-mlx).",
+    )
+    parser.add_argument(
+        "--moshi-config",
+        type=str,
+        default=None,
+        help="Path to Moshi JSON config (CLI options override the file).",
+    )
+    parser.add_argument(
+        "--moshi-stt-path",
+        type=str,
+        default=None,
+        help="Local path to Moshi STT MLX model weights.",
+    )
+    parser.add_argument(
+        "--moshi-stt-config",
+        type=str,
+        default=None,
+        help="Path to Moshi STT config.json (override model directory default).",
+    )
+    parser.add_argument(
+        "--moshi-max-seconds",
+        type=float,
+        default=None,
+        help="Max seconds to listen for STT (voice mode).",
+    )
+    parser.add_argument(
+        "--moshi-vad",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable Moshi VAD when supported by the STT model.",
+    )
+    parser.add_argument(
+        "--moshi-vad-threshold",
+        type=float,
+        default=None,
+        help="VAD probability threshold to detect end of utterance.",
+    )
+    parser.add_argument(
+        "--moshi-vad-hits",
+        type=int,
+        default=None,
+        help="Consecutive VAD hits required to end an utterance.",
+    )
+    parser.add_argument(
+        "--moshi-barge-in",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable barge-in (interrupt TTS on user speech).",
+    )
+    parser.add_argument(
+        "--moshi-barge-in-window",
+        type=float,
+        default=None,
+        help="Seconds to listen for barge-in during TTS playback.",
+    )
+    parser.add_argument(
+        "--moshi-tts-path",
+        type=str,
+        default=None,
+        help="Local path to Moshi TTS MLX model weights.",
+    )
+    parser.add_argument(
+        "--moshi-tts-config",
+        type=str,
+        default=None,
+        help="Path to Moshi TTS config.json (override model directory default).",
+    )
+    parser.add_argument(
+        "--moshi-voice-path",
+        type=str,
+        default=None,
+        help="Local path to Moshi TTS voice embedding file.",
+    )
+    parser.add_argument(
+        "--moshi-quantize",
+        type=int,
+        default=None,
+        help="Quantize Moshi model weights (e.g., 4 or 8).",
+    )
+    parser.add_argument(
+        "--moshi-tts-chunk-chars",
+        type=int,
+        default=None,
+        help="Chunk assistant text for TTS by max character count.",
+    )
+    parser.add_argument(
+        "--moshi-tts-chunk-sentences",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Chunk assistant text for TTS on sentence boundaries when possible.",
+    )
+    parser.add_argument(
+        "--moshi-stt",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable Moshi STT (default: enabled).",
+    )
+    parser.add_argument(
+        "--moshi-tts",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable Moshi TTS (default: enabled).",
+    )
+    parser.add_argument(
+        "--moshi-smoke",
+        action="store_true",
+        default=False,
+        help="Run a Moshi smoke test and exit (uses configured STT/TTS).",
+    )
     return parser

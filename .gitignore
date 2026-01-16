@@ -608,6 +608,7 @@ configs/*
 !configs/conversation.example.json
 !configs/dialogue.example.txt
 !configs/prompt_config.deterministic.json
+!configs/moshi-config.example.json
 docs/archive*
 docs/dependency-updates*
 AGENTS.md

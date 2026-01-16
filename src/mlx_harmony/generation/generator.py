@@ -19,7 +19,7 @@ from openai_harmony import (
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
-from mlx_harmony.hyperparameters import resolve_param
+from mlx_harmony.runtime.hyperparameters import resolve_param
 
 
 class TokenGenerator:
@@ -52,7 +52,7 @@ class TokenGenerator:
         """
         # Use standalone loader (no pre-warming, filesystem cache handles it naturally)
         # Imported lazily to avoid initializing MLX during module import.
-        from mlx_harmony.loader import load_model_standalone
+        from mlx_harmony.runtime.loader import load_model_standalone
 
         self.model, self.tokenizer = load_model_standalone(
             model_path,
@@ -167,8 +167,8 @@ class TokenGenerator:
         - Other models: Uses the model's native chat template.
         """
         # Imported lazily to avoid MLX initialization during module import.
-        from mlx_harmony.generate_standalone import stream_generate
-        from mlx_harmony.sampling import make_logits_processors, make_sampler
+        from mlx_harmony.generation.generate_standalone import stream_generate
+        from mlx_harmony.generation.sampling import make_logits_processors, make_sampler
 
         # Use provided prompt token IDs when available (avoids re-rendering prompts).
         if prompt_tokens is not None:

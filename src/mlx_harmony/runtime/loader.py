@@ -365,7 +365,7 @@ def load_model_standalone(
 
     # Load tokenizer using pure Python native implementation
     # No mlx-lm, no transformers, no PyTorch - just pure Python + MLX
-    from mlx_harmony.tokenizer_native import load_tokenizer_native
+    from mlx_harmony.runtime.tokenizer_native import load_tokenizer_native
 
     tokenizer = load_tokenizer_native(model_path)
 

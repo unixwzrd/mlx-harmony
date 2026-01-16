@@ -6,12 +6,12 @@ Tests conversation saving/loading, hyperparameter changes, and chat flow.
 import json
 from pathlib import Path
 
-from mlx_harmony import chat_io
 from mlx_harmony.chat import load_conversation, save_conversation
-from mlx_harmony.chat_history import normalize_dir_path
-from mlx_harmony.chat_io import read_user_input
-from mlx_harmony.chat_prompt import truncate_conversation_for_context
-from mlx_harmony.chat_utils import parse_command
+from mlx_harmony.cli.chat_commands import parse_command
+from mlx_harmony.conversation import conversation_io
+from mlx_harmony.conversation.conversation_history import normalize_dir_path
+from mlx_harmony.conversation.conversation_io import read_user_input
+from mlx_harmony.harmony.prompt_builder import truncate_conversation_for_context
 
 
 class TestConversationIO:
@@ -124,7 +124,7 @@ class TestChatHelpers:
         """Allow multi-line input using a trailing backslash."""
         inputs = iter(["first line\\", "second line"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
-        monkeypatch.setattr(chat_io.select, "select", lambda *_: ([], [], []))
+        monkeypatch.setattr(conversation_io.select, "select", lambda *_: ([], [], []))
         assert read_user_input(">> ") == "first line\nsecond line"
 
     def test_read_user_input_block(self, monkeypatch):

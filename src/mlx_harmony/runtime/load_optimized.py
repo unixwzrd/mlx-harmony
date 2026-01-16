@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Optional, Tuple, Union
 
 # Use our standalone loader instead of mlx_lm to avoid PyTorch dependency
-from mlx_harmony.loader import load_model_standalone
+from mlx_harmony.runtime.loader import load_model_standalone
 from mlx_harmony.logging import get_logger
-from mlx_harmony.tokenizer_native import ByteLevelBPETokenizer
+from mlx_harmony.runtime.tokenizer_native import ByteLevelBPETokenizer
 
 logger = get_logger(__name__)
 
@@ -37,7 +37,7 @@ def _prewarm_filesystem_cache(file_path: Path) -> None:
 def _get_model_size_from_files(model_path: Path) -> Optional[int]:
     """Get model size in bytes from safetensors index file or file sizes."""
     # Import from loader to avoid duplication
-    from mlx_harmony.loader import _get_model_size_from_index
+    from mlx_harmony.runtime.loader import _get_model_size_from_index
     return _get_model_size_from_index(model_path)
 
 
@@ -100,7 +100,7 @@ def load_optimized(
     # Pre-warm filesystem cache if requested
     # Use _download_model from loader to ensure consistent behavior
     if prewarm_cache:
-        from mlx_harmony.loader import _download_model
+        from mlx_harmony.runtime.loader import _download_model
         model_path = _download_model(path_or_hf_repo, revision=revision)
         if model_path not in _PREWARMED_MODELS:
             prewarm_model_cache(model_path)

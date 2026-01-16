@@ -6,7 +6,7 @@ Tests model loading, format detection, and token generation.
 import pytest
 
 from mlx_harmony.config import PromptConfig
-from mlx_harmony.generator import TokenGenerator
+from mlx_harmony.generation.generator import TokenGenerator
 
 
 @pytest.mark.requires_model

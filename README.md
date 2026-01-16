@@ -1,7 +1,7 @@
 # MLX Harmony
 
 **Created**: 2026-01-12
-**Updated**: 2026-01-12
+**Updated**: 2026-01-16
 
 ![MLX Harmony banner Image](docs/images/MLX_Harmony_Banner.png)
 
@@ -54,6 +54,10 @@ It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
   - Token counting and timing (tokens/second display)
 - **Configurable directories**
   - Separate directories for logs, chats, and profiling stats (configurable in prompt config)
+- **Voice mode (Moshi)**
+  - Optional STT/TTS voice loop with local MLX models
+  - Configurable via JSON + CLI overrides
+  - Voice references from local voice repo (`tts_voice_path`)
 
 See the docs in [docs/](docs/) for deeper details:
 
@@ -63,6 +67,7 @@ See the docs in [docs/](docs/) for deeper details:
 - [`TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) – common issues and solutions
 - [`ROADMAP.md`](docs/ROADMAP.md) – long-term planning and feature roadmap
 - [`TODO.md`](docs/TODO.md) – short-term active work items
+- [`MOSHI_CONFIG.md`](docs/MOSHI_CONFIG.md) – Moshi voice configuration
 
 See [`examples/`](examples/) for practical usage examples:
 
@@ -90,6 +95,12 @@ This will pull in compatible versions of:
 
 You'll need a working MLX setup (typically Python 3.12+ on Apple Silicon).
 
+Optional Moshi voice support:
+
+```bash
+pip install "mlx-harmony[moshi]"
+```
+
 ⸻
 
 ## Quick start
@@ -106,6 +117,12 @@ Chat with a GPT-OSS model (Harmony formatting is automatic):
 mlx-harmony-chat --model openai/gpt-oss-20b
 ```
 
+Voice mode with Moshi (auto-loads `configs/moshi.json` if present):
+
+```bash
+mlx-harmony-chat --model openai/gpt-oss-20b --moshi
+```
+
 Run an OpenAI-style HTTP server:
 
 ```bash
@@ -119,6 +136,57 @@ mlx-harmony-generate \
   --model mlx-community/Mistral-7B-Instruct-v0.3-4bit \
   --prompt "Explain MXFP4 in simple terms."
 ```
+
+---
+
+## Moshi Voice Mode
+
+Moshi voice mode uses local MLX models for STT and TTS, configured in `configs/moshi.json`. If that file exists, it is auto-loaded when you pass `--moshi`.
+
+See the full guide at [MOSHI_CONFIG.md](docs/MOSHI_CONFIG.md).
+
+### Recommended Model Layout
+
+Keep Moshi assets under the project `models/` directory:
+
+```text
+models/
+  stt-2.6b-en-mlx/
+    config.json
+    model.safetensors
+    tokenizer_en_audio_4000.model
+    mimi-pytorch-*.safetensors
+  TTS/
+    tts-1.6b-en_fr/
+      config.json
+      model.safetensors
+      tokenizer_spm_32k_3.model
+      mimi-*.safetensors
+    moshi-tts-voices/
+      ears/
+        p001/
+          freeform_speech_01.wav.1e68beda@240.safetensors
+```
+
+### moshi.json Relationship
+
+- `stt_model_path` points to the STT model directory.
+- `tts_model_path` points to the TTS model directory.
+- `tts_voice_path` points to a voice embedding `.safetensors` file inside the voices repo.
+
+### Quick Mic Check
+
+After installing, run:
+
+```bash
+hotmic
+```
+
+This prints a live mic level meter and helps confirm microphone permissions before running `--moshi`.
+
+### Model Sources
+
+If you want the exact model and voice repo URLs in the docs, share the links you prefer and we’ll add them here.
 
 ---
 

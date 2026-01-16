@@ -6,14 +6,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mlx_harmony.chat_history import (
+from mlx_harmony.conversation.conversation_history import (
     ensure_message_links,
     find_last_hyperparameters,
     make_chat_id,
     make_timestamp,
     normalize_timestamp,
 )
-from mlx_harmony.chat_migration import (
+from mlx_harmony.conversation.conversation_migration import (
     build_chat_container,
     migrate_chat_data,
     validate_chat_container,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mlx_harmony.chat_history import make_message_id, make_timestamp
+from mlx_harmony.conversation.conversation_history import make_message_id, make_timestamp
 from mlx_harmony.logging import get_logger
 from mlx_harmony.tools import execute_tool_call, parse_tool_calls_from_messages
 

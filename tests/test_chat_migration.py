@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from mlx_harmony.chat_io import load_conversation
-from mlx_harmony.chat_migration import migrate_chat_data, validate_chat_container
+from mlx_harmony.conversation.conversation_io import load_conversation
+from mlx_harmony.conversation.conversation_migration import migrate_chat_data, validate_chat_container
 
 
 def _load_fixture(path: Path) -> dict:

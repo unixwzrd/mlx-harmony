@@ -10,7 +10,7 @@ from typing import Any
 import mlx.core as mx
 import mlx.nn as nn
 
-from mlx_harmony.cache import KVCache, make_prompt_cache
+from mlx_harmony.generation.cache import KVCache, make_prompt_cache
 
 
 class GenerationResponse:

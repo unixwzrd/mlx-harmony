@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from mlx_harmony.hyperparameters import resolve_param
+from mlx_harmony.runtime.hyperparameters import resolve_param
 from mlx_harmony.logging import get_logger
 
 logger = get_logger(__name__)

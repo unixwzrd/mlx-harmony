@@ -1,7 +1,7 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-12
+**Updated**: 2026-01-16
 
 All notable changes to mlx-harmony will be documented in this file.
 
@@ -22,6 +22,9 @@ Major refactoring of the codebase to improve readability, maintainability, and p
 - Schema v2 chat log container with migration, consistency checks, and a migration CLI utility.
 - Deterministic generation controls: `seed` and `reseed_each_turn` in prompt config and CLI.
 - Dataset profiling scripts now accept extra CLI args for easier profiling sweeps.
+- Moshi voice mode with JSON config, local STT/TTS model paths, and voice selection.
+- Moshi config documentation and sample configs.
+- Microphone permission checker script.
 
 ### Changed
 
@@ -149,4 +152,3 @@ Major refactoring of the codebase to improve readability, maintainability, and p
 - Tool executors (browser, python, apply_patch) are currently stubs returning "not_implemented" messages
 - The infrastructure for parsing and executing tools is complete and ready for implementation
 - Tests are provided but may require environment-specific MLX setup
-

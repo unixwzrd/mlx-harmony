@@ -118,6 +118,56 @@ class PromptConfig(BaseModel):
 
 
 _ANGLE_PREFIX = "<|"
+
+
+class MoshiConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(default=False)
+    stt_model_path: Optional[str] = Field(default=None)
+    stt_config_path: Optional[str] = Field(default=None)
+    stt_max_seconds: float = Field(default=8.0)
+    stt_vad: bool = Field(default=False)
+    stt_vad_threshold: float = Field(default=0.5)
+    stt_vad_hits: int = Field(default=2)
+    tts_model_path: Optional[str] = Field(default=None)
+    tts_config_path: Optional[str] = Field(default=None)
+    tts_voice_path: Optional[str] = Field(default=None)
+    quantize: Optional[int] = Field(default=None)
+    tts_chunk_chars: int = Field(default=180)
+    tts_chunk_sentences: bool = Field(default=True)
+    use_stt: bool = Field(default=True)
+    use_tts: bool = Field(default=True)
+    smoke_test: bool = Field(default=False)
+    barge_in: bool = Field(default=False)
+    barge_in_window_seconds: float = Field(default=2.0)
+
+    def validate_paths(self) -> list[str]:
+        missing: list[str] = []
+        if self.use_stt:
+            if not self.stt_model_path:
+                missing.append("stt_model_path")
+            elif not Path(self.stt_model_path).exists():
+                missing.append(self.stt_model_path)
+        if self.use_tts:
+            if not self.tts_model_path:
+                missing.append("tts_model_path")
+            elif not Path(self.tts_model_path).exists():
+                missing.append(self.tts_model_path)
+            if self.tts_voice_path and not Path(self.tts_voice_path).exists():
+                missing.append(self.tts_voice_path)
+        return missing
+
+
+def load_moshi_config(path: str | None) -> MoshiConfig | None:
+    if not path:
+        return None
+    config_path = Path(path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Moshi config not found: {config_path}")
+    with open(config_path, encoding="utf-8") as fobj:
+        data = json.load(fobj)
+    return MoshiConfig(**data)
 _ANGLE_SUFFIX = "|>"
 
 
