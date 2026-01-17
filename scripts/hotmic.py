@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from mlx_harmony.check_mic import main
+from mlx_harmony.tools.hotmic import main
 
 if __name__ == "__main__":
     main()

@@ -4,8 +4,8 @@ digraph MoshiVoiceArch {
 
   cli [label="cli/chat.py\n--moshi"];
   config [label="Moshi config\n(moshi.json)"];
-  stt [label="MoshiSTT\nvoice_moshi.py"];
-  tts [label="MoshiTTS\nvoice_moshi.py"];
+  stt [label="MoshiSTT\nspeech/moshi/stt.py"];
+  tts [label="MoshiTTS\nspeech/moshi/tts.py"];
   gen [label="LLM generation\nToken stream"];
   render [label="Renderer\n(Rich / plain)"];
   io [label="IO\nMic / Speaker"];

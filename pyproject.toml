@@ -48,7 +48,7 @@ mlx-harmony-server = "mlx_harmony.server:main"
 mlx-harmony-generate = "mlx_harmony.generate:main"
 mlx-harmony-convert-dialogue = "mlx_harmony.convert_dialogue:main"
 mlx-harmony-migrate-chat = "mlx_harmony.chat_migration:main"
-hotmic = "mlx_harmony.check_mic:main"
+hotmic = "mlx_harmony.tools.hotmic:main"
 
 [tool.black]
 line-length = 100

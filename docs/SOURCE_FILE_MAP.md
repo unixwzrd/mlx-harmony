@@ -1,7 +1,7 @@
 # Source File Map
 
 **Created**: 2026-01-15
-**Updated**: 2026-01-16
+**Updated**: 2026-01-17
 
 This document lists the modules under [src/mlx_harmony](../src/mlx_harmony) and what each one does. It reflects the new subpackage layout introduced to keep the project organized.
 
@@ -49,10 +49,16 @@ These live at the package root to preserve CLI entrypoints while the implementat
 - [harmony/prompt_builder.py](../src/mlx_harmony/harmony/prompt_builder.py): Prompt rendering, truncation, debug output.
 - [harmony/tool_calls.py](../src/mlx_harmony/harmony/tool_calls.py): Tool call extraction and execution wiring.
 
+### Speech (`speech/`)
+
+- [speech/moshi/loader.py](../src/mlx_harmony/speech/moshi/loader.py): Moshi model loading + shared helpers.
+- [speech/moshi/stt.py](../src/mlx_harmony/speech/moshi/stt.py): Moshi STT adapter.
+- [speech/moshi/tts.py](../src/mlx_harmony/speech/moshi/tts.py): Moshi TTS adapter.
+
 ### Voice (`voice/`)
 
-- [voice/voice_moshi.py](../src/mlx_harmony/voice/voice_moshi.py): Moshi STT/TTS integration.
-- [voice/check_mic.py](../src/mlx_harmony/voice/check_mic.py): Mic permission test (used by `hotmic`).
+- [voice/voice_moshi.py](../src/mlx_harmony/voice/voice_moshi.py): Temporary compatibility shim for Moshi speech (pending refactor).
+- [tools/hotmic.py](../src/mlx_harmony/tools/hotmic.py): Mic permission test (used by `hotmic`).
 
 ### Runtime (`runtime/`)
 
@@ -95,7 +101,10 @@ These live at the package root to preserve CLI entrypoints while the implementat
 | [harmony/harmony_parser.py](../src/mlx_harmony/harmony/harmony_parser.py) | Harmony parsing and final/analysis routing. | chat_harmony.py |
 | [harmony/prompt_builder.py](../src/mlx_harmony/harmony/prompt_builder.py) | Build prompts, debug logs, and truncation. | chat_prompt.py |
 | [harmony/tool_calls.py](../src/mlx_harmony/harmony/tool_calls.py) | Tool call extraction + execution wiring. | chat_tools.py |
-| [voice/voice_moshi.py](../src/mlx_harmony/voice/voice_moshi.py) | Moshi STT/TTS integration. | — |
-| [voice/check_mic.py](../src/mlx_harmony/voice/check_mic.py) | Mic permission checker. | — |
+| [speech/moshi/loader.py](../src/mlx_harmony/speech/moshi/loader.py) | Moshi model loading + shared helpers. | voice/voice_moshi.py |
+| [speech/moshi/stt.py](../src/mlx_harmony/speech/moshi/stt.py) | Moshi STT adapter. | voice/voice_moshi.py |
+| [speech/moshi/tts.py](../src/mlx_harmony/speech/moshi/tts.py) | Moshi TTS adapter. | voice/voice_moshi.py |
+| [voice/voice_moshi.py](../src/mlx_harmony/voice/voice_moshi.py) | Compatibility shim (temporary). | — |
+| [tools/hotmic.py](../src/mlx_harmony/tools/hotmic.py) | Mic permission checker. | — |
 
 [Back to README](../README.md)

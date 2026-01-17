@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from mlx_harmony.voice.check_mic import main
+from mlx_harmony.tools.hotmic import main
 
 __all__ = ["main"]

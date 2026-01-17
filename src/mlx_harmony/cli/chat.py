@@ -59,15 +59,15 @@ from mlx_harmony.harmony.prompt_builder import (
 from mlx_harmony.harmony.tool_calls import handle_tool_calls, has_tool_calls
 from mlx_harmony.logging import get_logger
 from mlx_harmony.render_output import display_assistant, display_thinking
-from mlx_harmony.tools import (
-    get_tools_for_model,
-)
-from mlx_harmony.voice.voice_moshi import (
+from mlx_harmony.speech.moshi.loader import (
     MoshiSTT,
     MoshiTTS,
     chunk_text,
     log_moshi_config,
     require_moshi_mlx,
+)
+from mlx_harmony.tools import (
+    get_tools_for_model,
 )
 
 

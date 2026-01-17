@@ -611,5 +611,5 @@ configs/*
 !configs/moshi-config.example.json
 docs/archive*
 docs/dependency-updates*
-!src/mlx_harmony/models/*
+!src/mlx_harmony/models
 AGENTS.md
