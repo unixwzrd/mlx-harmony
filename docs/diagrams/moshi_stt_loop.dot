@@ -1,0 +1,18 @@
+digraph MoshiSTTLoop {
+  rankdir=LR;
+  node [shape=box];
+
+  start [label="Listen cycle\n(reset state)"];
+  stream [label="InputStream\n24kHz"];
+  block [label="Block N\n(80ms)"];
+  rms [label="RMS / silence\nthreshold"];
+  encode [label="Mimi encode_step\n(tokens)"];
+  gen [label="LmGen.step\n(text token)"];
+  decode [label="Text detokenize\nappend"];
+  stop [label="Stop when\nsilence + min speech\nor VAD hits"];
+
+  start -> stream -> block -> rms;
+  rms -> encode -> gen -> decode;
+  decode -> stop;
+  stop -> start [style=dashed, label="next turn"];
+}

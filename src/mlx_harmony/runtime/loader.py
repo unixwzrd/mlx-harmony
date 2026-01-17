@@ -9,6 +9,7 @@ For other models, we fall back to mlx-lm model architectures (can be extracted l
 import glob
 import importlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -143,6 +144,21 @@ def _load_weights(model_path: Path) -> dict[str, mx.array]:
     return weights
 
 
+def _open_no_cache(path: Path):
+    """Open file with OS cache disabled (macOS F_NOCACHE)."""
+    try:
+        import fcntl
+    except ImportError as exc:
+        raise RuntimeError("no-fs-cache is not supported on this platform.") from exc
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        fcntl.fcntl(fd, fcntl.F_NOCACHE, 1)
+    except Exception as exc:
+        os.close(fd)
+        raise RuntimeError(f"Failed to disable filesystem cache for {path}") from exc
+    return os.fdopen(fd, "rb", buffering=0)
+
+
 def _apply_quantization(model: nn.Module, config: dict[str, Any], weights: dict[str, mx.array]) -> None:
     """Apply quantization to model if specified in config."""
     # Check for quantization config
@@ -223,6 +239,7 @@ def load_model_standalone(
     return_config: bool = False,
     revision: str | None = None,
     mlock: bool = False,
+    no_fs_cache: bool = False,
 ) -> tuple[Any, Any] | tuple[Any, Any, dict[str, Any]]:
     """
     Load a model standalone without mlx-lm's load function.
@@ -236,6 +253,7 @@ def load_model_standalone(
         return_config: If True, return model config as third element
         revision: Optional HuggingFace revision
         mlock: If True, lock model weights in memory using MLX's wired limit
+        no_fs_cache: If True, disable filesystem cache when reading weights (macOS only)
 
     Returns:
         Tuple of (model, tokenizer) or (model, tokenizer, config) if return_config=True
@@ -334,7 +352,18 @@ def load_model_standalone(
     model_class, model_args_class = _get_model_classes(config)
 
     # Load weights before instantiating model (need to check for quantized weights)
-    weights = _load_weights(model_path)
+    if no_fs_cache:
+        weights = {}
+        for wf in glob.glob(str(model_path / "model*.safetensors")):
+            with _open_no_cache(Path(wf)) as handle:
+                try:
+                    weights.update(mx.load(handle))
+                except TypeError as exc:
+                    raise RuntimeError(
+                        "mlx.core.load does not support file handles; disable --no-fs-cache."
+                    ) from exc
+    else:
+        weights = _load_weights(model_path)
 
     # Check if model has quantized expert weights (GPT-OSS specific)
     # Check by looking for quantized expert weight keys in the loaded weights

@@ -1,7 +1,7 @@
 # TODO Checklist
 
 **Created**: 2026-01-09
-**Updated**: 2026-01-15
+**Updated**: 2026-01-17
 
 Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
 
@@ -79,6 +79,10 @@ _Add quick TODOs here as they come up during development:_
 - [ ] Add per-turn IDs + parent/child links for chat logs
 - [ ] Add max context window handling from model config (with override)
 - [ ] Add seed support for deterministic chat/profiling runs
+- [ ] Reconcile `voice_moshi` fixes from tmp (merge working/broken deltas cleanly)
+- [ ] Restore Moshi STT/TTS improvements (thresholds, warmup, VAD/silence handling)
+- [ ] Improve TTS chunking/sentence splitting to reduce choppiness
+- [ ] Review hot-mic/start-stop UX and make it smoother (avoid CPU spikes)
 
 ---
 
@@ -102,6 +106,7 @@ _Short-term checklist for integrating Moshi STT/TTS behind a CLI flag._
 - [ ] Add TTS chunking controls for sentence/length-based streaming.
 - [ ] Add Moshi smoke-test flag for quick validation.
 - [ ] Add voice status output and timing logs for STT/TTS.
+- [ ] Explore parallel STT + TTS processing with non-speech filtering (avoid barge-in on coughs/uhs/sneezes).
 - [ ] Add Moshi config/unit tests (skip if deps missing).
 - [ ] Define Moshi adapter interfaces (STT/TTS) in a new voice module.
 - [ ] Implement MLX STT adapter (mic → partial/final text).

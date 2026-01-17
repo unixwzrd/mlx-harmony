@@ -1,0 +1,21 @@
+digraph MoshiVoiceArch {
+  rankdir=LR;
+  node [shape=box];
+
+  cli [label="cli/chat.py\n--moshi"];
+  config [label="Moshi config\n(moshi.json)"];
+  stt [label="MoshiSTT\nvoice_moshi.py"];
+  tts [label="MoshiTTS\nvoice_moshi.py"];
+  gen [label="LLM generation\nToken stream"];
+  render [label="Renderer\n(Rich / plain)"];
+  io [label="IO\nMic / Speaker"];
+
+  cli -> config;
+  cli -> stt;
+  cli -> tts;
+  stt -> gen;
+  gen -> render;
+  render -> tts;
+  tts -> io;
+  stt -> io;
+}

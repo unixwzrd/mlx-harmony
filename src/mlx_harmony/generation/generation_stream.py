@@ -14,6 +14,7 @@ def stream_generation(
     hyperparameters: dict[str, float | int | bool],
     seed: int | None,
     on_text: Callable[[str], None],
+    on_harmony_text: Callable[[str, str | None, object | None], None] | None = None,
 ) -> tuple[list[int], list[int], list[str]]:
     tokens: list[int] = []
     all_generated_tokens: list[int] = []
@@ -39,6 +40,12 @@ def stream_generation(
         if generator.is_gpt_oss and generator.use_harmony and generator.streamable_parser:
             try:
                 generator.streamable_parser.process(int(token_id))
+                if on_harmony_text and generator.streamable_parser.last_content_delta:
+                    on_harmony_text(
+                        generator.streamable_parser.last_content_delta,
+                        generator.streamable_parser.current_channel,
+                        generator.streamable_parser.current_role,
+                    )
             except Exception:
                 # Streaming parser errors are handled later in chat.py
                 pass

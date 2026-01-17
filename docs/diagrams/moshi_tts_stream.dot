@@ -1,0 +1,15 @@
+digraph MoshiTTSStream {
+  rankdir=LR;
+  node [shape=box];
+
+  text [label="Text chunks\n(sentence/length)"];
+  prep [label="TTS prepare_script"];
+  cond [label="Voice conditioning\n(.safetensors)"];
+  gen [label="TTS generate\n(on_frame)"];
+  decode [label="Mimi decode_step\nPCM frames"];
+  out [label="OutputStream\nspeaker"];
+  barge [label="Barge-in\n(optional)"];
+
+  text -> prep -> cond -> gen -> decode -> out;
+  barge -> out [style=dashed, label="interrupt"];
+}

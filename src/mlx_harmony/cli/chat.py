@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import queue
+import select
 import sys
 import threading
 import time
@@ -148,6 +150,7 @@ def main() -> None:
         prompt_config=prompt_config,
         lazy=lazy,
         mlock=mlock or False,  # Default to False if None
+        no_fs_cache=bool(args.no_fs_cache),
     )
     if generator.use_harmony and generator.encoding:
         generator.prompt_token_cache = PromptTokenCache()
@@ -205,6 +208,24 @@ def main() -> None:
             moshi_config = moshi_config.model_copy(update={"stt_vad_threshold": args.moshi_vad_threshold})
         if args.moshi_vad_hits is not None:
             moshi_config = moshi_config.model_copy(update={"stt_vad_hits": args.moshi_vad_hits})
+        if args.moshi_silence is not None:
+            moshi_config = moshi_config.model_copy(update={"stt_silence": bool(args.moshi_silence)})
+        if args.moshi_silence_threshold is not None:
+            moshi_config = moshi_config.model_copy(
+                update={"stt_silence_threshold": args.moshi_silence_threshold}
+            )
+        if args.moshi_silence_ms is not None:
+            moshi_config = moshi_config.model_copy(update={"stt_silence_ms": args.moshi_silence_ms})
+        if args.moshi_min_speech_ms is not None:
+            moshi_config = moshi_config.model_copy(
+                update={"stt_min_speech_ms": args.moshi_min_speech_ms}
+            )
+        if args.moshi_stt_block_ms is not None:
+            moshi_config = moshi_config.model_copy(update={"stt_block_ms": args.moshi_stt_block_ms})
+        if args.moshi_stt_warmup_blocks is not None:
+            moshi_config = moshi_config.model_copy(
+                update={"stt_warmup_blocks": args.moshi_stt_warmup_blocks}
+            )
         if args.moshi_barge_in is not None:
             moshi_config = moshi_config.model_copy(update={"barge_in": bool(args.moshi_barge_in)})
         if args.moshi_barge_in_window is not None:
@@ -215,6 +236,12 @@ def main() -> None:
             moshi_config = moshi_config.model_copy(update={"tts_chunk_chars": args.moshi_tts_chunk_chars})
         if args.moshi_tts_chunk_sentences is not None:
             moshi_config = moshi_config.model_copy(update={"tts_chunk_sentences": bool(args.moshi_tts_chunk_sentences)})
+        if args.moshi_tts_chunk_min_chars is not None:
+            moshi_config = moshi_config.model_copy(
+                update={"tts_chunk_min_chars": args.moshi_tts_chunk_min_chars}
+            )
+        if args.moshi_tts_stream is not None:
+            moshi_config = moshi_config.model_copy(update={"tts_stream": bool(args.moshi_tts_stream)})
         if args.moshi_stt is not None:
             moshi_config = moshi_config.model_copy(update={"use_stt": bool(args.moshi_stt)})
         if args.moshi_tts is not None:
@@ -234,6 +261,8 @@ def main() -> None:
             moshi_stt = MoshiSTT(
                 moshi_config.stt_model_path,
                 config_path=moshi_config.stt_config_path,
+                block_ms=moshi_config.stt_block_ms,
+                warmup_blocks=moshi_config.stt_warmup_blocks,
             )
         if moshi_config.use_tts:
             moshi_tts = MoshiTTS(
@@ -251,6 +280,10 @@ def main() -> None:
                 transcript = moshi_stt.listen_once(
                     max_seconds=moshi_config.stt_max_seconds,
                     vad=moshi_config.stt_vad,
+                    silence=moshi_config.stt_silence,
+                    silence_threshold=moshi_config.stt_silence_threshold,
+                    silence_ms=moshi_config.stt_silence_ms,
+                    min_speech_ms=moshi_config.stt_min_speech_ms,
                 )
                 print(f"[VOICE] STT transcript: {transcript}")
             return
@@ -339,19 +372,38 @@ def main() -> None:
     while True:
         try:
             if moshi_stt is not None:
-                listen_seconds = moshi_config.stt_max_seconds if moshi_config else 8.0
-                _voice_status("Listening", f"up to {listen_seconds:.1f}s")
-                listen_start = time.perf_counter()
-                user_input = moshi_stt.listen_once(
-                    max_seconds=listen_seconds,
-                    vad=moshi_config.stt_vad if moshi_config else False,
-                    vad_threshold=moshi_config.stt_vad_threshold if moshi_config else 0.5,
-                    vad_hits_required=moshi_config.stt_vad_hits if moshi_config else 2,
-                )
-                listen_elapsed = time.perf_counter() - listen_start
-                logger.info("Moshi STT listen duration: %.2fs", listen_elapsed)
-                if user_input:
-                    print(f"\n>> {user_input}")
+                if sys.stdin.isatty():
+                    ready, _, _ = select.select([sys.stdin], [], [], 0.0)
+                    if ready:
+                        line = sys.stdin.readline()
+                        if not line:
+                            break
+                        user_input = line.rstrip("\n")
+                    else:
+                        user_input = ""
+                else:
+                    user_input = ""
+
+                if not user_input:
+                    listen_seconds = moshi_config.stt_max_seconds if moshi_config else 8.0
+                    _voice_status("Listening", f"up to {listen_seconds:.1f}s")
+                    listen_start = time.perf_counter()
+                    user_input = moshi_stt.listen_once(
+                        max_seconds=listen_seconds,
+                        vad=moshi_config.stt_vad if moshi_config else False,
+                        vad_threshold=moshi_config.stt_vad_threshold if moshi_config else 0.5,
+                        vad_hits_required=moshi_config.stt_vad_hits if moshi_config else 2,
+                        silence=moshi_config.stt_silence if moshi_config else True,
+                        silence_threshold=(
+                            moshi_config.stt_silence_threshold if moshi_config else 0.01
+                        ),
+                        silence_ms=moshi_config.stt_silence_ms if moshi_config else 700,
+                        min_speech_ms=moshi_config.stt_min_speech_ms if moshi_config else 200,
+                    )
+                    listen_elapsed = time.perf_counter() - listen_start
+                    logger.info("Moshi STT listen duration: %.2fs", listen_elapsed)
+                    if user_input:
+                        print(f"\n>> {user_input}")
             else:
                 user_input = read_user_input("\n>> ")
         except (EOFError, KeyboardInterrupt):
@@ -468,6 +520,72 @@ def main() -> None:
                 if reseed_each_turn:
                     effective_seed += generation_index
 
+            tts_stream_queue: queue.Queue[str | None] | None = None
+            tts_stream_thread: threading.Thread | None = None
+            tts_stream_buffer = ""
+
+            def _start_tts_stream() -> None:
+                nonlocal tts_stream_queue, tts_stream_thread
+                if not moshi_tts or not moshi_config or not moshi_config.tts_stream:
+                    return
+                if moshi_config.barge_in:
+                    raise RuntimeError("TTS streaming does not support barge-in yet.")
+                tts_stream_queue = queue.Queue()
+
+                def _tts_worker() -> None:
+                    while True:
+                        chunk = tts_stream_queue.get()
+                        if chunk is None:
+                            break
+                        moshi_tts.speak(chunk)
+
+                tts_stream_thread = threading.Thread(target=_tts_worker, daemon=True)
+                tts_stream_thread.start()
+
+            def _enqueue_tts_chunk(chunk: str) -> None:
+                if tts_stream_queue is None:
+                    return
+                if chunk.strip():
+                    tts_stream_queue.put(chunk.strip())
+
+            def _flush_tts_stream() -> None:
+                if tts_stream_queue is None:
+                    return
+                if tts_stream_buffer.strip():
+                    _enqueue_tts_chunk(tts_stream_buffer)
+                tts_stream_queue.put(None)
+                if tts_stream_thread:
+                    tts_stream_thread.join()
+
+            def _maybe_emit_tts_stream(delta: str, channel: str | None, role: object | None) -> None:
+                nonlocal tts_stream_buffer
+                if not moshi_config or not moshi_config.tts_stream:
+                    return
+                if role is not None and str(role) != "Role.ASSISTANT":
+                    return
+                if channel not in (None, "final", "commentary"):
+                    return
+                tts_stream_buffer += delta
+                chunk_limit = moshi_config.tts_chunk_chars
+                min_chars = moshi_config.tts_chunk_min_chars
+                while True:
+                    if len(tts_stream_buffer) < min_chars:
+                        return
+                    cut_at = -1
+                    for mark in (".", "!", "?", ";", ":"):
+                        idx = tts_stream_buffer.rfind(mark, 0, chunk_limit + 1)
+                        if idx > cut_at:
+                            cut_at = idx
+                    if cut_at == -1 and len(tts_stream_buffer) < chunk_limit:
+                        return
+                    if cut_at == -1:
+                        cut_at = chunk_limit
+                    chunk = tts_stream_buffer[: cut_at + 1].strip()
+                    tts_stream_buffer = tts_stream_buffer[cut_at + 1 :].lstrip()
+                    _enqueue_tts_chunk(chunk)
+
+            _start_tts_stream()
+
             tokens, all_generated_tokens, streamed_text_parts = stream_generation(
                 generator=generator,
                 conversation=prompt_conversation,
@@ -475,7 +593,10 @@ def main() -> None:
                 prompt_token_ids=prompt_token_ids,
                 hyperparameters=hyperparameters,
                 seed=effective_seed,
-                on_text=lambda text: print(text, end="", flush=True),
+                on_text=lambda text: print(text, end="", flush=True)
+                if not (generator.is_gpt_oss and generator.use_harmony)
+                else (lambda _text: None),
+                on_harmony_text=_maybe_emit_tts_stream,
             )
             generation_index += 1
 
@@ -550,10 +671,18 @@ def main() -> None:
 
             # No tool calls or non-GPT-OSS model: assistant_text already set above
             # (For Harmony models, it's the final channel content; for others, it's decoded tokens)
-            if moshi_tts is not None and assistant_text.strip():
+            if moshi_config and moshi_config.tts_stream and moshi_tts is not None:
+                _flush_tts_stream()
+            elif moshi_tts is not None and assistant_text.strip():
                 chunk_chars = moshi_config.tts_chunk_chars if moshi_config else 180
                 chunk_sentences = moshi_config.tts_chunk_sentences if moshi_config else True
-                for chunk in chunk_text(assistant_text, chunk_chars, chunk_sentences):
+                chunk_min_chars = moshi_config.tts_chunk_min_chars if moshi_config else 60
+                for chunk in chunk_text(
+                    assistant_text,
+                    chunk_chars,
+                    chunk_sentences,
+                    min_chars=chunk_min_chars,
+                ):
                     _voice_status("Speaking")
                     stop_event = None
                     monitor_thread = None
@@ -567,6 +696,10 @@ def main() -> None:
                                     vad=True,
                                     vad_threshold=moshi_config.stt_vad_threshold,
                                     vad_hits_required=moshi_config.stt_vad_hits,
+                                    silence=moshi_config.stt_silence,
+                                    silence_threshold=moshi_config.stt_silence_threshold,
+                                    silence_ms=moshi_config.stt_silence_ms,
+                                    min_speech_ms=moshi_config.stt_min_speech_ms,
                                 )
                                 if transcript:
                                     stop_event.set()

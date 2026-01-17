@@ -136,6 +136,12 @@ def build_parser() -> argparse.ArgumentParser:
         "Default: None (use library default, typically False).",
     )
     parser.add_argument(
+        "--no-fs-cache",
+        action="store_true",
+        default=False,
+        help="Disable filesystem cache when reading model weights (macOS only, experimental).",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -202,6 +208,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="Consecutive VAD hits required to end an utterance.",
     )
     parser.add_argument(
+        "--moshi-silence",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable RMS-based silence detection for STT end-of-utterance.",
+    )
+    parser.add_argument(
+        "--moshi-silence-threshold",
+        type=float,
+        default=None,
+        help="RMS threshold used to detect silence for STT end-of-utterance.",
+    )
+    parser.add_argument(
+        "--moshi-silence-ms",
+        type=int,
+        default=None,
+        help="Milliseconds of trailing silence required to end an utterance.",
+    )
+    parser.add_argument(
+        "--moshi-min-speech-ms",
+        type=int,
+        default=None,
+        help="Minimum milliseconds of speech before silence can end an utterance.",
+    )
+    parser.add_argument(
+        "--moshi-stt-block-ms",
+        type=int,
+        default=None,
+        help="STT audio block duration in milliseconds (larger reduces CPU).",
+    )
+    parser.add_argument(
+        "--moshi-stt-warmup-blocks",
+        type=int,
+        default=None,
+        help="Number of initial audio blocks to discard when starting STT listening.",
+    )
+    parser.add_argument(
         "--moshi-barge-in",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -248,6 +290,18 @@ def build_parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Chunk assistant text for TTS on sentence boundaries when possible.",
+    )
+    parser.add_argument(
+        "--moshi-tts-chunk-min-chars",
+        type=int,
+        default=None,
+        help="Minimum character length for each TTS chunk (helps avoid tiny fragments).",
+    )
+    parser.add_argument(
+        "--moshi-tts-stream",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Stream TTS chunks during generation (asynchronous playback).",
     )
     parser.add_argument(
         "--moshi-stt",

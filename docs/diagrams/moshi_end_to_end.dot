@@ -1,0 +1,17 @@
+digraph MoshiEndToEnd {
+  rankdir=LR;
+  node [shape=box];
+
+  mic [label="Microphone\n(24kHz PCM)"];
+  frame [label="Frame 80ms\n(1920 samples)"];
+  mimi_enc [label="Mimi encode_step\n(audio tokens)"];
+  lm [label="Moshi LM\n(gen.step)"];
+  text_out [label="Text tokens\n-> detokenize"];
+  audio_tokens [label="Audio tokens\n(last_audio_tokens)"];
+  mimi_dec [label="Mimi decode_step\n(PCM)"];
+  spk [label="Speaker\n(PCM out)"];
+
+  mic -> frame -> mimi_enc -> lm;
+  lm -> text_out;
+  lm -> audio_tokens -> mimi_dec -> spk;
+}

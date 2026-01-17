@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import time
 from datetime import datetime
 from typing import Dict, Iterator, List, Optional, Union
 
+from mlx_lm import load, stream_generate
+from mlx_lm.sample_utils import make_logits_processors, make_sampler
 from openai_harmony import (
-    Author,
     Conversation,
     DeveloperContent,
     HarmonyEncodingName,
@@ -19,15 +19,13 @@ from openai_harmony import (
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
-from mlx_harmony.runtime.hyperparameters import resolve_param
 
 
 class TokenGenerator:
     """
-    Multi-model token generator using MLX + Harmony.
+    Multi-model token generator using MLX-LM + Harmony.
 
-    - Works with any MLX-compatible model (uses mlx-lm model architectures only).
-    - Standalone generation and sampling implementation.
+    - Works with any MLX-LM supported model.
     - Automatically uses Harmony format for GPT-OSS models.
     """
 
@@ -36,32 +34,24 @@ class TokenGenerator:
         model_path: str,
         use_harmony: Optional[bool] = None,
         lazy: bool = False,
-        prompt_config: Optional[PromptConfig] = None,
         mlock: bool = False,
+        no_fs_cache: bool = False,
+        prompt_config: Optional[PromptConfig] = None,
     ) -> None:
         """
-        Initialize generator for any MLX-compatible model.
+        Initialize generator for any MLX-LM model.
 
         Args:
             model_path: Path to model checkpoint or Hugging Face repo.
             use_harmony: Whether to use Harmony format. When None, this is
                 auto-detected (enabled only for GPT-OSS models).
             lazy: Lazy-load model weights.
-            mlock: If True, lock model weights in memory using MLX's wired limit
-                (mlock equivalent, macOS Metal only). Default: False
         """
-        # Use standalone loader (no pre-warming, filesystem cache handles it naturally)
-        # Imported lazily to avoid initializing MLX during module import.
-        from mlx_harmony.runtime.loader import load_model_standalone
-
-        self.model, self.tokenizer = load_model_standalone(
-            model_path,
-            lazy=lazy,
-            mlock=mlock,
-        )
+        self.model, self.tokenizer = load(model_path, lazy=lazy)
         self.model_path = model_path
         self.prompt_config = prompt_config
         self.mlock = mlock
+        self.no_fs_cache = no_fs_cache
 
         # Auto-detect if this is a GPT-OSS model.
         self.is_gpt_oss = self._is_gpt_oss_model(model_path)
@@ -80,64 +70,15 @@ class TokenGenerator:
         # Streamable parser for tool call detection (Harmony only)
         self.streamable_parser: Optional[StreamableParser] = None
         if self.use_harmony and self.encoding is not None:
-            # StreamableParser constructor takes encoding and optional role
-            # Use strict=False for permissive parsing (allows recovery from malformed output)
-            self.streamable_parser = StreamableParser(self.encoding, Role.ASSISTANT, strict=False)
+            self.streamable_parser = StreamableParser(
+                self.encoding, Role.ASSISTANT
+            )
 
     @staticmethod
     def _is_gpt_oss_model(model_path: str) -> bool:
         """Best-effort detection of GPT-OSS models from the model identifier."""
         path_lower = model_path.lower()
         return "gpt-oss" in path_lower or "gpt_oss" in path_lower
-
-    def _resolve_xtc_special_tokens(
-        self, config_tokens: Optional[List[int]], xtc_probability: float
-    ) -> list[int]:
-        """
-        Resolve XTC special tokens from config or auto-detect from tokenizer.
-
-        If config_tokens is None and XTC is enabled (xtc_probability > 0.0),
-        auto-detects special tokens (EOS and newline) from the tokenizer.
-        Otherwise, returns the configured tokens or empty list.
-        """
-        # If explicitly set in config, use that
-        if config_tokens is not None:
-            return config_tokens
-
-        # If XTC is disabled, return empty list
-        if xtc_probability <= 0.0:
-            return []
-
-        # XTC is enabled but no special tokens specified - auto-detect from tokenizer
-        # Similar to mlx-lm's server.py, we exclude EOS and newline tokens
-        special_tokens: list[int] = []
-        try:
-            # Add EOS token if available
-            if hasattr(self.tokenizer, "eos_token_id") and self.tokenizer.eos_token_id is not None:
-                eos_id = self.tokenizer.eos_token_id
-                if isinstance(eos_id, int):
-                    special_tokens.append(eos_id)
-                elif isinstance(eos_id, list) and eos_id:
-                    # Some tokenizers have eos_token_id as a list
-                    special_tokens.extend(eos_id)
-
-            # Add newline token if available
-            newline_ids = self.tokenizer.encode("\n", add_special_tokens=False)
-            if newline_ids:
-                special_tokens.extend(list(newline_ids))
-
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_tokens = []
-            for token_id in special_tokens:
-                if token_id not in seen:
-                    seen.add(token_id)
-                    unique_tokens.append(token_id)
-
-            return unique_tokens
-        except Exception:
-            # If auto-detection fails, return empty list (no special tokens excluded)
-            return []
 
     def generate(
         self,
@@ -166,62 +107,39 @@ class TokenGenerator:
         - GPT-OSS models: Uses Harmony format.
         - Other models: Uses the model's native chat template.
         """
-        # Imported lazily to avoid MLX initialization during module import.
-        from mlx_harmony.generation.generate_standalone import stream_generate
-        from mlx_harmony.generation.sampling import make_logits_processors, make_sampler
-
-        # Use provided prompt token IDs when available (avoids re-rendering prompts).
-        if prompt_tokens is not None:
-            prompt_input = prompt_tokens
-        # For Harmony models, get token IDs directly (don't convert to string and back)
-        # This avoids double-encoding: Harmony encoding tokens -> string -> native tokenizer tokens
-        elif self.use_harmony and self.encoding and messages:
-            prompt_token_ids = self._harmony_messages_to_token_ids(
-                messages, system_message
-            )
-            # Pass token IDs directly to stream_generate (it accepts list[int])
-            prompt_input = prompt_token_ids
-        else:
-            # For non-Harmony models, use string prompt (will be encoded by stream_generate)
-            prompt_input = self._prepare_prompt(
-                prompt_tokens=prompt_tokens,
-                messages=messages,
-                prompt=prompt,
-                system_message=system_message,
-            )
+        prompt_str = self._prepare_prompt(
+            prompt_tokens=prompt_tokens,
+            messages=messages,
+            prompt=prompt,
+            system_message=system_message,
+        )
 
         cfg = self.prompt_config
 
-        if seed is not None and seed >= 0:
-            # Lazy import to avoid MLX initialization during module import.
-            import mlx.core as mx
-
-            mx.random.seed(seed)
+        def resolve(val, cfg_val, default):
+            return default if val is None and cfg_val is None else (val if val is not None else cfg_val)
 
         # Build sampler using MLX-LM's sampling utilities.
         sampler = make_sampler(
-            temp=resolve_param(temperature, cfg.temperature if cfg else None, 1.0),
-            top_p=resolve_param(top_p, cfg.top_p if cfg else None, 0.0),
-            min_p=resolve_param(min_p, cfg.min_p if cfg else None, 0.0),
-            min_tokens_to_keep=resolve_param(
+            temp=resolve(temperature, cfg.temperature if cfg else None, 1.0),
+            top_p=resolve(top_p, cfg.top_p if cfg else None, 0.0),
+            min_p=resolve(min_p, cfg.min_p if cfg else None, 0.0),
+            min_tokens_to_keep=resolve(
                 min_tokens_to_keep, cfg.min_tokens_to_keep if cfg else None, 1
             ),
-            top_k=resolve_param(top_k, cfg.top_k if cfg else None, 0),
-            xtc_probability=resolve_param(
+            top_k=resolve(top_k, cfg.top_k if cfg else None, 0),
+            xtc_probability=resolve(
                 xtc_probability, cfg.xtc_probability if cfg else None, 0.0
             ),
-            xtc_threshold=resolve_param(
+            xtc_threshold=resolve(
                 xtc_threshold, cfg.xtc_threshold if cfg else None, 0.0
             ),
-            xtc_special_tokens=self._resolve_xtc_special_tokens(
-                cfg.xtc_special_tokens if cfg else None,
-                resolve_param(xtc_probability, cfg.xtc_probability if cfg else None, 0.0),
-            ),
+            xtc_special_tokens=[],
         )
 
         logits_processors = make_logits_processors(
             logit_bias=logit_bias,
-            repetition_penalty=resolve_param(
+            repetition_penalty=resolve(
                 repetition_penalty,
                 cfg.repetition_penalty if cfg else None,
                 0.0,
@@ -229,120 +147,41 @@ class TokenGenerator:
             if (repetition_penalty or 0.0) != 0.0
             or (cfg and cfg.repetition_penalty is not None)
             else None,
-            repetition_context_size=resolve_param(
+            repetition_context_size=resolve(
                 repetition_context_size,
                 cfg.repetition_context_size if cfg else None,
                 20,
             ),
         )
 
-        # Resolve max_tokens: CLI/function arg > prompt_config > default
-        resolved_max_tokens = max_tokens
-        if resolved_max_tokens is None and cfg and cfg.max_tokens is not None:
-            resolved_max_tokens = cfg.max_tokens
-        # Default max_tokens: 1024 for Harmony models (to allow for both analysis and final channels),
-        # 512 for other models
-        if resolved_max_tokens is None:
-            resolved_max_tokens = 1024 if (self.is_gpt_oss and self.use_harmony) else 512
-
         kwargs: Dict[str, object] = {"sampler": sampler}
         if logits_processors:
             kwargs["logits_processors"] = logits_processors
-        if resolved_max_tokens > 0:
-            kwargs["max_tokens"] = resolved_max_tokens
+        if max_tokens is not None and max_tokens > 0:
+            kwargs["max_tokens"] = max_tokens
 
-        # For Harmony models, use HarmonyEncoding.stop_tokens() to get token IDs directly
-        # BUT: Filter out <|end|> (200007) - it's just a message separator, not a generation stopper
-        # Only <|return|> (200002) and <|call|> (200012) should stop generation
-        stop_token_ids: List[int] = []
-        if self.use_harmony and self.encoding:
-            # Use HarmonyEncoding's stop_tokens() method to get token IDs directly
-            # This handles multi-token sequences correctly (e.g., <|return|>)
-            harmony_stop_ids = self.encoding.stop_tokens()
-            # Filter out <|end|> (200007) - it separates messages but doesn't stop generation
-            # The model generates: analysis<|end|> then final<|return|>
-            # We should only stop on <|return|> or <|call|>, not on <|end|>
-            end_token_id = 200007  # <|end|>
-            filtered_stop_ids = [tid for tid in harmony_stop_ids if tid != end_token_id]
-            stop_token_ids.extend(filtered_stop_ids)
-
-        # Add user-provided stop tokens
         if stop_tokens:
-            stop_token_ids.extend(stop_tokens)
-
-        # Remove duplicates while preserving order
-        seen = set()
-        stop_token_ids = [x for x in stop_token_ids if x not in seen and not seen.add(x)]
-
-        # Track generated tokens and timing
-        generated_tokens: List[int] = []
-        start_time = time.perf_counter()
+            stop_strings = self._tokens_to_stop_strings(stop_tokens)
+            if stop_strings:
+                kwargs["stop"] = stop_strings
 
         for response in stream_generate(
             self.model,
             self.tokenizer,
-            prompt_input,
-            sampler=sampler,
-            logits_processors=logits_processors if logits_processors else None,
-            max_tokens=resolved_max_tokens,
-            stop_tokens=stop_token_ids if stop_token_ids else None,
+            prompt_str,
+            **kwargs,
         ):
-            token_id = response.token
+            token_id = self._extract_token_id(response)
 
-            # Check if this is a stop response (generation ended)
-            if response.finish_reason == "stop":
-                # Stop token was generated, don't yield it
-                break
-
-            # Safe to yield - append to tracking list and yield
-            generated_tokens.append(int(token_id))
-
-            # Yield token with timing info
             if return_logprobs:
-                # Defensive check: ensure logprobs exists and token_id is in it
-                logprob = None
-                if response.logprobs is not None:
-                    # Check if token_id is accessible in logprobs
-                    # logprobs might be a dict keyed by token_id, or an array
-                    if isinstance(response.logprobs, dict):
-                        if token_id in response.logprobs:
-                            logprob_val = response.logprobs[token_id]
-                            # MLX arrays can be directly converted to Python scalars (no .item() needed)
-                            logprob = float(logprob_val) if hasattr(logprob_val, '__float__') else logprob_val
-                    elif hasattr(response.logprobs, '__getitem__'):
-                        # Assume it's array-like and token_id is an index
-                        try:
-                            logprob_val = response.logprobs[token_id]
-                            # MLX arrays can be directly converted to Python scalars (no .item() needed)
-                            logprob = float(logprob_val) if hasattr(logprob_val, '__float__') else logprob_val
-                        except (IndexError, KeyError, TypeError):
-                            pass
-
                 yield {
                     "token": token_id,
-                    "logprob": logprob,
+                    # MLX-LM Response currently does not expose per-token logprobs
+                    # on the public API; keep this for future extension.
+                    "logprob": getattr(response, "logprob", None),
                 }
             else:
                 yield token_id
-
-        # After generation completes, keep parameters active (if mlock enabled)
-        # This ensures buffers stay wired and don't get swapped out
-        self.keepalive()
-
-        # Calculate and store generation stats
-        end_time = time.perf_counter()
-        elapsed_time = end_time - start_time
-        num_tokens = len(generated_tokens)
-        tokens_per_second = num_tokens / elapsed_time if elapsed_time > 0 else 0.0
-
-        # Store stats on model for access by caller
-        self._last_generation_stats = {
-            "start_time": start_time,
-            "end_time": end_time,
-            "elapsed_time": elapsed_time,
-            "num_tokens": num_tokens,
-            "tokens_per_second": tokens_per_second,
-        }
 
     def _prepare_prompt(
         self,
@@ -353,37 +192,34 @@ class TokenGenerator:
     ) -> str:
         """Prepare a text prompt from tokens/messages/plain text."""
         if messages:
-            return self.render_prompt(messages, system_message)
-        # Check if prompt_tokens is actually a string (common mistake when passing positional arg)
-        if prompt_tokens is not None:
-            if isinstance(prompt_tokens, str):
-                # User passed string as positional argument, treat as prompt
-                prompt = prompt_tokens
-                prompt_tokens = None
-            elif isinstance(prompt_tokens, (list, tuple)) and all(isinstance(x, int) for x in prompt_tokens):
-                # Valid prompt_tokens (list of ints)
-                # Use HarmonyEncoding.decode() if Harmony is enabled, otherwise use native tokenizer
-                if self.use_harmony and self.encoding:
-                    return self.encoding.decode(prompt_tokens)
-                return self.tokenizer.decode(prompt_tokens)
+            return self._messages_to_prompt(messages, system_message)
+        if prompt_tokens:
+            return self.tokenizer.decode(prompt_tokens)
         if prompt is not None:
             if self.use_harmony:
                 messages = [{"role": "user", "content": prompt}]
-                return self.render_prompt(messages, system_message)
+                return self._messages_to_prompt(messages, system_message)
             return prompt
         raise ValueError("Must provide prompt_tokens, messages, or prompt")
 
-    def render_prompt(
+    def _messages_to_prompt(
         self,
         messages: List[Dict[str, str]],
         system_message: Optional[str] = None,
     ) -> str:
-        """
-        Convert messages to a model prompt using the appropriate format.
+        """Convert messages to a model prompt using the appropriate format."""
+        # Apply placeholders to message content if provided in config.
+        if self.prompt_config and self.prompt_config.placeholders:
+            messages = [
+                {
+                    **msg,
+                    "content": apply_placeholders(
+                        msg.get("content"), self.prompt_config.placeholders
+                    ),
+                }
+                for msg in messages
+            ]
 
-        Public method for rendering prompts (e.g., for debug output).
-        Previously _messages_to_prompt, made public to avoid brittle private calls.
-        """
         if self.use_harmony and self.encoding is not None:
             return self._harmony_messages_to_prompt(messages, system_message)
         return self._native_messages_to_prompt(messages, system_message)
@@ -393,15 +229,100 @@ class TokenGenerator:
         messages: List[Dict[str, str]],
         system_message: Optional[str] = None,
     ) -> List[int]:
-        """
-        Convert messages to token IDs using the appropriate format.
-        Uses Harmony encoding tokens for GPT-OSS and native tokenizer tokens otherwise.
-        """
-        if self.use_harmony and self.encoding is not None:
-            return self._harmony_messages_to_token_ids(messages, system_message)
+        """Render prompt tokens for the given messages/system message."""
+        if self.prompt_config and self.prompt_config.placeholders:
+            messages = [
+                {
+                    **msg,
+                    "content": apply_placeholders(
+                        msg.get("content"), self.prompt_config.placeholders
+                    ),
+                }
+                for msg in messages
+            ]
 
-        prompt_text = self._native_messages_to_prompt(messages, system_message)
-        return self.tokenizer.encode(prompt_text)
+        if self.use_harmony and self.encoding is not None:
+            harmony_messages: List[Message] = []
+            sys_content = SystemContent.new()
+            cfg = self.prompt_config
+
+            if system_message:
+                sys_content = sys_content.with_model_identity(system_message)
+            elif cfg and cfg.system_model_identity:
+                sys_content = sys_content.with_model_identity(cfg.system_model_identity)
+
+            if cfg and cfg.reasoning_effort:
+                try:
+                    effort = ReasoningEffort(cfg.reasoning_effort.capitalize())
+                    sys_content = sys_content.with_reasoning_effort(effort)
+                except ValueError:
+                    pass
+
+            if cfg and cfg.conversation_start_date:
+                sys_content = sys_content.with_conversation_start_date(
+                    cfg.conversation_start_date
+                )
+            else:
+                sys_content = sys_content.with_conversation_start_date(
+                    datetime.now().strftime("%Y-%m-%d")
+                )
+
+            if cfg and cfg.knowledge_cutoff:
+                sys_content = sys_content.with_knowledge_cutoff(cfg.knowledge_cutoff)
+
+            harmony_messages.append(
+                Message.from_role_and_content(Role.SYSTEM, sys_content),
+            )
+
+            if cfg and cfg.developer_instructions:
+                dev_content = DeveloperContent.new().with_instructions(
+                    cfg.developer_instructions
+                )
+                harmony_messages.append(
+                    Message.from_role_and_content(Role.DEVELOPER, dev_content),
+                )
+
+            for msg in messages:
+                role_str = msg.get("role", "user").lower()
+                role = Role(role_str)
+                content_text = msg.get("content", "")
+                content = TextContent(text=content_text)
+                harmony_messages.append(
+                    Message.from_role_and_content(role, content),
+                )
+
+            conversation = Conversation.from_messages(harmony_messages)
+            prompt_tokens = self.encoding.render_conversation_for_completion(
+                conversation, Role.ASSISTANT
+            )
+            return list(prompt_tokens)
+
+        if hasattr(self.tokenizer, "apply_chat_template"):
+            try:
+                tokens = self.tokenizer.apply_chat_template(
+                    messages,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                )
+                return list(tokens)
+            except TypeError:
+                prompt = self._native_messages_to_prompt(messages, system_message)
+                return list(self.tokenizer.encode(prompt))
+
+        prompt = self._native_messages_to_prompt(messages, system_message)
+        return list(self.tokenizer.encode(prompt))
+
+    def render_prompt(
+        self,
+        messages: List[Dict[str, str]],
+        system_message: Optional[str] = None,
+    ) -> str:
+        """Render a full prompt string from messages/system message."""
+        return self._messages_to_prompt(messages, system_message)
+
+    def keepalive(self) -> None:
+        """No-op keepalive for compatibility with caller expectations."""
+        return None
 
     def _harmony_messages_to_prompt(
         self,
@@ -409,71 +330,28 @@ class TokenGenerator:
         system_message: Optional[str] = None,
     ) -> str:
         """Convert messages using Harmony format (GPT-OSS only)."""
-        conversation = self._build_harmony_conversation(messages, system_message)
-        prompt_tokens = self.encoding.render_conversation_for_completion(
-            conversation, Role.ASSISTANT
-        )
-        # Use HarmonyEncoding.decode() to properly handle Harmony special tokens
-        # This correctly decodes tokens including <|start|>, <|end|>, <|message|>, etc.
-        return self.encoding.decode(prompt_tokens)
-
-    def _harmony_messages_to_token_ids(
-        self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
-    ) -> List[int]:
-        """Convert messages to token IDs using Harmony format (for direct token ID passing)."""
-        conversation = self._build_harmony_conversation(messages, system_message)
-        prompt_tokens = self.encoding.render_conversation_for_completion(
-            conversation, Role.ASSISTANT
-        )
-        # Return token IDs directly (don't decode to string)
-        return prompt_tokens
-
-    def _build_harmony_conversation(
-        self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str],
-    ) -> Conversation:
-        system_override: Optional[str] = None
-        developer_override: Optional[str] = None
-        for msg in messages:
-            role_str = msg.get("role", "user").strip().lower()
-            if role_str == "system":
-                system_override = msg.get("content", "")
-            elif role_str == "developer":
-                developer_override = msg.get("content", "")
-
-        if system_override or developer_override:
-            messages = [
-                msg
-                for msg in messages
-                if msg.get("role", "user").strip().lower()
-                not in ("system", "developer")
-            ]
-
         harmony_messages: List[Message] = []
+
+        # Build SystemContent with sensible defaults plus optional overrides.
         sys_content = SystemContent.new()
         cfg = self.prompt_config
 
+        # Model identity: CLI system_message wins, then config, then default.
         if system_message:
             sys_content = sys_content.with_model_identity(system_message)
-        elif system_override:
-            sys_content = sys_content.with_model_identity(system_override)
         elif cfg and cfg.system_model_identity:
-            sys_content = sys_content.with_model_identity(
-                apply_placeholders(cfg.system_model_identity, cfg.placeholders)
-                if cfg.placeholders
-                else cfg.system_model_identity
-            )
+            sys_content = sys_content.with_model_identity(cfg.system_model_identity)
 
+        # Reasoning effort.
         if cfg and cfg.reasoning_effort:
             try:
                 effort = ReasoningEffort(cfg.reasoning_effort.capitalize())
                 sys_content = sys_content.with_reasoning_effort(effort)
             except ValueError:
+                # Ignore invalid value; keep default.
                 pass
 
+        # Conversation start date (config or default to today for GPT-OSS).
         if cfg and cfg.conversation_start_date:
             sys_content = sys_content.with_conversation_start_date(
                 cfg.conversation_start_date
@@ -483,71 +361,38 @@ class TokenGenerator:
                 datetime.now().strftime("%Y-%m-%d")
             )
 
+        # Knowledge cutoff.
         if cfg and cfg.knowledge_cutoff:
             sys_content = sys_content.with_knowledge_cutoff(cfg.knowledge_cutoff)
 
+        # Add system message first.
         harmony_messages.append(
             Message.from_role_and_content(Role.SYSTEM, sys_content),
         )
 
-        if developer_override:
-            dev_content = DeveloperContent.new().with_instructions(developer_override)
-            harmony_messages.append(Message.from_role_and_content(Role.DEVELOPER, dev_content))
-        elif cfg and cfg.developer_instructions:
-            instructions = (
-                apply_placeholders(cfg.developer_instructions, cfg.placeholders)
-                if cfg.placeholders
-                else cfg.developer_instructions
+        # Optional developer message.
+        if cfg and cfg.developer_instructions:
+            dev_content = DeveloperContent.new().with_instructions(
+                cfg.developer_instructions
             )
-            dev_content = DeveloperContent.new().with_instructions(instructions)
             harmony_messages.append(
                 Message.from_role_and_content(Role.DEVELOPER, dev_content),
             )
 
-        if cfg and cfg.example_dialogues:
-            for example_turns in cfg.example_dialogues:
-                for turn in example_turns:
-                    role_str = turn.get("role", "user").strip().lower()
-                    if role_str == "tool":
-                        tool_name = turn.get("name")
-                        if tool_name:
-                            author = Author(role=Role.TOOL, name=tool_name)
-                            content = TextContent(text=turn.get("content", ""))
-                            tool_msg = Message.from_author_and_content(author, content)
-                            if turn.get("recipient"):
-                                tool_msg = tool_msg.with_recipient(turn["recipient"])
-                            harmony_messages.append(tool_msg)
-                    else:
-                        role = Role(role_str)
-                        content = TextContent(text=turn.get("content", ""))
-                        harmony_messages.append(
-                            Message.from_role_and_content(role, content),
-                        )
-
         for msg in messages:
-            role_str = msg.get("role", "user").strip().lower()
-            if role_str == "tool":
-                tool_name = msg.get("name")
-                if not tool_name:
-                    continue
-                author = Author(role=Role.TOOL, name=tool_name)
-                content_text = msg.get("content", "")
-                content = TextContent(text=content_text)
-                tool_msg = Message.from_author_and_content(author, content)
-                if msg.get("recipient"):
-                    tool_msg = tool_msg.with_recipient(msg["recipient"])
-                if msg.get("channel"):
-                    tool_msg = tool_msg.with_channel(msg["channel"])
-                harmony_messages.append(tool_msg)
-            else:
-                role = Role(role_str)
-                content_text = msg.get("content", "")
-                content = TextContent(text=content_text)
-                harmony_messages.append(
-                    Message.from_role_and_content(role, content),
-                )
+            role_str = msg.get("role", "user").lower()
+            role = Role(role_str)
+            content_text = msg.get("content", "")
+            content = TextContent(text=content_text)
+            harmony_messages.append(
+                Message.from_role_and_content(role, content),
+            )
 
-        return Conversation.from_messages(harmony_messages)
+        conversation = Conversation.from_messages(harmony_messages)
+        prompt_tokens = self.encoding.render_conversation_for_completion(
+            conversation, Role.ASSISTANT
+        )
+        return self.tokenizer.decode(prompt_tokens)
 
     def _native_messages_to_prompt(
         self,
@@ -571,39 +416,30 @@ class TokenGenerator:
         """Convert stop token IDs to stop strings."""
         stop_strings: List[str] = []
         for token_id in stop_tokens:
-            # Use HarmonyEncoding.decode() if Harmony is enabled (handles special tokens correctly)
-            # Otherwise use native tokenizer
-            if self.use_harmony and self.encoding:
-                text = self.encoding.decode([token_id])
-            else:
-                text = self.tokenizer.decode([token_id])
+            text = self.tokenizer.decode([token_id])
             if text:
                 stop_strings.append(text)
         return stop_strings
 
-    def keepalive(self) -> None:
+    def _extract_token_id(self, response: object) -> int:
         """
-        Keep model parameters active to prevent deallocation (for mlock mode).
+        Extract the last token id from an MLX-LM streaming response.
 
-        This is a no-op if mlock is disabled or parameters are not tracked.
-        Call this periodically (e.g., after generation) to prevent MLX from
-        freeing parameter buffers when mlock is enabled.
+        Today the Response object exposes `.text`; we re-tokenize this text
+        and take the last token id.
         """
-        if not self.mlock:
-            return
-
-        if not hasattr(self.model, "_mlx_harmony_param_refs"):
-            return
-
-        try:
-            # Touch all parameter arrays to keep them active
-            # This is a lightweight operation that prevents deallocation
-            for param in self.model._mlx_harmony_param_refs:
-                # Access the array data to prevent deallocation
-                _ = param.shape
-        except Exception:
-            # Ignore errors - not critical
-            pass
+        if hasattr(response, "text"):
+            encoded = self.tokenizer.encode(response.text)
+            if encoded:
+                return int(encoded[-1])
+        if isinstance(response, int):
+            return response
+        if isinstance(response, str):
+            encoded = self.tokenizer.encode(response)
+            if encoded:
+                return int(encoded[-1])
+        # Fallback - should rarely be hit.
+        return 0
 
     def parse_messages_from_tokens(
         self, tokens: List[int]

@@ -1,7 +1,7 @@
 # Troubleshooting Guide
 
 **Created**: 2026-01-07  
-**Last Updated**: 2026-01-09
+**Last Updated**: 2026-01-17
 
 Common issues and solutions for `mlx-harmony`.
 
@@ -33,7 +33,7 @@ Common issues and solutions for `mlx-harmony`.
    ```bash
    python -m venv venv
    source venv/bin/activate  # On macOS/Linux
-   pip install mlx-harmony
+   pip install git+https://github.com/unixwzrd/mlx-harmony.git
    ```
 
 ### UnicodeFix Dependency Error
@@ -182,6 +182,20 @@ Common issues and solutions for `mlx-harmony`.
 
 3. Use a smaller/quantized model
 4. Check CPU/GPU utilization (MLX should use GPU on Apple Silicon)
+
+### Slow Model Load
+
+**Problem**: Model load takes longer than expected, even with sufficient RAM.
+
+**Solutions**:
+
+1. Try the experimental filesystem cache bypass:
+
+   ```bash
+   mlx-harmony-chat --model <path-or-repo> --no-fs-cache
+   ```
+
+2. If `mlock` is enabled, keep the process alive to avoid repeated load/unload cycles.
 
 ---
 

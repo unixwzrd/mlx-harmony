@@ -1,7 +1,7 @@
 # MLX Harmony
 
 **Created**: 2026-01-12
-**Updated**: 2026-01-16
+**Updated**: 2026-01-17
 
 ![MLX Harmony banner Image](docs/images/MLX_Harmony_Banner.png)
 
@@ -52,6 +52,8 @@ It’s designed for Apple Silicon first, but will follow MLX wherever it goes.
 - **Performance hooks**
   - Wired memory (mlock) support for model weights (MLX Metal wired memory API; requires macOS 15.0+)
   - Token counting and timing (tokens/second display)
+  - Experimental `--no-fs-cache` flag to bypass filesystem cache during model load (macOS only)
+  - Experimental `--no-fs-cache` flag to bypass filesystem cache during model load (macOS only)
 - **Configurable directories**
   - Separate directories for logs, chats, and profiling stats (configurable in prompt config)
 - **Voice mode (Moshi)**
@@ -80,7 +82,7 @@ See [`examples/`](examples/) for practical usage examples:
 ## Installation
 
 ```bash
-pip install mlx-harmony
+pip install git+https://github.com/unixwzrd/mlx-harmony.git
 ```
 
 This will pull in compatible versions of:
@@ -98,7 +100,7 @@ You'll need a working MLX setup (typically Python 3.12+ on Apple Silicon).
 Optional Moshi voice support:
 
 ```bash
-pip install "mlx-harmony[moshi]"
+pip install "git+https://github.com/unixwzrd/mlx-harmony.git#egg=mlx-harmony[moshi]"
 ```
 
 ⸻
