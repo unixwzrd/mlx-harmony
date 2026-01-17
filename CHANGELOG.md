@@ -8,6 +8,14 @@ All notable changes to mlx-harmony will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2026-01-17
+
+### Changed
+
+- Realigned Moshi speech modules under `src/mlx_harmony/speech/moshi/`.
+- Renamed hotmic implementation to `src/mlx_harmony/tools/hotmic.py` and updated entrypoint to `mlx_harmony.tools.hotmic:main`.
+- Updated module map and diagrams to reflect new speech/hotmic paths.
+
 ## 2026-01-16 - v0.4.0
 
 Major refactoring of the codebase to improve readability, maintainability, and performance. Extensive performance enhancements, including:
