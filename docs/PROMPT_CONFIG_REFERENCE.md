@@ -1,7 +1,7 @@
 # Prompt Config Reference
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-12
+**Updated**: 2026-01-17
 
 This document explains all parameters available in the prompt configuration JSON file (`--prompt-config`).
 
@@ -13,6 +13,7 @@ This document explains all parameters available in the prompt configuration JSON
     - [`knowledge_cutoff` (string, optional)](#knowledge_cutoff-string-optional)
     - [`developer_instructions` (string, optional)](#developer_instructions-string-optional)
     - [`assistant_greeting` (string, optional)](#assistant_greeting-string-optional)
+    - [`use_harmony` (boolean, optional)](#use_harmony-boolean-optional)
     - [`example_dialogues` (array of arrays, optional)](#example_dialogues-array-of-arrays-optional)
   - [Placeholders](#placeholders)
     - [`placeholders` (object, optional)](#placeholders-object-optional)
@@ -38,6 +39,7 @@ This document explains all parameters available in the prompt configuration JSON
     - [`xtc_special_tokens` (array of integers, optional)](#xtc_special_tokens-array-of-integers-optional)
   - [Model Loading Optimizations](#model-loading-optimizations)
     - [`mlock` (boolean, optional)](#mlock-boolean-optional)
+    - [`no_fs_cache` (boolean, optional)](#no_fs_cache-boolean-optional)
     - [`lazy` (boolean, optional)](#lazy-boolean-optional)
   - [Display Configuration](#display-configuration)
     - [`truncate_thinking` (integer, optional)](#truncate_thinking-integer-optional)
@@ -125,6 +127,16 @@ An optional greeting message displayed at the start of a new conversation (befor
 
 ```json
 "assistant_greeting": "Hi {user}, it's {assistant}! I'm happy to see you again."
+```
+
+### `use_harmony` (boolean, optional)
+
+Override Harmony formatting for GPT-OSS models. When omitted, GPT-OSS defaults to Harmony and non-GPT-OSS uses native formatting.
+
+**Example:**
+
+```json
+"use_harmony": false
 ```
 
 **Placeholders:** Supports `<|DATE|>`, `<|DATETIME|>`, and user-defined `{key}` placeholders.
@@ -579,6 +591,20 @@ Lock model weights in memory using MLX's wired limit (mlock equivalent). Prevent
 
 **Note:** This uses MLX's `set_wired_limit()` under the hood, which is the MLX equivalent of mlock.
 
+### `no_fs_cache` (boolean, optional)
+
+Disable filesystem cache when reading model weights (macOS only). This can reduce load time by avoiding double-buffering in the OS cache.
+
+**Default:** `false`
+
+**Example:**
+
+```json
+"no_fs_cache": true
+```
+
+**Note:** Only applies when using the standalone loader on macOS. If unsupported, an error is raised.
+
 ### `lazy` (boolean, optional)
 
 Enable or disable lazy loading of model weights. When `false`, model parameters are evaluated immediately, which is recommended when using `mlock`.
@@ -675,6 +701,8 @@ Or use a custom path:
     "assistant": "Dave",
     "user": "Morgan"
   },
+  "max_user_tokens": 1024,
+  "max_assistant_tokens": 1024,
   "max_tokens": 1024,
   "max_context_tokens": 4096,
   "temperature": 0.8,

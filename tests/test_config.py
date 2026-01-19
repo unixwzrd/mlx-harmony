@@ -3,12 +3,14 @@ Unit tests for the config module.
 
 Tests placeholder expansion, config loading, and profile management.
 """
+
 import json
 from pathlib import Path
 
 import pytest
 
 from mlx_harmony.config import (
+    PromptConfig,
     apply_placeholders,
     load_profiles,
     load_prompt_config,
@@ -164,6 +166,35 @@ class TestPromptConfigLoading:
         except (json.JSONDecodeError, ValueError):
             # Or raise a clear error
             pass
+
+
+class TestPromptConfigTokenLimits:
+    """Test normalization of prompt token limits."""
+
+    def test_defaults_split_max_tokens(self) -> None:
+        config = PromptConfig(max_tokens=100)
+        assert config.max_user_tokens == 50
+        assert config.max_assistant_tokens == 50
+
+    def test_missing_user_tokens_uses_remainder(self) -> None:
+        config = PromptConfig(max_tokens=100, max_assistant_tokens=70)
+        assert config.max_user_tokens == 30
+        assert config.max_assistant_tokens == 70
+
+    def test_missing_assistant_tokens_uses_remainder(self) -> None:
+        config = PromptConfig(max_tokens=100, max_user_tokens=25)
+        assert config.max_user_tokens == 25
+        assert config.max_assistant_tokens == 75
+
+    def test_overflow_scales_proportionally(self) -> None:
+        config = PromptConfig(max_tokens=100, max_user_tokens=80, max_assistant_tokens=80)
+        assert config.max_user_tokens == 50
+        assert config.max_assistant_tokens == 50
+
+    def test_zero_values_treated_as_unset(self) -> None:
+        config = PromptConfig(max_tokens=100, max_user_tokens=0, max_assistant_tokens=60)
+        assert config.max_user_tokens == 40
+        assert config.max_assistant_tokens == 60
 
 
 class TestProfileLoading:

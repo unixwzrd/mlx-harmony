@@ -143,7 +143,7 @@ class MLPBlock(nn.Module):
         self.num_experts_per_tok = config.num_experts_per_tok
 
         # Always use regular SwitchGLU - let nn.quantize() handle quantization
-        # This matches mlx_lm and mlx-examples approach
+        # Match common MLX reference implementations
         self.experts = SwitchGLU(
             input_dims=config.hidden_size,
             hidden_dims=config.intermediate_size,

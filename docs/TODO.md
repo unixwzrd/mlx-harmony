@@ -1,61 +1,59 @@
 # TODO Checklist
 
 **Created**: 2026-01-09
-**Updated**: 2026-01-17
+**Updated**: 2026-01-18
 
 Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
+
+**Priority Legend**:
+- **P0** = blocking / urgent
+- **P1** = next up
+- **P2** = nice-to-have
 
 ## 🚀 Current Sprint / Active Work
 
 <!-- Update this section with items you're actively working on -->
 
-- [ ] Testing and validation of mlock implementation
+### P0 (Blocking)
+
+**Voice I/O**
+
+- [ ] STT token normalization: single canonical implementation wired into `gen.step`
+- [ ] Tune STT silence detection to avoid cutoffs/bleed between turns
+- [ ] TTS prompt buffer reset/flush between turns to avoid residual carryover
+- [ ] Tie TTS chunk sizing to prompt config limits
+
+### P1 (Next Up)
+
+**Generation / Pipeline**
+
+- [ ] Verify `generate_standalone` stop-token/finish-reason streaming semantics
+- [ ] Finalize standalone loader (`mlock`/`no_fs_cache`) and document behavior
+- [ ] Restore or intentionally drop Harmony tool-role/example handling in prompt build
+- [ ] Restore deterministic timing/perf metrics (prompt start time, per-turn latency, throughput)
+
+**Testing**
+
 - [ ] End-to-end integration tests (full chat flow with model)
+- [ ] Testing and validation of mlock implementation
+
+### P2 (Nice-to-have)
+
+**Performance / Stability**
+
 - [ ] Baseline performance notes for CLI/server output paths
 - [ ] Document any breaking changes or compatibility assumptions
-- [ ] Moshi voice integration sprint checklist (see [Moshi Integration Checklist](#moshi-integration-checklist))
 
----
+**Moshi Integration (prioritized)**
 
-## ✅ Recently Completed
+- [ ] Moshi integration pass (config/CLI flag/wiring/tests/docs) — see [Moshi Integration Checklist](#moshi-integration-checklist)
 
-- [x] Core TokenGenerator implementation
-- [x] PromptConfig with dynamic placeholders (including time placeholders: TIME, TIMEZ, TIMEA, TIMEU)
-- [x] Profiles system
-- [x] Tool infrastructure (parsing + stubs)
-- [x] CLI tools (chat, generate, server)
-- [x] Basic documentation and examples
-- [x] Initial GitHub commit
-- [x] Conversation logging with timestamps and hyperparameters
-- [x] Conversation resume functionality (load/save JSON)
-- [x] Debug mode with file output (`--debug-file`)
-- [x] Assistant greeting support
-- [x] Memory management infrastructure (mlock)
-- [x] Comprehensive documentation with navigation links
-- [x] Prompt config reference documentation
-- [x] Memory management guide
-- [x] Beautiful markdown rendering for assistant responses (rich library integration, similar to glow/mdless)
-- [x] Fixed MLX API compatibility issues (zeros_like, scatter, searchsorted)
-- [x] Fixed sampling implementation to match mlx-lm exactly
-- [x] Fixed newline preservation in chat history
-- [x] Added \help command for out-of-band commands
-- [x] Added error handling for invalid \ commands
-- [x] Removed prewarm_cache feature
+**Testing**
 
----
-
-## 🎯 Short-Term Priorities
-
-_These are items actively planned for upcoming releases. For comprehensive long-term planning, see [ROADMAP.md](./ROADMAP.md)._
-
-### Testing
-
-- [ ] End-to-end integration tests (full chat flow with model)
-- [ ] Testing and validation of mlock implementation
 - [ ] Prompt rendering tests for Harmony vs non-Harmony path (stubbed, no model download)
 - [ ] Edge-case tests for empty prompts and mixed roles
 
-### Documentation
+**Documentation**
 
 - [ ] API documentation setup (Sphinx/MkDocs)
 - [ ] Tool usage tutorial (when tool executors are implemented)
@@ -65,13 +63,53 @@ _These are items actively planned for upcoming releases. For comprehensive long-
 
 ---
 
+### Completed (Core & CLI)
+
+- [x] Core TokenGenerator implementation
+- [x] CLI tools (chat, generate, server)
+- [x] Tool infrastructure (parsing + stubs)
+- [x] Profiles system
+- [x] Assistant greeting support
+
+### Completed (Conversation & Logging)
+
+- [x] Conversation logging with timestamps and hyperparameters
+- [x] Conversation resume functionality (load/save JSON)
+- [x] Debug mode with file output (`--debug-file`)
+- [x] Fixed newline preservation in chat history
+
+### Completed (Prompt & UX)
+
+- [x] PromptConfig with dynamic placeholders (TIME, TIMEZ, TIMEA, TIMEU)
+- [x] Added \help command for out-of-band commands
+- [x] Added error handling for invalid \ commands
+- [x] Beautiful markdown rendering for assistant responses (rich library integration)
+- [x] Removed prewarm_cache feature
+
+## 🎯 Short-Term Priorities
+
+_These are items actively planned for upcoming releases. For comprehensive long-term planning, see [ROADMAP.md](./ROADMAP.md)._
+
+### Completed (Testing)
+
+- [x] Fixed sampling implementation to match mlx-lm exactly
+- [x] Fixed MLX API compatibility issues (zeros_like, scatter, searchsorted)
+
+### Completed (Documentation)
+
+- [x] Prompt config reference documentation
+- [x] Memory management guide
+- [x] Comprehensive documentation with navigation links
+
+---
+
 **Note**: Tool executors (browser, python, apply_patch), model caching, prompt caching, and other major features are tracked in [ROADMAP.md](./ROADMAP.md) under High/Medium priority sections.
 
 ---
 
-## 📋 Quick Add
+## 📋 Long-Term / Backlog (P3)
 
-_Add quick TODOs here as they come up during development:_
+_Lower-priority items to revisit after the current sprint._
 
 - [ ] Server request/response logging (optional debug mode)
 - [ ] Add unit tests to validate Harmony vs non-Harmony decode paths (stubbed, no model downloads)
@@ -83,6 +121,7 @@ _Add quick TODOs here as they come up during development:_
 - [ ] Restore Moshi STT/TTS improvements (thresholds, warmup, VAD/silence handling)
 - [ ] Improve TTS chunking/sentence splitting to reduce choppiness
 - [ ] Review hot-mic/start-stop UX and make it smoother (avoid CPU spikes)
+- [ ] Verify `TokenGenerator` token-id extraction via re-encoding with current tokenizer
 
 ---
 
@@ -115,14 +154,6 @@ _Short-term checklist for integrating Moshi STT/TTS behind a CLI flag._
 - [ ] Add minimal error handling when `moshi_mlx` is missing (fail fast with guidance).
 - [ ] Add basic smoke test or stub test for the Moshi flag path.
 - [ ] Document CLI usage and required models in [docs/ROADMAP.md](./ROADMAP.md) or README.
-
-## 📋 Quick Add
-
-_Add quick TODOs here as they come up during development:_
-
-- [ ] Server request/response logging (optional debug mode)
-
----
 
 **Note**: This file focuses on **short-term active work items**. For comprehensive long-term planning, feature requests, and detailed roadmaps, see [ROADMAP.md](./ROADMAP.md).
 

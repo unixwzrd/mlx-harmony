@@ -22,6 +22,7 @@ from mlx_harmony.logging import get_logger
 
 logger = get_logger(__name__)
 
+
 def _drain_pasted_lines() -> list[str]:
     """Return any additional lines already buffered on stdin."""
     lines: list[str] = []
@@ -41,6 +42,26 @@ def read_user_input(prompt: str, continuation_prompt: str = "... ") -> str:
     Read user input, supporting pasted multi-line content and explicit continuations.
     """
     first_line = input(prompt)
+    if first_line.strip() == "\\":
+        return _read_multiline_block(continuation_prompt)
+
+    lines = [first_line]
+    lines.extend(_drain_pasted_lines())
+
+    while lines and lines[-1].endswith("\\"):
+        lines[-1] = lines[-1][:-1]
+        lines.append(input(continuation_prompt))
+
+    return "\n".join(lines)
+
+
+def read_user_input_from_first_line(
+    first_line: str,
+    continuation_prompt: str = "... ",
+) -> str:
+    """
+    Read user input starting from a pre-read first line, supporting paste blocks.
+    """
     if first_line.strip() == "\\":
         return _read_multiline_block(continuation_prompt)
 
@@ -101,9 +122,7 @@ def save_conversation(
             if existing_created_at:
                 created_at = normalize_timestamp(existing_created_at)
         except Exception as exc:
-            raise ValueError(
-                f"Existing chat file is not valid JSON: {path}"
-            ) from exc
+            raise ValueError(f"Existing chat file is not valid JSON: {path}") from exc
 
     now = make_timestamp()
     messages_with_timestamps: list[dict[str, Any]] = []

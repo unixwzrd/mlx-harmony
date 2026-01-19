@@ -2,14 +2,15 @@
 Standalone model loading for MLX Harmony.
 
 This module provides model loading without depending on mlx-lm's high-level load function.
-For GPT-OSS models, we use our own model architecture (no mlx_lm dependency).
-For other models, we fall back to mlx-lm model architectures (can be extracted later).
+For GPT-OSS models, we use our own model architecture.
 """
 
+import fcntl
 import glob
-import importlib
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from huggingface_hub import snapshot_download
 from mlx.utils import tree_flatten
+from pydantic import BaseModel, ConfigDict
 
 from mlx_harmony.logging import get_logger
 
@@ -33,6 +35,16 @@ MODEL_REMAPPING = {
     "minimax_m2": "minimax",
     "iquestcoder": "llama",
 }
+
+
+class ModelConfig(BaseModel):
+    """Minimal model config schema for loader validation."""
+
+    model_config = ConfigDict(extra="allow")
+
+    model_type: str | None = None
+    quantization: dict[str, Any] | None = None
+    quantization_config: dict[str, Any] | None = None
 
 
 def _download_model(path_or_hf_repo: str, revision: str | None = None) -> Path:
@@ -93,7 +105,8 @@ def _load_config(model_path: Path) -> dict[str, Any]:
         except (json.JSONDecodeError, IOError):
             pass
 
-    return config
+    validated = ModelConfig.model_validate(config)
+    return validated.model_dump()
 
 
 def _get_model_classes(config: dict[str, Any]) -> tuple[type[nn.Module], type]:
@@ -109,7 +122,7 @@ def _get_model_classes(config: dict[str, Any]) -> tuple[type[nn.Module], type]:
     model_type = config["model_type"]
     model_type = MODEL_REMAPPING.get(model_type, model_type)
 
-    # For GPT-OSS models, use our local model architecture (no mlx_lm dependency)
+    # For GPT-OSS models, use our local model architecture.
     if model_type == "gpt_oss":
         try:
             from mlx_harmony.models.gpt_oss import Model, ModelArgs
@@ -117,17 +130,10 @@ def _get_model_classes(config: dict[str, Any]) -> tuple[type[nn.Module], type]:
         except ImportError as e:
             raise ValueError(f"Failed to load GPT-OSS model architecture: {e}") from e
 
-    # For other models, fall back to mlx_lm (for now - can be extracted later)
-    try:
-        # Import model architecture from mlx_lm.models
-        arch = importlib.import_module(f"mlx_lm.models.{model_type}")
-    except ImportError as e:
-        raise ValueError(f"Model type {model_type} not supported: {e}") from e
-
-    if not hasattr(arch, "Model") or not hasattr(arch, "ModelArgs"):
-        raise ValueError(f"Model module {model_type} missing Model or ModelArgs class")
-
-    return arch.Model, arch.ModelArgs
+    raise ValueError(
+        f"Model type {model_type} is not supported by the standalone loader. "
+        "Use a GPT-OSS model or add a local model implementation."
+    )
 
 
 def _load_weights(model_path: Path) -> dict[str, mx.array]:
@@ -146,17 +152,45 @@ def _load_weights(model_path: Path) -> dict[str, mx.array]:
 
 def _open_no_cache(path: Path):
     """Open file with OS cache disabled (macOS F_NOCACHE)."""
-    try:
-        import fcntl
-    except ImportError as exc:
-        raise RuntimeError("no-fs-cache is not supported on this platform.") from exc
-    fd = os.open(path, os.O_RDONLY)
-    try:
-        fcntl.fcntl(fd, fcntl.F_NOCACHE, 1)
-    except Exception as exc:
-        os.close(fd)
-        raise RuntimeError(f"Failed to disable filesystem cache for {path}") from exc
+    fcntl.fcntl(fd, F_NOCACHE, 1)
     return os.fdopen(fd, "rb", buffering=0)
+
+
+class _NamedFileWrapper:
+    """Provide a file-like object with a .name attribute for mx.load()."""
+
+    def __init__(self, handle, name: str) -> None:
+        self._handle = handle
+        self.name = name
+
+    def read(self, *args, **kwargs):
+        return self._handle.read(*args, **kwargs)
+
+    def seek(self, *args, **kwargs):
+        return self._handle.seek(*args, **kwargs)
+
+    def tell(self) -> int:
+        return self._handle.tell()
+
+    def fileno(self) -> int:
+        return self._handle.fileno()
+
+    def close(self) -> None:
+        self._handle.close()
+
+    @property
+    def closed(self) -> bool:
+        return self._handle.closed
+
+    def __enter__(self):
+        self._handle.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return self._handle.__exit__(exc_type, exc, tb)
+
+    def __getattr__(self, name: str):
+        return getattr(self._handle, name)
 
 
 def _apply_quantization(model: nn.Module, config: dict[str, Any], weights: dict[str, mx.array]) -> None:
@@ -379,7 +413,7 @@ def load_model_standalone(
         weights = model.sanitize(weights)
 
     # Apply quantization if needed (nn.quantize() will handle conversion of layers)
-    # This matches mlx_lm and mlx-examples approach: use regular layers, then nn.quantize()
+    # Match common MLX approach: use regular layers, then nn.quantize()
     # SwitchLinear has to_quantized() method, so nn.quantize() will convert it when scales are in weights
     _apply_quantization(model, config, weights)
 

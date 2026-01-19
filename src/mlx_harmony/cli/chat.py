@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import queue
-import select
 import sys
 import threading
 import time
@@ -20,11 +19,15 @@ from mlx_harmony.cli.chat_commands import (
     resolve_profile_and_prompt_config,
     truncate_text,
 )
+from mlx_harmony.cli.chat_voice import (
+    init_moshi_components,
+    listen_for_user_input,
+    voice_status,
+)
 from mlx_harmony.cli.cli_args import build_parser
 from mlx_harmony.config import (
     MoshiConfig,
     apply_placeholders,
-    load_moshi_config,
     load_profiles,
     load_prompt_config,
 )
@@ -44,6 +47,7 @@ from mlx_harmony.conversation.conversation_history import (
 from mlx_harmony.conversation.conversation_io import (
     load_conversation,
     read_user_input,
+    read_user_input_from_first_line,
     save_conversation,
     try_save_conversation,
 )
@@ -59,13 +63,7 @@ from mlx_harmony.harmony.prompt_builder import (
 from mlx_harmony.harmony.tool_calls import handle_tool_calls, has_tool_calls
 from mlx_harmony.logging import get_logger
 from mlx_harmony.render_output import display_assistant, display_thinking
-from mlx_harmony.speech.moshi.loader import (
-    MoshiSTT,
-    MoshiTTS,
-    chunk_text,
-    log_moshi_config,
-    require_moshi_mlx,
-)
+from mlx_harmony.speech.moshi.loader import chunk_text
 from mlx_harmony.tools import (
     get_tools_for_model,
 )
@@ -74,6 +72,7 @@ from mlx_harmony.tools import (
 # Type definitions for message records
 class MessageDict(TypedDict, total=False):
     """Type definition for conversation messages."""
+
     id: str
     parent_id: str | None
     cache_key: str | None
@@ -143,14 +142,22 @@ def main() -> None:
     mlock = args.mlock
     if mlock is None and prompt_config:
         mlock = prompt_config.mlock
+    no_fs_cache = bool(args.no_fs_cache)
+    if not no_fs_cache and prompt_config and prompt_config.no_fs_cache is not None:
+        no_fs_cache = bool(prompt_config.no_fs_cache)
     lazy = args.lazy if args.lazy is not None else False
+
+    use_harmony = None
+    if prompt_config and prompt_config.use_harmony is not None:
+        use_harmony = prompt_config.use_harmony
 
     generator = TokenGenerator(
         model_path,
+        use_harmony=use_harmony,
         prompt_config=prompt_config,
         lazy=lazy,
         mlock=mlock or False,  # Default to False if None
-        no_fs_cache=bool(args.no_fs_cache),
+        no_fs_cache=no_fs_cache,
     )
     if generator.use_harmony and generator.encoding:
         generator.prompt_token_cache = PromptTokenCache()
@@ -174,119 +181,16 @@ def main() -> None:
 
     print("[INFO] Type 'q' or `Control-D` to quit.")
     print("[INFO] Type '\\help' to list all out-of-band commands.")
-    print("[INFO] Type '\\set <param>=<value>' to change hyperparameters (e.g., '\\set temperature=0.7').")
+    print(
+        "[INFO] Type '\\set <param>=<value>' to change hyperparameters (e.g., '\\set temperature=0.7')."
+    )
     print("[INFO] Type '\\list' or '\\show' to display current hyperparameters.")
     if chat_file_path:
         print(f"[INFO] Chat will be saved to: {chat_file_path}\n")
 
-    moshi_config: MoshiConfig | None = None
-    moshi_stt: MoshiSTT | None = None
-    moshi_tts: MoshiTTS | None = None
-    if args.moshi:
-        default_moshi_path = Path("configs/moshi.json")
-        default_moshi_config: MoshiConfig | None = None
-        if args.moshi_config:
-            default_moshi_config = load_moshi_config(args.moshi_config)
-        elif default_moshi_path.exists():
-            default_moshi_config = load_moshi_config(str(default_moshi_path))
-        moshi_config = default_moshi_config or MoshiConfig(enabled=True)
-        if args.moshi_stt_path:
-            moshi_config = moshi_config.model_copy(update={"stt_model_path": args.moshi_stt_path})
-        if args.moshi_stt_config:
-            moshi_config = moshi_config.model_copy(update={"stt_config_path": args.moshi_stt_config})
-        if args.moshi_tts_path:
-            moshi_config = moshi_config.model_copy(update={"tts_model_path": args.moshi_tts_path})
-        if args.moshi_tts_config:
-            moshi_config = moshi_config.model_copy(update={"tts_config_path": args.moshi_tts_config})
-        if args.moshi_voice_path:
-            moshi_config = moshi_config.model_copy(update={"tts_voice_path": args.moshi_voice_path})
-        if args.moshi_max_seconds is not None:
-            moshi_config = moshi_config.model_copy(update={"stt_max_seconds": args.moshi_max_seconds})
-        if args.moshi_vad is not None:
-            moshi_config = moshi_config.model_copy(update={"stt_vad": bool(args.moshi_vad)})
-        if args.moshi_vad_threshold is not None:
-            moshi_config = moshi_config.model_copy(update={"stt_vad_threshold": args.moshi_vad_threshold})
-        if args.moshi_vad_hits is not None:
-            moshi_config = moshi_config.model_copy(update={"stt_vad_hits": args.moshi_vad_hits})
-        if args.moshi_silence is not None:
-            moshi_config = moshi_config.model_copy(update={"stt_silence": bool(args.moshi_silence)})
-        if args.moshi_silence_threshold is not None:
-            moshi_config = moshi_config.model_copy(
-                update={"stt_silence_threshold": args.moshi_silence_threshold}
-            )
-        if args.moshi_silence_ms is not None:
-            moshi_config = moshi_config.model_copy(update={"stt_silence_ms": args.moshi_silence_ms})
-        if args.moshi_min_speech_ms is not None:
-            moshi_config = moshi_config.model_copy(
-                update={"stt_min_speech_ms": args.moshi_min_speech_ms}
-            )
-        if args.moshi_stt_block_ms is not None:
-            moshi_config = moshi_config.model_copy(update={"stt_block_ms": args.moshi_stt_block_ms})
-        if args.moshi_stt_warmup_blocks is not None:
-            moshi_config = moshi_config.model_copy(
-                update={"stt_warmup_blocks": args.moshi_stt_warmup_blocks}
-            )
-        if args.moshi_barge_in is not None:
-            moshi_config = moshi_config.model_copy(update={"barge_in": bool(args.moshi_barge_in)})
-        if args.moshi_barge_in_window is not None:
-            moshi_config = moshi_config.model_copy(update={"barge_in_window_seconds": args.moshi_barge_in_window})
-        if args.moshi_quantize is not None:
-            moshi_config = moshi_config.model_copy(update={"quantize": args.moshi_quantize})
-        if args.moshi_tts_chunk_chars is not None:
-            moshi_config = moshi_config.model_copy(update={"tts_chunk_chars": args.moshi_tts_chunk_chars})
-        if args.moshi_tts_chunk_sentences is not None:
-            moshi_config = moshi_config.model_copy(update={"tts_chunk_sentences": bool(args.moshi_tts_chunk_sentences)})
-        if args.moshi_tts_chunk_min_chars is not None:
-            moshi_config = moshi_config.model_copy(
-                update={"tts_chunk_min_chars": args.moshi_tts_chunk_min_chars}
-            )
-        if args.moshi_tts_stream is not None:
-            moshi_config = moshi_config.model_copy(update={"tts_stream": bool(args.moshi_tts_stream)})
-        if args.moshi_stt is not None:
-            moshi_config = moshi_config.model_copy(update={"use_stt": bool(args.moshi_stt)})
-        if args.moshi_tts is not None:
-            moshi_config = moshi_config.model_copy(update={"use_tts": bool(args.moshi_tts)})
-        if args.moshi_smoke:
-            moshi_config = moshi_config.model_copy(update={"smoke_test": True})
-        moshi_config = moshi_config.model_copy(update={"enabled": True})
-        missing_paths = moshi_config.validate_paths()
-        if missing_paths:
-            missing_text = ", ".join(missing_paths)
-            raise RuntimeError(
-                f"Moshi voice mode is missing required paths: {missing_text}"
-            )
-        require_moshi_mlx()
-        log_moshi_config(moshi_config)
-        if moshi_config.use_stt:
-            moshi_stt = MoshiSTT(
-                moshi_config.stt_model_path,
-                config_path=moshi_config.stt_config_path,
-                block_ms=moshi_config.stt_block_ms,
-                warmup_blocks=moshi_config.stt_warmup_blocks,
-            )
-        if moshi_config.use_tts:
-            moshi_tts = MoshiTTS(
-                moshi_config.tts_model_path,
-                config_path=moshi_config.tts_config_path,
-                voice_path=moshi_config.tts_voice_path,
-                quantize=moshi_config.quantize,
-            )
-        if moshi_config.smoke_test:
-            print("[VOICE] Running Moshi smoke test...")
-            if moshi_tts is not None:
-                moshi_tts.speak("Moshi smoke test.")
-            if moshi_stt is not None:
-                print("[VOICE] Speak now for a short STT test.")
-                transcript = moshi_stt.listen_once(
-                    max_seconds=moshi_config.stt_max_seconds,
-                    vad=moshi_config.stt_vad,
-                    silence=moshi_config.stt_silence,
-                    silence_threshold=moshi_config.stt_silence_threshold,
-                    silence_ms=moshi_config.stt_silence_ms,
-                    min_speech_ms=moshi_config.stt_min_speech_ms,
-                )
-                print(f"[VOICE] STT transcript: {transcript}")
-            return
+    moshi_config, moshi_stt, moshi_tts, smoke_ran = init_moshi_components(args)
+    if smoke_ran:
+        return
 
     # Debug file setup: always write debug log by default
     # --debug enables console output, --debug-file overrides the file path
@@ -347,7 +251,9 @@ def main() -> None:
         prompt_config,
         generator.is_gpt_oss and generator.use_harmony,
     )
-    last_saved_hyperparameters = find_last_hyperparameters(conversation) or loaded_hyperparameters.copy()
+    last_saved_hyperparameters = (
+        find_last_hyperparameters(conversation) or loaded_hyperparameters.copy()
+    )
     chat_id = loaded_chat_id
 
     max_context_tokens = resolve_max_context_tokens(
@@ -363,47 +269,48 @@ def main() -> None:
     last_prompt_start_time: float | None = None
     generation_index = 0
 
-    def _voice_status(state: str, detail: str | None = None) -> None:
-        if detail:
-            print(f"[VOICE] {state}: {detail}")
+    def _apply_user_token_limit(text: str) -> str | None:
+        if not prompt_config:
+            return text
+        max_user_tokens = prompt_config.max_user_tokens
+        if max_user_tokens is None:
+            max_user_tokens = prompt_config.max_tokens
+        if max_user_tokens is None:
+            return text
+        if not text.strip():
+            return text
+        tokens = generator.tokenizer.encode(text)
+        token_count = len(tokens)
+        limit = max_user_tokens
+        if token_count <= limit:
+            return text
+        if sys.stdin.isatty():
+            print(
+                f"[WARN] Input is {token_count} tokens (limit {limit})."
+                " Proceed with truncated input? [y/N]: ",
+                end="",
+                flush=True,
+            )
+            response = read_user_input("").strip().lower()
+            if not response.startswith("y"):
+                print("[INFO] Input discarded. Please try again.")
+                return None
         else:
-            print(f"[VOICE] {state}")
+            logger.warning(
+                "Input is %s tokens (limit %s). Truncating for non-interactive input.",
+                token_count,
+                limit,
+            )
+        truncated = generator.tokenizer.decode(tokens[:limit])
+        print("[INFO] Using truncated input.")
+        return truncated
 
     while True:
         try:
             if moshi_stt is not None:
-                if sys.stdin.isatty():
-                    ready, _, _ = select.select([sys.stdin], [], [], 0.0)
-                    if ready:
-                        line = sys.stdin.readline()
-                        if not line:
-                            break
-                        user_input = line.rstrip("\n")
-                    else:
-                        user_input = ""
-                else:
-                    user_input = ""
-
-                if not user_input:
-                    listen_seconds = moshi_config.stt_max_seconds if moshi_config else 8.0
-                    _voice_status("Listening", f"up to {listen_seconds:.1f}s")
-                    listen_start = time.perf_counter()
-                    user_input = moshi_stt.listen_once(
-                        max_seconds=listen_seconds,
-                        vad=moshi_config.stt_vad if moshi_config else False,
-                        vad_threshold=moshi_config.stt_vad_threshold if moshi_config else 0.5,
-                        vad_hits_required=moshi_config.stt_vad_hits if moshi_config else 2,
-                        silence=moshi_config.stt_silence if moshi_config else True,
-                        silence_threshold=(
-                            moshi_config.stt_silence_threshold if moshi_config else 0.01
-                        ),
-                        silence_ms=moshi_config.stt_silence_ms if moshi_config else 700,
-                        min_speech_ms=moshi_config.stt_min_speech_ms if moshi_config else 200,
-                    )
-                    listen_elapsed = time.perf_counter() - listen_start
-                    logger.info("Moshi STT listen duration: %.2fs", listen_elapsed)
-                    if user_input:
-                        print(f"\n>> {user_input}")
+                user_input = listen_for_user_input(moshi_stt, moshi_config)
+                if user_input:
+                    print(f"\n>> {user_input}")
             else:
                 user_input = read_user_input("\n>> ")
         except (EOFError, KeyboardInterrupt):
@@ -454,6 +361,10 @@ def main() -> None:
             "timestamp": make_timestamp(),
         }
         conversation.append(user_turn)
+        user_content_limited = _apply_user_token_limit(user_content)
+        if user_content_limited is None:
+            continue
+        user_content = user_content_limited
 
         # Main generation loop with tool call handling
         tool_iteration = 0
@@ -484,7 +395,7 @@ def main() -> None:
                 conversation=prompt_conversation,
                 system_message=system_message,
             )
-            raw_prompt = prepare_prompt(
+            prepare_prompt(
                 generator=generator,
                 conversation=prompt_conversation,
                 system_message=system_message,
@@ -498,7 +409,7 @@ def main() -> None:
             # For Harmony models, we'll parse messages to extract final channel content
             # For Harmony models, use StreamableParser for incremental parsing
             # For non-Harmony models, stream tokens directly
-            _voice_status("Thinking") if moshi_stt is not None else None
+            voice_status("Thinking") if moshi_stt is not None else None
             generation_start_time = time.perf_counter()
             # Initialize these early to avoid scope issues (used outside Harmony branch)
             parsed_messages: Any | None = None  # Will be set for Harmony models
@@ -510,12 +421,14 @@ def main() -> None:
             # For Harmony models, reset StreamableParser for this generation
             if generator.is_gpt_oss and generator.use_harmony and generator.encoding:
                 # Create a fresh parser for this generation (reset state)
-                generator.streamable_parser = StreamableParser(generator.encoding, Role.ASSISTANT, strict=False)
+                generator.streamable_parser = StreamableParser(
+                    generator.encoding, Role.ASSISTANT, strict=False
+                )
 
             seed_value = hyperparameters.get("seed", -1)
             reseed_each_turn = bool(hyperparameters.get("reseed_each_turn", False))
             effective_seed: int | None = None
-            if isinstance(seed_value, (int, float)) and int(seed_value) >= 0:
+            if isinstance(seed_value, int | float) and int(seed_value) >= 0:
                 effective_seed = int(seed_value)
                 if reseed_each_turn:
                     effective_seed += generation_index
@@ -542,22 +455,44 @@ def main() -> None:
                 tts_stream_thread = threading.Thread(target=_tts_worker, daemon=True)
                 tts_stream_thread.start()
 
-            def _enqueue_tts_chunk(chunk: str) -> None:
-                if tts_stream_queue is None:
+            def _enqueue_tts_chunk(
+                chunk: str,
+                queue_ref: queue.Queue[str | None] | None,
+            ) -> None:
+                if queue_ref is None:
                     return
                 if chunk.strip():
-                    tts_stream_queue.put(chunk.strip())
+                    queue_ref.put(chunk.strip())
 
-            def _flush_tts_stream() -> None:
-                if tts_stream_queue is None:
+            def _flush_tts_stream(
+                queue_ref: queue.Queue[str | None] | None,
+                thread_ref: threading.Thread | None,
+            ) -> None:
+                nonlocal tts_stream_buffer
+                if queue_ref is None:
                     return
                 if tts_stream_buffer.strip():
-                    _enqueue_tts_chunk(tts_stream_buffer)
-                tts_stream_queue.put(None)
-                if tts_stream_thread:
-                    tts_stream_thread.join()
+                    _enqueue_tts_chunk(tts_stream_buffer, queue_ref)
+                tts_stream_buffer = ""
+                queue_ref.put(None)
+                if thread_ref:
+                    thread_ref.join()
 
-            def _maybe_emit_tts_stream(delta: str, channel: str | None, role: object | None) -> None:
+            def _reset_tts_stream(
+                queue_ref: queue.Queue[str | None] | None,
+                thread_ref: threading.Thread | None,
+            ) -> None:
+                nonlocal tts_stream_buffer
+                tts_stream_buffer = ""
+                if queue_ref is None:
+                    return
+                queue_ref.put(None)
+                if thread_ref:
+                    thread_ref.join()
+
+            def _maybe_emit_tts_stream(
+                delta: str, channel: str | None, role: object | None
+            ) -> None:
                 nonlocal tts_stream_buffer
                 if not moshi_config or not moshi_config.tts_stream:
                     return
@@ -582,7 +517,7 @@ def main() -> None:
                         cut_at = chunk_limit
                     chunk = tts_stream_buffer[: cut_at + 1].strip()
                     tts_stream_buffer = tts_stream_buffer[cut_at + 1 :].lstrip()
-                    _enqueue_tts_chunk(chunk)
+                    _enqueue_tts_chunk(chunk, tts_stream_queue)  # noqa: B023
 
             _start_tts_stream()
 
@@ -608,10 +543,14 @@ def main() -> None:
             generation_end_time = time.perf_counter()
             generation_elapsed = generation_end_time - generation_start_time
             num_generated_tokens = len(tokens)
-            tokens_per_second = num_generated_tokens / generation_elapsed if generation_elapsed > 0 else 0.0
+            tokens_per_second = (
+                num_generated_tokens / generation_elapsed if generation_elapsed > 0 else 0.0
+            )
 
             # Display generation stats
-            print(f"\n[INFO] Generated {num_generated_tokens} tokens in {generation_elapsed:.2f}s ({tokens_per_second:.2f} tokens/s)")
+            print(
+                f"\n[INFO] Generated {num_generated_tokens} tokens in {generation_elapsed:.2f}s ({tokens_per_second:.2f} tokens/s)"
+            )
 
             write_debug_metrics(
                 debug_path=debug_path,
@@ -666,13 +605,15 @@ def main() -> None:
                 hyperparameters=hyperparameters,
             )
             if should_continue:
+                if moshi_config and moshi_config.tts_stream:
+                    _reset_tts_stream(tts_stream_queue, tts_stream_thread)
                 tool_iteration += 1
                 continue
 
             # No tool calls or non-GPT-OSS model: assistant_text already set above
             # (For Harmony models, it's the final channel content; for others, it's decoded tokens)
             if moshi_config and moshi_config.tts_stream and moshi_tts is not None:
-                _flush_tts_stream()
+                _flush_tts_stream(tts_stream_queue, tts_stream_thread)
             elif moshi_tts is not None and assistant_text.strip():
                 chunk_chars = moshi_config.tts_chunk_chars if moshi_config else 180
                 chunk_sentences = moshi_config.tts_chunk_sentences if moshi_config else True
@@ -683,13 +624,13 @@ def main() -> None:
                     chunk_sentences,
                     min_chars=chunk_min_chars,
                 ):
-                    _voice_status("Speaking")
+                    voice_status("Speaking")
                     stop_event = None
                     monitor_thread = None
                     if moshi_config and moshi_config.barge_in and moshi_stt is not None:
                         stop_event = threading.Event()
 
-                        def _monitor_barge_in() -> None:
+                        def _monitor_barge_in(stop_event_ref: threading.Event = stop_event) -> None:
                             try:
                                 transcript = moshi_stt.listen_once(
                                     max_seconds=moshi_config.barge_in_window_seconds,
@@ -702,13 +643,11 @@ def main() -> None:
                                     min_speech_ms=moshi_config.stt_min_speech_ms,
                                 )
                                 if transcript:
-                                    stop_event.set()
+                                    stop_event_ref.set()
                             except Exception as exc:
                                 logger.warning("Barge-in monitor failed: %s", exc)
 
-                        monitor_thread = threading.Thread(
-                            target=_monitor_barge_in, daemon=True
-                        )
+                        monitor_thread = threading.Thread(target=_monitor_barge_in, daemon=True)
                         monitor_thread.start()
                     tts_start = time.perf_counter()
                     moshi_tts.speak(chunk, stop_event=stop_event)
@@ -753,7 +692,9 @@ def main() -> None:
                     "parent_id": parent_id,
                     "cache_key": message_id,
                     "role": "assistant",
-                    "content": assistant_text if assistant_text else "[No final response - see thinking above]",
+                    "content": assistant_text
+                    if assistant_text
+                    else "[No final response - see thinking above]",
                     "timestamp": make_timestamp(),
                 }
                 if hyperparameters and hyperparameters != last_saved_hyperparameters:
@@ -762,7 +703,9 @@ def main() -> None:
                 # For Harmony models, also record analysis channel if present
                 if generator.is_gpt_oss and generator.use_harmony and analysis_text_parts:
                     # Join with newlines to preserve structure when saving
-                    assistant_turn["analysis"] = "\n".join(analysis_text_parts).lstrip(" \t").rstrip(" \t")
+                    assistant_turn["analysis"] = (
+                        "\n".join(analysis_text_parts).lstrip(" \t").rstrip(" \t")
+                    )
                 conversation.append(assistant_turn)
             else:
                 # Harmony model with only analysis channel - save analysis separately

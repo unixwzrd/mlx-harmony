@@ -1,7 +1,7 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-16
+**Updated**: 2026-01-17
 
 All notable changes to mlx-harmony will be documented in this file.
 
@@ -10,8 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 2026-01-17
 
+### Added
+
+- Added `max_user_tokens` and `max_assistant_tokens` prompt config options for independent user/assistant limits.
+- Added prompt token limit normalization (proportional scaling to fit `max_tokens`) with edge-case handling.
+- Added prompt config tests covering token limit normalization and edge cases.
+
 ### Changed
 
+- Non-blocking CLI input now supports paste/continuation when STT is enabled.
+- User input limits fall back to `max_tokens` when `max_user_tokens` is unset or `0`.
 - Realigned Moshi speech modules under `src/mlx_harmony/speech/moshi/`.
 - Renamed hotmic implementation to `src/mlx_harmony/tools/hotmic.py` and updated entrypoint to `mlx_harmony.tools.hotmic:main`.
 - Updated module map and diagrams to reflect new speech/hotmic paths.

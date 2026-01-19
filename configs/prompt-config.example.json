@@ -1,55 +1,49 @@
 {
-  "system_model_identity": "You are {assistant} (also <|ASSISTANT|>) on <|DATE|> at <|TIMEZ|> (local time, <|TIMEU|> UTC).",
-  "reasoning_effort": "Medium",
-  "conversation_start_date": "<|DATE|>",
-  "knowledge_cutoff": "2025-01",
-  "developer_instructions": "Address the user as {user} and be concise.",
-  "assistant_greeting": "Hello {user}, I'm {assistant}. How can I help you today?",
-  "example_dialogues": [
-    [
-      {
-        "role": "user",
-        "content": "Hello, how can you help me?"
-      },
-      {
-        "role": "assistant",
-        "content": "Hello {user}! I'm {assistant} and I'm here to help with any questions or tasks you have. What can I do for you today?"
-      }
+    "system_model_identity": "You are {assistant} (also <|ASSISTANT|>) on <|DATE|> at <|TIMEZ|> (local time, <|TIMEU|> UTC).",
+    "reasoning_effort": "Medium",
+    "conversation_start_date": "<|DATE|>",
+    "knowledge_cutoff": "2025-01",
+    "developer_instructions": "Address the user as {user} and be concise.",
+    "assistant_greeting": "Hello {user}, I'm {assistant}. How can I help you today?",
+    "use_harmony": true,
+    "example_dialogues": [
+        [
+            {"role": "user", "content": "Hello, how can you help me?"},
+            {
+                "role": "assistant",
+                "content": "Hello {user}! I'm {assistant} and I'm here to help with any questions or tasks you have. What can I do for you today?",
+            },
+        ],
+        [
+            {"role": "user", "content": "What's the weather like?"},
+            {
+                "role": "assistant",
+                "content": "I don't have access to real-time weather data, but I can help you find weather information or answer other questions. What else can I help with?",
+            },
+        ],
     ],
-    [
-      {
-        "role": "user",
-        "content": "What's the weather like?"
-      },
-      {
-        "role": "assistant",
-        "content": "I don't have access to real-time weather data, but I can help you find weather information or answer other questions. What else can I help with?"
-      }
-    ]
-  ],
-  "placeholders": {
-    "assistant": "Dave",
-    "ASSISTANT": "Dave",
-    "user": "Morgan"
-  },
-  "max_tokens": 1024,
-  "max_context_tokens": 4096,
-  "temperature": 0.8,
-  "top_p": 0.9,
-  "top_k": 40,
-  "min_p": 0.0,
-  "min_tokens_to_keep": 1,
-  "xtc_probability": 0.0,
-  "xtc_threshold": 0.0,
-  "xtc_special_tokens": null,
-  "repetition_penalty": 1.0,
-  "repetition_context_size": 20,
-  "mlock": true,
-  "lazy": false,
-  "seed": -1,
-  "reseed_each_turn": false,
-  "truncate_thinking": 1000,
-  "truncate_response": 1000,
-  "logs_dir": "logs",
-  "chats_dir": "logs"
+    "placeholders": {"assistant": "Dave", "ASSISTANT": "Dave", "user": "Morgan"},
+    "max_user_tokens": 1024,
+    "max_assistant_tokens": 1024,
+    "max_tokens": 1024,
+    "max_context_tokens": 4096,
+    "temperature": 0.8,
+    "top_p": 0.9,
+    "top_k": 40,
+    "min_p": 0.0,
+    "min_tokens_to_keep": 1,
+    "xtc_probability": 0.0,
+    "xtc_threshold": 0.0,
+    "xtc_special_tokens": null,
+    "repetition_penalty": 1.0,
+    "repetition_context_size": 20,
+    "mlock": true,
+    "no_fs_cache": false,
+    "lazy": false,
+    "seed": -1,
+    "reseed_each_turn": false,
+    "truncate_thinking": 1000,
+    "truncate_response": 1000,
+    "logs_dir": "logs",
+    "chats_dir": "logs",
 }

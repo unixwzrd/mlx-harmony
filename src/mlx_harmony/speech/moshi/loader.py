@@ -68,11 +68,12 @@ def _resolve_model_file(model_dir: Path, filename: str, label: str) -> Path:
     return candidate
 
 
-def _import_stt_deps() -> tuple[object, object, object, object, object, object, object]:
+def _import_stt_deps() -> tuple[object, object, object, object, object, object, object, object]:
     """Import optional STT dependencies only when Moshi STT is enabled."""
     try:
         import mlx.core as mx
         import mlx.nn as nn
+        import numpy as np
         import rustymimi
         import sentencepiece
         import sounddevice as sd
@@ -81,7 +82,7 @@ def _import_stt_deps() -> tuple[object, object, object, object, object, object, 
         raise RuntimeError(
             "Moshi STT requires moshi-mlx, rustymimi, sentencepiece, and sounddevice."
         ) from exc
-    return mx, nn, rustymimi, sentencepiece, sd, models, utils
+    return mx, nn, np, rustymimi, sentencepiece, sd, models, utils
 
 
 def _import_tts_deps() -> tuple[object, object, object, object, object, object, object]:
@@ -110,9 +111,10 @@ class MoshiSTT:
         block_ms: int = 80,
         warmup_blocks: int = _STT_WARMUP_BLOCKS,
     ) -> None:
-        mx, nn, rustymimi, sentencepiece, sd, models, utils = _import_stt_deps()
+        mx, nn, np, rustymimi, sentencepiece, sd, models, utils = _import_stt_deps()
         self._mx = mx
         self._nn = nn
+        self._np = np
         self._rustymimi = rustymimi
         self._sentencepiece = sentencepiece
         self._sd = sd
@@ -282,7 +284,10 @@ class MoshiSTT:
                             speech_ms = 0.0
                             continue
                 block = block[None, :, 0]
-                other_audio_tokens = self._audio_tokenizer.encode_step(block[None, 0:1])
+                block = self._np.ascontiguousarray(
+                    block[:, None, :], dtype=self._np.float32
+                )
+                other_audio_tokens = self._audio_tokenizer.encode_step(block)
                 other_audio_tokens = self._mx.array(other_audio_tokens).transpose(0, 2, 1)[
                     :, :, : self._other_codebooks
                 ]
