@@ -1,11 +1,13 @@
-# Prompt Config Reference
+# Session Config Reference
 
 **Created**: 2026-01-07
 **Updated**: 2026-01-17
 
-This document explains all parameters available in the prompt configuration JSON file (`--prompt-config`).
+This document explains all parameters available in the session configuration JSON file (`--prompt-config`).
 
-- [Prompt Config Reference](#prompt-config-reference)
+Note: The underlying schema class has been renamed from `PromptConfig` to `SessionConfig`. The JSON format is unchanged.
+
+- [Session Config Reference](#session-config-reference)
   - [Harmony-Specific Parameters (GPT-OSS Models Only)](#harmony-specific-parameters-gpt-oss-models-only)
     - [`system_model_identity` (string, optional)](#system_model_identity-string-optional)
     - [`reasoning_effort` (string, optional)](#reasoning_effort-string-optional)

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Iterator
 
-from mlx_lm import load, stream_generate
-from mlx_lm.sample_utils import make_logits_processors, make_sampler
+import mlx.core as mx
 from openai_harmony import (
     Conversation,
     DeveloperContent,
@@ -19,11 +18,14 @@ from openai_harmony import (
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
+from mlx_harmony.generation.generate_standalone import stream_generate
+from mlx_harmony.generation.sampling import make_logits_processors, make_sampler
+from mlx_harmony.runtime.loader import load_model_standalone
 
 
 class TokenGenerator:
     """
-    Multi-model token generator using MLX-LM + Harmony.
+    Multi-model token generator using native MLX + Harmony.
 
     - Works with any MLX-LM supported model.
     - Automatically uses Harmony format for GPT-OSS models.
@@ -32,14 +34,14 @@ class TokenGenerator:
     def __init__(
         self,
         model_path: str,
-        use_harmony: Optional[bool] = None,
+        use_harmony: bool | None = None,
         lazy: bool = False,
         mlock: bool = False,
         no_fs_cache: bool = False,
-        prompt_config: Optional[PromptConfig] = None,
+        prompt_config: PromptConfig | None = None,
     ) -> None:
         """
-        Initialize generator for any MLX-LM model.
+        Initialize generator for any supported MLX model.
 
         Args:
             model_path: Path to model checkpoint or Hugging Face repo.
@@ -47,7 +49,12 @@ class TokenGenerator:
                 auto-detected (enabled only for GPT-OSS models).
             lazy: Lazy-load model weights.
         """
-        self.model, self.tokenizer = load(model_path, lazy=lazy)
+        self.model, self.tokenizer = load_model_standalone(
+            model_path,
+            lazy=lazy,
+            mlock=mlock,
+            no_fs_cache=no_fs_cache,
+        )
         self.model_path = model_path
         self.prompt_config = prompt_config
         self.mlock = mlock
@@ -68,7 +75,7 @@ class TokenGenerator:
         )
 
         # Streamable parser for tool call detection (Harmony only)
-        self.streamable_parser: Optional[StreamableParser] = None
+        self.streamable_parser: StreamableParser | None = None
         if self.use_harmony and self.encoding is not None:
             self.streamable_parser = StreamableParser(
                 self.encoding, Role.ASSISTANT
@@ -82,25 +89,25 @@ class TokenGenerator:
 
     def generate(
         self,
-        prompt_tokens: Optional[List[int]] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        prompt: Optional[str] = None,
-        stop_tokens: Optional[List[int]] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        min_p: Optional[float] = None,
-        top_k: Optional[int] = None,
-        min_tokens_to_keep: Optional[int] = None,
-        xtc_probability: Optional[float] = None,
-        xtc_threshold: Optional[float] = None,
-        repetition_penalty: Optional[float] = None,
-        repetition_context_size: Optional[int] = None,
-        logit_bias: Optional[Dict[int, float]] = None,
+        prompt_tokens: list[int] | None = None,
+        messages: list[dict[str, str]] | None = None,
+        prompt: str | None = None,
+        stop_tokens: list[int] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        min_p: float | None = None,
+        top_k: int | None = None,
+        min_tokens_to_keep: int | None = None,
+        xtc_probability: float | None = None,
+        xtc_threshold: float | None = None,
+        repetition_penalty: float | None = None,
+        repetition_context_size: int | None = None,
+        logit_bias: dict[int, float] | None = None,
         return_logprobs: bool = False,
-        system_message: Optional[str] = None,
-        seed: Optional[int] = None,
-    ) -> Iterator[Union[int, Dict[str, Union[int, float, None]]]]:
+        system_message: str | None = None,
+        seed: int | None = None,
+    ) -> Iterator[int | dict[str, int | float | None]]:
         """
         Generate tokens with automatic format selection.
 
@@ -116,7 +123,10 @@ class TokenGenerator:
 
         cfg = self.prompt_config
 
-        def resolve(val, cfg_val, default):
+        if seed is not None:
+            mx.random.seed(int(seed))
+
+        def resolve(val: object, cfg_val: object, default: object) -> object:
             return default if val is None and cfg_val is None else (val if val is not None else cfg_val)
 
         # Build sampler using MLX-LM's sampling utilities.
@@ -154,16 +164,22 @@ class TokenGenerator:
             ),
         )
 
-        kwargs: Dict[str, object] = {"sampler": sampler}
+        if stop_tokens is None:
+            if self.encoding is not None and hasattr(self.encoding, "eos_token_id"):
+                eos_token_id = getattr(self.encoding, "eos_token_id")
+                if eos_token_id is not None:
+                    stop_tokens = [int(eos_token_id)]
+            elif hasattr(self.tokenizer, "eos_token_id") and self.tokenizer.eos_token_id is not None:
+                stop_tokens = [int(self.tokenizer.eos_token_id)]
+
+        kwargs: dict[str, object] = {"sampler": sampler}
         if logits_processors:
             kwargs["logits_processors"] = logits_processors
         if max_tokens is not None and max_tokens > 0:
             kwargs["max_tokens"] = max_tokens
 
         if stop_tokens:
-            stop_strings = self._tokens_to_stop_strings(stop_tokens)
-            if stop_strings:
-                kwargs["stop"] = stop_strings
+            kwargs["stop_tokens"] = stop_tokens
 
         for response in stream_generate(
             self.model,
@@ -185,10 +201,10 @@ class TokenGenerator:
 
     def _prepare_prompt(
         self,
-        prompt_tokens: Optional[List[int]] = None,
-        messages: Optional[List[Dict[str, str]]] = None,
-        prompt: Optional[str] = None,
-        system_message: Optional[str] = None,
+        prompt_tokens: list[int] | None = None,
+        messages: list[dict[str, str]] | None = None,
+        prompt: str | None = None,
+        system_message: str | None = None,
     ) -> str:
         """Prepare a text prompt from tokens/messages/plain text."""
         if messages:
@@ -204,8 +220,8 @@ class TokenGenerator:
 
     def _messages_to_prompt(
         self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
+        messages: list[dict[str, str]],
+        system_message: str | None = None,
     ) -> str:
         """Convert messages to a model prompt using the appropriate format."""
         # Apply placeholders to message content if provided in config.
@@ -226,9 +242,9 @@ class TokenGenerator:
 
     def render_prompt_tokens(
         self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
-    ) -> List[int]:
+        messages: list[dict[str, str]],
+        system_message: str | None = None,
+    ) -> list[int]:
         """Render prompt tokens for the given messages/system message."""
         if self.prompt_config and self.prompt_config.placeholders:
             messages = [
@@ -242,7 +258,7 @@ class TokenGenerator:
             ]
 
         if self.use_harmony and self.encoding is not None:
-            harmony_messages: List[Message] = []
+            harmony_messages: list[Message] = []
             sys_content = SystemContent.new()
             cfg = self.prompt_config
 
@@ -314,8 +330,8 @@ class TokenGenerator:
 
     def render_prompt(
         self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
+        messages: list[dict[str, str]],
+        system_message: str | None = None,
     ) -> str:
         """Render a full prompt string from messages/system message."""
         return self._messages_to_prompt(messages, system_message)
@@ -326,8 +342,8 @@ class TokenGenerator:
 
     def _harmony_messages_to_prompt(
         self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
+        messages: list[dict[str, str]],
+        system_message: str | None = None,
     ) -> str:
         """Convert messages using Harmony format (GPT-OSS only)."""
         harmony_messages: List[Message] = []
@@ -396,8 +412,8 @@ class TokenGenerator:
 
     def _native_messages_to_prompt(
         self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
+        messages: list[dict[str, str]],
+        system_message: str | None = None,
     ) -> str:
         """Convert messages using the tokenizer's native chat template."""
         if system_message:
@@ -412,26 +428,14 @@ class TokenGenerator:
         # Fallback: simple role-prefixed text.
         return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
 
-    def _tokens_to_stop_strings(self, stop_tokens: List[int]) -> List[str]:
-        """Convert stop token IDs to stop strings."""
-        stop_strings: List[str] = []
-        for token_id in stop_tokens:
-            text = self.tokenizer.decode([token_id])
-            if text:
-                stop_strings.append(text)
-        return stop_strings
-
     def _extract_token_id(self, response: object) -> int:
         """
-        Extract the last token id from an MLX-LM streaming response.
-
-        Today the Response object exposes `.text`; we re-tokenize this text
-        and take the last token id.
+        Extract the last token id from a streaming response.
         """
-        if hasattr(response, "text"):
-            encoded = self.tokenizer.encode(response.text)
-            if encoded:
-                return int(encoded[-1])
+        if hasattr(response, "token"):
+            token = getattr(response, "token")
+            if isinstance(token, int):
+                return token
         if isinstance(response, int):
             return response
         if isinstance(response, str):
@@ -442,8 +446,8 @@ class TokenGenerator:
         return 0
 
     def parse_messages_from_tokens(
-        self, tokens: List[int]
-    ) -> List[Message]:
+        self, tokens: list[int]
+    ) -> list[Message]:
         """
         Parse Harmony messages from completion tokens.
 

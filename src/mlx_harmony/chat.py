@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from mlx_harmony.cli.chat import load_conversation, main, save_conversation
+from mlx_harmony.chat.main import main
 
-__all__ = ["load_conversation", "save_conversation", "main"]
+__all__ = ["main"]

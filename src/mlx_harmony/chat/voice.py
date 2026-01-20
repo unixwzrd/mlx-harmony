@@ -5,10 +5,10 @@ import sys
 import time
 from typing import Any
 
-from mlx_harmony.cli.moshi_config import resolve_moshi_config
 from mlx_harmony.config import MoshiConfig
 from mlx_harmony.conversation.conversation_io import read_user_input_from_first_line
 from mlx_harmony.logging import get_logger
+from mlx_harmony.speech.moshi.config import resolve_moshi_config
 from mlx_harmony.speech.moshi.loader import (
     MoshiSTT,
     MoshiTTS,

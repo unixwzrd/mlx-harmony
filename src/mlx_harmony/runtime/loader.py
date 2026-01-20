@@ -24,6 +24,8 @@ from mlx_harmony.logging import get_logger
 
 logger = get_logger(__name__)
 
+F_NOCACHE = getattr(fcntl, "F_NOCACHE", None)
+
 # Model type remapping (matches mlx-lm)
 MODEL_REMAPPING = {
     "mistral": "llama",
@@ -152,7 +154,14 @@ def _load_weights(model_path: Path) -> dict[str, mx.array]:
 
 def _open_no_cache(path: Path):
     """Open file with OS cache disabled (macOS F_NOCACHE)."""
-    fcntl.fcntl(fd, F_NOCACHE, 1)
+    if F_NOCACHE is None:
+        raise RuntimeError("F_NOCACHE is not available on this platform.")
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        fcntl.fcntl(fd, F_NOCACHE, 1)
+    except Exception:
+        os.close(fd)
+        raise
     return os.fdopen(fd, "rb", buffering=0)
 
 
@@ -391,10 +400,10 @@ def load_model_standalone(
         for wf in glob.glob(str(model_path / "model*.safetensors")):
             with _open_no_cache(Path(wf)) as handle:
                 try:
-                    weights.update(mx.load(handle))
-                except TypeError as exc:
+                    weights.update(mx.load(handle, format="safetensors"))
+                except (TypeError, AttributeError, RuntimeError) as exc:
                     raise RuntimeError(
-                        "mlx.core.load does not support file handles; disable --no-fs-cache."
+                        "mlx.core.load does not support no-fs-cache handles; disable --no-fs-cache."
                     ) from exc
     else:
         weights = _load_weights(model_path)
@@ -428,7 +437,7 @@ def load_model_standalone(
 
     # Load tokenizer using pure Python native implementation
     # No mlx-lm, no transformers, no PyTorch - just pure Python + MLX
-    from mlx_harmony.runtime.tokenizer_native import load_tokenizer_native
+    from mlx_harmony.runtime.tokenizer_loader import load_tokenizer_native
 
     tokenizer = load_tokenizer_native(model_path)
 

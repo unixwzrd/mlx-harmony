@@ -80,7 +80,7 @@ Quick reference checklist for **active short-term work items**. For longer-term 
 
 ### Completed (Prompt & UX)
 
-- [x] PromptConfig with dynamic placeholders (TIME, TIMEZ, TIMEA, TIMEU)
+- [x] SessionConfig (formerly PromptConfig) with dynamic placeholders (TIME, TIMEZ, TIMEA, TIMEU)
 - [x] Added \help command for out-of-band commands
 - [x] Added error handling for invalid \ commands
 - [x] Beautiful markdown rendering for assistant responses (rich library integration)

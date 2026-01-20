@@ -390,7 +390,7 @@ Inspired by `mlx-lm`'s `BatchGenerator` for concurrent requests.
 ### v0.1.0 ✅ - 2026-01-06
 
 - [x] Core TokenGenerator
-- [x] PromptConfig with placeholders
+- [x] SessionConfig (formerly PromptConfig) with placeholders
 - [x] Profiles system
 - [x] Tool infrastructure (stubs)
 - [x] CLI tools (chat, generate, server)

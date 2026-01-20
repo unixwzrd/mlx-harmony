@@ -291,13 +291,21 @@ def repetition_penalty_processor(
         context_tokens = tokens[-repetition_context_size:] if len(tokens) > repetition_context_size else tokens
 
         # Apply penalty: reduce logits for tokens that appear in recent context
-        for token_id in context_tokens.flatten():
+        if isinstance(context_tokens, mx.array):
+            context_ids = context_tokens.flatten().tolist()
+        else:
+            context_ids = list(context_tokens)
+
+        for token_id in set(context_ids):
             token_id = int(token_id)
             if token_id < logits.shape[-1]:
-                if logits[token_id] > 0:
-                    logits[token_id] = logits[token_id] / repetition_penalty
-                else:
-                    logits[token_id] = logits[token_id] * repetition_penalty
+                idx = (0, token_id) if logits.ndim == 2 else (token_id,)
+                value = logits[idx]
+                logits[idx] = mx.where(
+                    value > 0,
+                    value / repetition_penalty,
+                    value * repetition_penalty,
+                )
 
         return logits
 
@@ -324,7 +332,8 @@ def logit_bias_processor(logit_bias: dict[int, float]) -> Callable[[mx.array, mx
         # Apply bias to specified token IDs
         for token_id, bias in logit_bias.items():
             if 0 <= token_id < logits.shape[-1]:
-                logits[token_id] = logits[token_id] + bias
+                idx = (0, token_id) if logits.ndim == 2 else (token_id,)
+                logits[idx] = logits[idx] + bias
         return logits
 
     return processor

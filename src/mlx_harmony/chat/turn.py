@@ -7,10 +7,9 @@ from typing import Any
 from openai_harmony import Role, StreamableParser
 from unicodefix.transforms import clean_text
 
+from mlx_harmony.chat.prompt import prepare_generation_context
+from mlx_harmony.chat.voice import voice_status
 from mlx_harmony.cli.chat_commands import truncate_text
-from mlx_harmony.cli.chat_prompt import prepare_generation_context
-from mlx_harmony.cli.chat_voice import voice_status
-from mlx_harmony.cli.tts_stream import TTSStreamController
 from mlx_harmony.conversation.conversation_history import (
     make_message_id,
     make_timestamp,
@@ -25,6 +24,7 @@ from mlx_harmony.harmony.tool_calls import handle_tool_calls, has_tool_calls
 from mlx_harmony.logging import get_logger
 from mlx_harmony.render_output import display_assistant, display_thinking
 from mlx_harmony.speech.moshi.loader import chunk_text
+from mlx_harmony.speech.tts_stream import TTSStreamController
 
 logger = get_logger(__name__)
 
