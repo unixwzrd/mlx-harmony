@@ -5,21 +5,16 @@ from datetime import datetime
 from typing import Dict, Iterator, List, Optional, Union
 
 from openai_harmony import (
-    Author,
-    Conversation,
-    DeveloperContent,
     HarmonyEncodingName,
-    Message,
-    ReasoningEffort,
     Role,
     StreamableParser,
-    SystemContent,
-    TextContent,
     load_harmony_encoding,
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
 from mlx_harmony.hyperparameters import resolve_param
+from mlx_harmony.prompts.harmony import HarmonyPromptRenderer
+from mlx_harmony.prompts.native import NativePromptRenderer
 
 
 class TokenGenerator:
@@ -62,6 +57,8 @@ class TokenGenerator:
         self.model_path = model_path
         self.prompt_config = prompt_config
         self.mlock = mlock
+        self._prompt_cache: list[object] | None = None
+        self._prompt_cache_tokens: list[int] | None = None
 
         # Auto-detect if this is a GPT-OSS model.
         self.is_gpt_oss = self._is_gpt_oss_model(model_path)
@@ -75,6 +72,11 @@ class TokenGenerator:
             load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
             if self.use_harmony
             else None
+        )
+        self.prompt_renderer = (
+            HarmonyPromptRenderer(encoding=self.encoding, prompt_config=prompt_config)
+            if self.use_harmony and self.encoding is not None
+            else NativePromptRenderer(tokenizer=self.tokenizer)
         )
 
         # Streamable parser for tool call detection (Harmony only)
@@ -159,6 +161,9 @@ class TokenGenerator:
         return_logprobs: bool = False,
         system_message: Optional[str] = None,
         seed: Optional[int] = None,
+        clear_cache: Optional[bool] = None,
+        clear_cache_interval: Optional[int] = None,
+        log_memory_stats: Optional[bool] = None,
     ) -> Iterator[Union[int, Dict[str, Union[int, float, None]]]]:
         """
         Generate tokens with automatic format selection.
@@ -171,16 +176,20 @@ class TokenGenerator:
         from mlx_harmony.sampling import make_logits_processors, make_sampler
 
         # Use provided prompt token IDs when available (avoids re-rendering prompts).
+        prompt_token_list: Optional[List[int]] = None
         if prompt_tokens is not None:
             prompt_input = prompt_tokens
+            if isinstance(prompt_tokens, list):
+                prompt_token_list = prompt_tokens
         # For Harmony models, get token IDs directly (don't convert to string and back)
         # This avoids double-encoding: Harmony encoding tokens -> string -> native tokenizer tokens
         elif self.use_harmony and self.encoding and messages:
-            prompt_token_ids = self._harmony_messages_to_token_ids(
+            prompt_token_ids = self.prompt_renderer.render_prompt_tokens(
                 messages, system_message
             )
             # Pass token IDs directly to stream_generate (it accepts list[int])
             prompt_input = prompt_token_ids
+            prompt_token_list = prompt_token_ids
         else:
             # For non-Harmony models, use string prompt (will be encoded by stream_generate)
             prompt_input = self._prepare_prompt(
@@ -278,6 +287,19 @@ class TokenGenerator:
         generated_tokens: List[int] = []
         start_time = time.perf_counter()
 
+        prefill_start_offset = 0
+        prompt_cache = None
+        if prompt_token_list is not None:
+            from mlx_harmony.cache import make_prompt_cache
+
+            if self._prompt_cache is not None and self._prompt_cache_tokens is not None:
+                cached_len = len(self._prompt_cache_tokens)
+                if cached_len > 0 and prompt_token_list[:cached_len] == self._prompt_cache_tokens:
+                    prompt_cache = self._prompt_cache
+                    prefill_start_offset = cached_len
+            if prompt_cache is None:
+                prompt_cache = make_prompt_cache(self.model)
+
         for response in stream_generate(
             self.model,
             self.tokenizer,
@@ -286,6 +308,15 @@ class TokenGenerator:
             logits_processors=logits_processors if logits_processors else None,
             max_tokens=resolved_max_tokens,
             stop_tokens=stop_token_ids if stop_token_ids else None,
+            prompt_cache=prompt_cache,
+            prefill_start_offset=prefill_start_offset,
+            clear_cache=resolve_param(clear_cache, cfg.clear_cache if cfg else None, True),
+            clear_cache_interval=resolve_param(
+                clear_cache_interval, cfg.clear_cache_interval if cfg else None, 1
+            ),
+            log_memory_stats=resolve_param(
+                log_memory_stats, cfg.log_memory_stats if cfg else None, False
+            ),
         ):
             token_id = response.token
 
@@ -328,6 +359,10 @@ class TokenGenerator:
         # After generation completes, keep parameters active (if mlock enabled)
         # This ensures buffers stay wired and don't get swapped out
         self.keepalive()
+
+        if prompt_token_list is not None and prompt_cache is not None:
+            self._prompt_cache = prompt_cache
+            self._prompt_cache_tokens = prompt_token_list
 
         # Calculate and store generation stats
         end_time = time.perf_counter()
@@ -384,9 +419,7 @@ class TokenGenerator:
         Public method for rendering prompts (e.g., for debug output).
         Previously _messages_to_prompt, made public to avoid brittle private calls.
         """
-        if self.use_harmony and self.encoding is not None:
-            return self._harmony_messages_to_prompt(messages, system_message)
-        return self._native_messages_to_prompt(messages, system_message)
+        return self.prompt_renderer.render_prompt_text(messages, system_message)
 
     def render_prompt_tokens(
         self,
@@ -397,175 +430,7 @@ class TokenGenerator:
         Convert messages to token IDs using the appropriate format.
         Uses Harmony encoding tokens for GPT-OSS and native tokenizer tokens otherwise.
         """
-        if self.use_harmony and self.encoding is not None:
-            return self._harmony_messages_to_token_ids(messages, system_message)
-
-        prompt_text = self._native_messages_to_prompt(messages, system_message)
-        return self.tokenizer.encode(prompt_text)
-
-    def _harmony_messages_to_prompt(
-        self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
-    ) -> str:
-        """Convert messages using Harmony format (GPT-OSS only)."""
-        conversation = self._build_harmony_conversation(messages, system_message)
-        prompt_tokens = self.encoding.render_conversation_for_completion(
-            conversation, Role.ASSISTANT
-        )
-        # Use HarmonyEncoding.decode() to properly handle Harmony special tokens
-        # This correctly decodes tokens including <|start|>, <|end|>, <|message|>, etc.
-        return self.encoding.decode(prompt_tokens)
-
-    def _harmony_messages_to_token_ids(
-        self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
-    ) -> List[int]:
-        """Convert messages to token IDs using Harmony format (for direct token ID passing)."""
-        conversation = self._build_harmony_conversation(messages, system_message)
-        prompt_tokens = self.encoding.render_conversation_for_completion(
-            conversation, Role.ASSISTANT
-        )
-        # Return token IDs directly (don't decode to string)
-        return prompt_tokens
-
-    def _build_harmony_conversation(
-        self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str],
-    ) -> Conversation:
-        system_override: Optional[str] = None
-        developer_override: Optional[str] = None
-        for msg in messages:
-            role_str = msg.get("role", "user").strip().lower()
-            if role_str == "system":
-                system_override = msg.get("content", "")
-            elif role_str == "developer":
-                developer_override = msg.get("content", "")
-
-        if system_override or developer_override:
-            messages = [
-                msg
-                for msg in messages
-                if msg.get("role", "user").strip().lower()
-                not in ("system", "developer")
-            ]
-
-        harmony_messages: List[Message] = []
-        sys_content = SystemContent.new()
-        cfg = self.prompt_config
-
-        if system_message:
-            sys_content = sys_content.with_model_identity(system_message)
-        elif system_override:
-            sys_content = sys_content.with_model_identity(system_override)
-        elif cfg and cfg.system_model_identity:
-            sys_content = sys_content.with_model_identity(
-                apply_placeholders(cfg.system_model_identity, cfg.placeholders)
-                if cfg.placeholders
-                else cfg.system_model_identity
-            )
-
-        if cfg and cfg.reasoning_effort:
-            try:
-                effort = ReasoningEffort(cfg.reasoning_effort.capitalize())
-                sys_content = sys_content.with_reasoning_effort(effort)
-            except ValueError:
-                pass
-
-        if cfg and cfg.conversation_start_date:
-            sys_content = sys_content.with_conversation_start_date(
-                cfg.conversation_start_date
-            )
-        else:
-            sys_content = sys_content.with_conversation_start_date(
-                datetime.now().strftime("%Y-%m-%d")
-            )
-
-        if cfg and cfg.knowledge_cutoff:
-            sys_content = sys_content.with_knowledge_cutoff(cfg.knowledge_cutoff)
-
-        harmony_messages.append(
-            Message.from_role_and_content(Role.SYSTEM, sys_content),
-        )
-
-        if developer_override:
-            dev_content = DeveloperContent.new().with_instructions(developer_override)
-            harmony_messages.append(Message.from_role_and_content(Role.DEVELOPER, dev_content))
-        elif cfg and cfg.developer_instructions:
-            instructions = (
-                apply_placeholders(cfg.developer_instructions, cfg.placeholders)
-                if cfg.placeholders
-                else cfg.developer_instructions
-            )
-            dev_content = DeveloperContent.new().with_instructions(instructions)
-            harmony_messages.append(
-                Message.from_role_and_content(Role.DEVELOPER, dev_content),
-            )
-
-        if cfg and cfg.example_dialogues:
-            for example_turns in cfg.example_dialogues:
-                for turn in example_turns:
-                    role_str = turn.get("role", "user").strip().lower()
-                    if role_str == "tool":
-                        tool_name = turn.get("name")
-                        if tool_name:
-                            author = Author(role=Role.TOOL, name=tool_name)
-                            content = TextContent(text=turn.get("content", ""))
-                            tool_msg = Message.from_author_and_content(author, content)
-                            if turn.get("recipient"):
-                                tool_msg = tool_msg.with_recipient(turn["recipient"])
-                            harmony_messages.append(tool_msg)
-                    else:
-                        role = Role(role_str)
-                        content = TextContent(text=turn.get("content", ""))
-                        harmony_messages.append(
-                            Message.from_role_and_content(role, content),
-                        )
-
-        for msg in messages:
-            role_str = msg.get("role", "user").strip().lower()
-            if role_str == "tool":
-                tool_name = msg.get("name")
-                if not tool_name:
-                    continue
-                author = Author(role=Role.TOOL, name=tool_name)
-                content_text = msg.get("content", "")
-                content = TextContent(text=content_text)
-                tool_msg = Message.from_author_and_content(author, content)
-                if msg.get("recipient"):
-                    tool_msg = tool_msg.with_recipient(msg["recipient"])
-                if msg.get("channel"):
-                    tool_msg = tool_msg.with_channel(msg["channel"])
-                harmony_messages.append(tool_msg)
-            else:
-                role = Role(role_str)
-                content_text = msg.get("content", "")
-                content = TextContent(text=content_text)
-                harmony_messages.append(
-                    Message.from_role_and_content(role, content),
-                )
-
-        return Conversation.from_messages(harmony_messages)
-
-    def _native_messages_to_prompt(
-        self,
-        messages: List[Dict[str, str]],
-        system_message: Optional[str] = None,
-    ) -> str:
-        """Convert messages using the tokenizer's native chat template."""
-        if system_message:
-            messages = [{"role": "system", "content": system_message}, *messages]
-
-        if hasattr(self.tokenizer, "apply_chat_template"):
-            return self.tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-            )
-
-        # Fallback: simple role-prefixed text.
-        return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+        return self.prompt_renderer.render_prompt_tokens(messages, system_message)
 
     def _tokens_to_stop_strings(self, stop_tokens: List[int]) -> List[str]:
         """Convert stop token IDs to stop strings."""

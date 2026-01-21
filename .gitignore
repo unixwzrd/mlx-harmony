@@ -570,6 +570,7 @@ external/
 workflow/
 workflows/
 .workflows/
+!.github/workflows/
 .workflow/
 tools/analysis-files.txt
 
@@ -607,6 +608,8 @@ configs/*
 !configs/conversation.example.json
 !configs/dialogue.example.txt
 !configs/prompt_config.deterministic.json
+!configs/moshi-config.example.json
 docs/archive*
 docs/dependency-updates*
+!src/mlx_harmony/models
 AGENTS.md

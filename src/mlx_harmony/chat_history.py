@@ -255,10 +255,16 @@ def restore_chat_metadata(
 def _write_debug_block(debug_path: Path, header: str, payload: str) -> None:
     """Write a labeled debug section to the debug log."""
     with open(debug_path, "a", encoding="utf-8") as df:
-        df.write(f"\n{header}\n")
-        df.write("-" * 80 + "\n")
-        df.write(payload + "\n")
-        df.write("-" * 80 + "\n")
+        separator = "=" * 80
+        df.write(f"\n{separator}\n")
+        df.write(f"{header} [BEGIN]\n")
+        df.write(f"{separator}\n")
+        df.write(payload)
+        if not payload.endswith("\n"):
+            df.write("\n")
+        df.write(f"{separator}\n")
+        df.write(f"{header} [END]\n")
+        df.write(f"{separator}\n")
 
 
 def write_debug_prompt(
@@ -409,11 +415,13 @@ def write_debug_metrics(
     metrics: dict[str, Any],
 ) -> None:
     """Write generation metrics to the debug log."""
-    _write_debug_block(
-        debug_path,
-        "[DEBUG] Generation metrics:",
-        json.dumps(metrics, indent=2, ensure_ascii=False),
-    )
+    header = _format_metrics_tsv_header(metrics)
+    if header is not None:
+        _write_debug_block(
+            debug_path,
+            "[DEBUG] Generation metrics (TSV header):",
+            header,
+        )
     _write_debug_block(
         debug_path,
         "[DEBUG] Generation metrics (TSV):",
@@ -431,8 +439,28 @@ def _format_metrics_tsv(metrics: dict[str, Any]) -> str:
         "prompt_start_to_prompt_start_seconds",
         "max_context_tokens",
     ]
+    memory_keys = sorted(key for key in metrics if key.startswith("memory_"))
+    keys.extend(memory_keys)
     values = [metrics.get(key, "") for key in keys]
     return "TIMING_STATS\t" + "\t".join(str(v) for v in values)
+
+
+def _format_metrics_tsv_header(metrics: dict[str, Any]) -> str | None:
+    """Format a TSV header line (only once) for easy extraction."""
+    if getattr(_format_metrics_tsv_header, "_header_written", False):
+        return None
+    keys = [
+        "prompt_tokens",
+        "generated_tokens",
+        "elapsed_seconds",
+        "tokens_per_second",
+        "prompt_start_to_prompt_start_seconds",
+        "max_context_tokens",
+    ]
+    memory_keys = sorted(key for key in metrics if key.startswith("memory_"))
+    keys.extend(memory_keys)
+    _format_metrics_tsv_header._header_written = True
+    return "TIMING_STATS_HEADER\t" + "\t".join(keys)
 
 
 def find_last_assistant_message(

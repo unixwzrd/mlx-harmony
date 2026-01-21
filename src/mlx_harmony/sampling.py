@@ -294,10 +294,10 @@ def repetition_penalty_processor(
         for token_id in context_tokens.flatten():
             token_id = int(token_id)
             if token_id < logits.shape[-1]:
-                if logits[token_id] > 0:
-                    logits[token_id] = logits[token_id] / repetition_penalty
+                if logits[0, token_id] > 0:
+                    logits[0, token_id] = logits[0, token_id] / repetition_penalty
                 else:
-                    logits[token_id] = logits[token_id] * repetition_penalty
+                    logits[0, token_id] = logits[0, token_id] * repetition_penalty
 
         return logits
 

@@ -99,6 +99,9 @@ class PromptConfig(BaseModel):
     lazy: Optional[bool] = None  # Lazy-load model weights (default: False)
     seed: Optional[int] = None  # Random seed for generation (-1 = random each run)
     reseed_each_turn: Optional[bool] = None  # Reseed before each generation when seed >= 0
+    clear_cache: Optional[bool] = None  # Clear MLX cache during prefill (default: True)
+    clear_cache_interval: Optional[int] = None  # Interval for cache clearing (prefill chunks)
+    log_memory_stats: Optional[bool] = None  # Log MLX memory stats during generation
 
     # Display truncation limits
     truncate_thinking: Optional[int] = Field(

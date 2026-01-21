@@ -11,6 +11,9 @@ import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_harmony.cache import KVCache, make_prompt_cache
+from mlx_harmony.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class GenerationResponse:
@@ -67,10 +70,22 @@ def _prefill_kv_cache(
     prompt_tokens: mx.array,
     prompt_cache: list[KVCache],
     prefill_step_size: int,
+    clear_cache: bool,
+    clear_cache_interval: int,
+    prefill_start_offset: int = 0,
 ) -> None:
     """Run the prompt through the model to build KV cache state."""
     total_prompt_tokens = len(prompt_tokens)
-    processed_tokens = 0
+    logger.info(
+        "prefill_kv_cache: total_tokens=%d step_size=%d start_offset=%d clear_cache=%s clear_cache_interval=%d",
+        total_prompt_tokens,
+        prefill_step_size,
+        prefill_start_offset,
+        clear_cache,
+        clear_cache_interval,
+    )
+    processed_tokens = min(max(prefill_start_offset, 0), total_prompt_tokens)
+    chunk_index = 0
     while processed_tokens < total_prompt_tokens - 1:
         remaining = total_prompt_tokens - processed_tokens - 1
         chunk_size = min(prefill_step_size, remaining)
@@ -84,9 +99,35 @@ def _prefill_kv_cache(
                 cache_keys.append(state[0])
         if cache_keys:
             mx.eval(cache_keys)
-        mx.clear_cache()
+        if clear_cache and clear_cache_interval > 0:
+            if chunk_index % clear_cache_interval == 0:
+                mx.clear_cache()
 
         processed_tokens += chunk_size
+        chunk_index += 1
+
+
+def _log_memory_stats(phase: str) -> None:
+    if not hasattr(mx, "metal"):
+        return
+    try:
+        info = mx.metal.device_info()
+    except Exception:
+        return
+
+    if not isinstance(info, dict):
+        logger.info("memory_stats[%s]: %s", phase, info)
+        return
+
+    metrics = {
+        key: value
+        for key, value in info.items()
+        if isinstance(value, (int, float))
+    }
+    if metrics:
+        logger.info("memory_stats[%s]: %s", phase, metrics)
+    else:
+        logger.info("memory_stats[%s]: %s", phase, info)
 
 
 def _init_decoder(tokenizer) -> tuple[bool, Any, str, int]:
@@ -132,8 +173,12 @@ def stream_generate(
     sampler: Callable[[mx.array], mx.array] | None = None,
     logits_processors: list[Callable[[mx.array, mx.array], mx.array]] | None = None,
     prompt_cache: list[KVCache] | None = None,
+    prefill_start_offset: int = 0,
     prefill_step_size: int = 2048,
     stop_tokens: list[int] | None = None,
+    clear_cache: bool = True,
+    clear_cache_interval: int = 1,
+    log_memory_stats: bool = False,
 ) -> Generator[GenerationResponse, None, None]:
     """
     Generate tokens from a model in a streaming fashion.
@@ -156,12 +201,21 @@ def stream_generate(
     prompt_cache = _ensure_prompt_cache(model, prompt_cache)
     sampler = _resolve_sampler(sampler)
 
+    if log_memory_stats:
+        _log_memory_stats("prefill_start")
+
     _prefill_kv_cache(
         model=model,
         prompt_tokens=prompt_tokens,
         prompt_cache=prompt_cache,
         prefill_step_size=prefill_step_size,
+        clear_cache=clear_cache,
+        clear_cache_interval=clear_cache_interval,
+        prefill_start_offset=prefill_start_offset,
     )
+
+    if log_memory_stats:
+        _log_memory_stats("prefill_end")
 
     current_token = prompt_tokens[-1:][None] if len(prompt_tokens) > 0 else None
     generated_tokens: list[int] = []
@@ -228,12 +282,16 @@ def stream_generate(
         if is_last_token:
             break
 
-        if n > 0 and n % 256 == 0:
-            mx.clear_cache()
+        if clear_cache and clear_cache_interval > 0:
+            if n > 0 and n % (clear_cache_interval * 256) == 0:
+                mx.clear_cache()
 
     if use_detokenizer:
         detokenizer.finalize()
         last_segment = detokenizer.last_segment
+
+    if log_memory_stats:
+        _log_memory_stats("generation_end")
 
     # Note: We no longer yield a final response here because:
     # 1. The loop already yields all tokens including the last one

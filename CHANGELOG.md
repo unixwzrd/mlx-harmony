@@ -1,12 +1,28 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-12
+**Updated**: 2026-01-20
 
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 2026-01-20 - Unreleased
+
+### Added
+
+- Prompt config diagnostics for memory churn: `clear_cache`, `clear_cache_interval`, and `log_memory_stats`.
+
+### Changed
+
+- Generation prefill cache clearing is now configurable to help diagnose wired memory oscillation.
+- Repetition penalty processing now uses unique token IDs to reduce per-token overhead.
+
+### Fixed
+
+- Deterministic prompt config JSON trailing comma.
+- GPT-OSS cache import path after rollback.
 
 ## 2026-01-16 - v0.4.0
 
@@ -149,4 +165,3 @@ Major refactoring of the codebase to improve readability, maintainability, and p
 - Tool executors (browser, python, apply_patch) are currently stubs returning "not_implemented" messages
 - The infrastructure for parsing and executing tools is complete and ready for implementation
 - Tests are provided but may require environment-specific MLX setup
-

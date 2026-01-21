@@ -54,6 +54,26 @@ from mlx_harmony.tools import (
 )
 
 
+def _collect_memory_stats() -> dict[str, Any]:
+    try:
+        import mlx.core as mx
+    except Exception:
+        return {}
+    if not hasattr(mx, "metal"):
+        return {}
+    try:
+        info = mx.metal.device_info()
+    except Exception:
+        return {}
+    if not isinstance(info, dict):
+        return {}
+    stats: dict[str, Any] = {}
+    for key, value in info.items():
+        if isinstance(value, (int, float, str)):
+            stats[f"memory_{key}"] = value
+    return stats
+
+
 # Type definitions for message records
 class MessageDict(TypedDict, total=False):
     """Type definition for conversation messages."""
@@ -372,6 +392,7 @@ def main() -> None:
             # Display generation stats
             print(f"\n[INFO] Generated {num_generated_tokens} tokens in {generation_elapsed:.2f}s ({tokens_per_second:.2f} tokens/s)")
 
+            memory_stats = _collect_memory_stats()
             write_debug_metrics(
                 debug_path=debug_path,
                 metrics={
@@ -381,6 +402,7 @@ def main() -> None:
                     "tokens_per_second": tokens_per_second,
                     "prompt_start_to_prompt_start_seconds": prompt_start_delta,
                     "max_context_tokens": max_context_tokens,
+                    **memory_stats,
                 },
             )
 
