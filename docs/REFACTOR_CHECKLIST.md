@@ -80,42 +80,44 @@ Track the refactor + performance plan from [tmp/MLX-Refactor-and-Performance-00.
 
 ### Phase 1: Lock down interfaces
 
-- [ ] Define `ModelBackend` interface: forward pass, cache init/update, special tokens, limits
-- [ ] Define `Tokenizer` interface: encode/decode/streaming decode; no numpy in hot path
-- [ ] Confirm `PromptRenderer` interface remains backend-agnostic
-- [ ] Define `Sampler` interface: sampling + logits processors separated from I/O/rendering
-- [ ] Deliverable: minimal protocol/classes + adapters for GPT-OSS backend without behavior change
+- [~] Define `ModelBackend` interface: forward pass, cache init/update, special tokens, limits
+- [x] Define `Tokenizer` interface: encode/decode/streaming decode; no numpy in hot path
+- [x] Confirm `PromptRenderer` interface remains backend-agnostic
+- [x] Define `Sampler` interface: sampling + logits processors separated from I/O/rendering
+- [~] Deliverable: minimal protocol/classes + adapters for GPT-OSS backend without behavior change
 
 ### Phase 2: Hot-path audit
 
-- [ ] Hoist repeated attribute lookups into locals inside token loop
-- [ ] Pre-bind repeated dict lookups (avoid per-token `.get`)
-- [ ] Avoid per-token string concatenation / formatting
-- [ ] Eliminate numpy conversions in hot path (only at boundaries)
-- [ ] Add “hot loop checklist” comment atop generation loop
-- [ ] Deliverable: apply audit pass, confirm no behavior change
+- [x] Hoist repeated attribute lookups into locals inside token loop
+- [x] Pre-bind repeated dict lookups (avoid per-token `.get`) (no per-token `.get` in hot loop)
+- [x] Avoid per-token string concatenation / formatting (no per-token string building in hot loop)
+- [x] Eliminate numpy conversions in hot path (only at boundaries) (no numpy usage found)
+- [x] Add “hot loop checklist” comment atop generation loop
+- [x] Deliverable: apply audit pass, confirm no behavior change
+  - Notes: use `decode_token` when detokenizer is unavailable to avoid full-sequence decode per token.
 
 ### Phase 3: Reduce call count per token
 
-- [ ] Inline trivial processors or fuse into a single step function
-- [ ] Collapse chains of tiny functions into one local step function
-- [ ] Precompute constants outside the loop; keep arrays in MLX
-- [ ] Deliverable: fewer Python frames per token step
+- [x] Inline trivial processors or fuse into a single step function
+- [x] Collapse chains of tiny functions into one local step function
+- [x] Precompute constants outside the loop; keep arrays in MLX
+- [x] Deliverable: fewer Python frames per token step
 
 ### Phase 4: Allocation & memory-churn control
 
-- [ ] Preallocate recurring buffers (token buffers, masks, scratch arrays)
-- [ ] Avoid per-token list/dict allocation
-- [ ] Avoid building large intermediate strings per token
-- [ ] Prefer in-place cache updates where safe
+- [x] Preallocate recurring buffers (token buffers, masks, scratch arrays)
+- [x] Avoid per-token list/dict allocation
+- [x] Avoid building large intermediate strings per token
+- [x] Prefer in-place cache updates where safe
 - [ ] Deliverable: reduced wired-memory oscillation
 
 ### Phase 5: GPU utilization improvement
 
-- [ ] Batch work into fewer MLX calls
-- [ ] Reduce synchronization points
-- [ ] Avoid repeated materialization in hot loop (`.item()`, shape queries, conversions)
+- [~] Batch work into fewer MLX calls
+- [x] Reduce synchronization points
+- [x] Avoid repeated materialization in hot loop (`.item()`, shape queries, conversions)
 - [ ] Deliverable: increased GPU utilization, reduced CPU utilization
+  - Notes: greedy-path logsumexp skip reverted after zero-token runs; needs different approach.
 
 ### Tooling & measurement requirements
 

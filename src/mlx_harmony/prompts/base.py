@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Optional, Protocol
 
+from mlx_harmony.runtime.tokenizer import TokenizerProtocol
+
 
 class PromptRenderer(Protocol):
     """Interface for rendering prompts for different model formats."""

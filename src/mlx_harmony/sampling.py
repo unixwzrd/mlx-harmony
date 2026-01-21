@@ -9,6 +9,8 @@ from collections.abc import Callable
 
 import mlx.core as mx
 
+from mlx_harmony.runtime.sampler import LogitsProcessorProtocol, SamplerProtocol
+
 
 def sample_temperature(logprobs: mx.array, temperature: float) -> mx.array:
     """
@@ -222,7 +224,7 @@ def make_sampler(
     xtc_probability: float = 0.0,
     xtc_threshold: float = 0.0,
     xtc_special_tokens: list[int] | None = None,
-) -> Callable[[mx.array], mx.array]:
+) -> SamplerProtocol:
     """
     Create a sampler function that applies temperature, top_p, min_p, top_k, and XTC sampling.
 
@@ -272,7 +274,7 @@ def make_sampler(
 def repetition_penalty_processor(
     repetition_penalty: float,
     repetition_context_size: int,
-) -> Callable[[mx.array, mx.array], mx.array]:
+) -> LogitsProcessorProtocol:
     """
     Create a logits processor that applies repetition penalty.
 
@@ -291,20 +293,24 @@ def repetition_penalty_processor(
         context_tokens = tokens[-repetition_context_size:] if len(tokens) > repetition_context_size else tokens
 
         # Apply penalty: reduce logits for tokens that appear in recent context
+        logits_row = logits[0]
+        vocab_size = logits_row.shape[-1]
+        penalty = repetition_penalty
         for token_id in context_tokens.flatten():
             token_id = int(token_id)
-            if token_id < logits.shape[-1]:
-                if logits[0, token_id] > 0:
-                    logits[0, token_id] = logits[0, token_id] / repetition_penalty
+            if token_id < vocab_size:
+                if logits_row[token_id] > 0:
+                    logits_row[token_id] = logits_row[token_id] / penalty
                 else:
-                    logits[0, token_id] = logits[0, token_id] * repetition_penalty
+                    logits_row[token_id] = logits_row[token_id] * penalty
 
         return logits
 
+    processor.context_size = repetition_context_size
     return processor
 
 
-def logit_bias_processor(logit_bias: dict[int, float]) -> Callable[[mx.array, mx.array], mx.array]:
+def logit_bias_processor(logit_bias: dict[int, float]) -> LogitsProcessorProtocol:
     """
     Create a logits processor that applies logit bias.
 
@@ -322,11 +328,13 @@ def logit_bias_processor(logit_bias: dict[int, float]) -> Callable[[mx.array, mx
 
     def processor(tokens: mx.array, logits: mx.array) -> mx.array:
         # Apply bias to specified token IDs
+        logits_shape = logits.shape[-1]
         for token_id, bias in logit_bias.items():
-            if 0 <= token_id < logits.shape[-1]:
+            if 0 <= token_id < logits_shape:
                 logits[token_id] = logits[token_id] + bias
         return logits
 
+    processor.context_size = 0
     return processor
 
 
@@ -334,7 +342,7 @@ def make_logits_processors(
     logit_bias: dict[int, float] | None = None,
     repetition_penalty: float | None = None,
     repetition_context_size: int = 20,
-) -> list[Callable[[mx.array, mx.array], mx.array]]:
+) -> list[LogitsProcessorProtocol]:
     """
     Create a list of logits processors to apply in sequence.
 
@@ -364,7 +372,7 @@ def build_logits_processors(
     logit_bias: dict[int, float] | None = None,
     repetition_penalty: float | None = None,
     repetition_context_size: int = 20,
-) -> list[Callable[[mx.array, mx.array], mx.array]]:
+) -> list[LogitsProcessorProtocol]:
     """Build logits processors for the generation loop."""
     return make_logits_processors(
         logit_bias=logit_bias,
@@ -377,7 +385,7 @@ def apply_logits_processors(
     *,
     tokens: mx.array,
     logits: mx.array,
-    processors: list[Callable[[mx.array, mx.array], mx.array]] | None,
+    processors: list[LogitsProcessorProtocol] | None,
 ) -> mx.array:
     """Apply logits processors sequentially."""
     if not processors:
@@ -385,3 +393,34 @@ def apply_logits_processors(
     for processor in processors:
         logits = processor(tokens, logits)
     return logits
+
+
+def fuse_logits_processors(
+    processors: list[LogitsProcessorProtocol] | None,
+) -> LogitsProcessorProtocol | None:
+    """Fuse logits processors into a single callable to reduce per-step overhead."""
+    if not processors:
+        return None
+    if len(processors) == 1:
+        return processors[0]
+
+    def fused(tokens: mx.array, logits: mx.array) -> mx.array:
+        for processor in processors:
+            logits = processor(tokens, logits)
+        return logits
+
+    return fused
+
+
+def get_repetition_window_size(
+    processors: list[LogitsProcessorProtocol] | None,
+) -> int:
+    """Return max repetition window size requested by logits processors."""
+    if not processors:
+        return 0
+    window = 0
+    for processor in processors:
+        size = getattr(processor, "context_size", 0)
+        if size and size > window:
+            window = size
+    return int(window)

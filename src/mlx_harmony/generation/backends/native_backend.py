@@ -4,6 +4,7 @@ from typing import Optional
 
 from mlx_harmony.generation.backend import ModelBackend
 from mlx_harmony.prompts.native import NativePromptRenderer
+from mlx_harmony.runtime.tokenizer import TokenizerProtocol
 
 
 class NativeBackend(ModelBackend):
@@ -30,3 +31,9 @@ class NativeBackend(ModelBackend):
 
     def decode(self, token_ids: list[int]) -> str:
         return self._tokenizer.decode(token_ids)
+
+    def get_tokenizer(self) -> TokenizerProtocol:
+        return self._tokenizer
+
+    def get_stop_tokens(self) -> list[int]:
+        return []

@@ -13,7 +13,11 @@ import mlx.nn as nn
 from mlx_harmony.cache import KVCache, make_prompt_cache
 from mlx_harmony.logging import get_logger
 from mlx_harmony.runtime.metrics import TimingStats, timer
-from mlx_harmony.sampling import apply_logits_processors
+from mlx_harmony.sampling import (
+    apply_logits_processors,
+    fuse_logits_processors,
+    get_repetition_window_size,
+)
 
 logger = get_logger(__name__)
 
@@ -87,18 +91,37 @@ def _prefill_kv_cache(
         clear_cache_interval,
     )
     processed_tokens = min(max(prefill_start_offset, 0), total_prompt_tokens)
+    remaining = total_prompt_tokens - processed_tokens - 1
+    if remaining <= 0:
+        return
     chunk_index = 0
+    cache_keys = None
+    if prefill_step_size >= remaining:
+        chunk = prompt_tokens[processed_tokens : processed_tokens + remaining]
+        _ = model(chunk[None], cache=prompt_cache)
+        if cache_keys is None:
+            cache_keys = []
+            for cache in prompt_cache:
+                state = cache.state
+                if state[0] is not None:
+                    cache_keys.append(state[0])
+        if cache_keys:
+            mx.eval(cache_keys)
+        if clear_cache and clear_cache_interval > 0:
+            mx.clear_cache()
+        return
     while processed_tokens < total_prompt_tokens - 1:
         remaining = total_prompt_tokens - processed_tokens - 1
         chunk_size = min(prefill_step_size, remaining)
         chunk = prompt_tokens[processed_tokens: processed_tokens + chunk_size]
 
         _ = model(chunk[None], cache=prompt_cache)
-        cache_keys = []
-        for cache in prompt_cache:
-            state = cache.state
-            if state[0] is not None:
-                cache_keys.append(state[0])
+        if cache_keys is None:
+            cache_keys = []
+            for cache in prompt_cache:
+                state = cache.state
+                if state[0] is not None:
+                    cache_keys.append(state[0])
         if cache_keys:
             mx.eval(cache_keys)
         if clear_cache and clear_cache_interval > 0:
@@ -233,64 +256,86 @@ def stream_generate(
     if log_memory_stats:
         _log_memory_stats("prefill_end")
 
-    current_token = prompt_tokens[-1:][None] if len(prompt_tokens) > 0 else None
+    # HOT LOOP CHECKLIST:
+    # - Hoist attribute lookups into locals.
+    # - Avoid repeated dict lookups inside the loop.
+    # - Avoid numpy conversions inside the loop.
+    # - Avoid per-token string formatting/logging.
+    local_model = model
+    local_mx = mx
+    local_concat = mx.concatenate
+    local_array = mx.array
+    local_timer = timer
+    local_logsumexp = local_mx.logsumexp
+    local_int = int
+    local_decode = tokenizer.decode
+    local_len = len
+
+    current_token_arr = local_mx.zeros((1, 1), dtype=local_mx.uint32)
+    if len(prompt_tokens) > 0:
+        current_token_arr[0, 0] = prompt_tokens[-1]
+        current_token = current_token_arr
+    else:
+        current_token = None
     generated_tokens: list[int] = []
+    generated_token_arr = local_mx.zeros((max_tokens,), dtype=local_mx.uint32)
+    generated_token_count = 0
 
     use_detokenizer, detokenizer, last_segment, last_decode_length = _init_decoder(
         tokenizer
     )
+
+    fused_logits_processor = fuse_logits_processors(logits_processors)
+    repetition_window = get_repetition_window_size(logits_processors)
+    prompt_tail_tokens = (
+        prompt_tokens[-repetition_window:] if repetition_window > 0 else prompt_tokens
+    )
+    stop_token_set = set(stop_tokens) if stop_tokens else None
 
     for n in range(max_tokens):  # noqa: B007
         if current_token is None:
             break
 
         if timing_stats is not None:
-            with timer(timing_stats, "model"):
-                logits = model(current_token, cache=prompt_cache)
+            with local_timer(timing_stats, "model"):
+                logits = local_model(current_token, cache=prompt_cache)
                 logits = logits[:, -1, :]
         else:
-            logits = model(current_token, cache=prompt_cache)
+            logits = local_model(current_token, cache=prompt_cache)
             logits = logits[:, -1, :]
 
-        if generated_tokens:
-            all_tokens = mx.concatenate(
-                [prompt_tokens, mx.array(generated_tokens, dtype=mx.uint32)]
-            )
-        else:
-            all_tokens = prompt_tokens
-        if timing_stats is not None:
-            with timer(timing_stats, "logits_processors"):
-                logits = apply_logits_processors(
-                    tokens=all_tokens,
-                    logits=logits,
-                    processors=logits_processors,
-                )
-        else:
-            logits = apply_logits_processors(
-                tokens=all_tokens,
-                logits=logits,
-                processors=logits_processors,
-            )
+        if fused_logits_processor is not None:
+            if repetition_window > 0:
+                generated_tail_count = repetition_window - len(prompt_tail_tokens)
+                if generated_tail_count > 0 and generated_token_count > 0:
+                    tail_start = max(0, generated_token_count - generated_tail_count)
+                    tail_tokens = generated_token_arr[tail_start:generated_token_count]
+                    window_tokens = local_concat(
+                        [
+                            prompt_tail_tokens,
+                            tail_tokens,
+                        ]
+                    )
+                else:
+                    window_tokens = prompt_tail_tokens
+            else:
+                window_tokens = prompt_tokens
+            if timing_stats is not None:
+                with local_timer(timing_stats, "logits_processors"):
+                    logits = fused_logits_processor(window_tokens, logits)
+            else:
+                logits = fused_logits_processor(window_tokens, logits)
 
         if timing_stats is not None:
             with timer(timing_stats, "sampler"):
-                logprobs = logits - mx.logsumexp(logits, keepdims=True)
-                token_id = int(sampler(logprobs))
+                logprobs = logits - local_logsumexp(logits, keepdims=True)
+                token_id = local_int(sampler(logprobs))
         else:
-            logprobs = logits - mx.logsumexp(logits, keepdims=True)
-            token_id = int(sampler(logprobs))
+            logprobs = logits - local_logsumexp(logits, keepdims=True)
+            token_id = local_int(sampler(logprobs))
 
-        if stop_tokens and token_id in stop_tokens:
-            if use_detokenizer:
-                text = last_segment
-            else:
-                if timing_stats is not None:
-                    with timer(timing_stats, "decode"):
-                        text = tokenizer.decode(generated_tokens) if generated_tokens else ""
-                        text = text[last_decode_length:]
-                else:
-                    text = tokenizer.decode(generated_tokens) if generated_tokens else ""
-                    text = text[last_decode_length:]
+        if stop_token_set and token_id in stop_token_set:
+            text = last_segment
             yield GenerationResponse(
                 token=token_id,
                 text=text,
@@ -300,29 +345,51 @@ def stream_generate(
             break
 
         generated_tokens.append(token_id)
-        current_token = mx.array([[token_id]], dtype=mx.uint32)
+        if generated_token_count < max_tokens:
+            generated_token_arr[generated_token_count] = token_id
+            generated_token_count += 1
+        current_token_arr[0, 0] = token_id
+        current_token = current_token_arr
 
         if timing_stats is not None:
             with timer(timing_stats, "decode"):
-                new_text, last_segment, last_decode_length = _decode_next_token(
-                    tokenizer=tokenizer,
-                    token_id=token_id,
-                    generated_tokens=generated_tokens,
-                    use_detokenizer=use_detokenizer,
-                    detokenizer=detokenizer,
-                    last_segment=last_segment,
-                    last_decode_length=last_decode_length,
-                )
+                if use_detokenizer:
+                    detokenizer.add_token(token_id)
+                    new_text = detokenizer.last_segment
+                    last_segment = new_text
+                else:
+                    try:
+                        full_decoded = local_decode(
+                            generated_token_arr[:generated_token_count]
+                        )
+                        new_text = full_decoded[last_decode_length:]
+                        last_decode_length = local_len(full_decoded)
+                        last_segment = new_text
+                    except Exception:
+                        try:
+                            new_text = local_decode([token_id])
+                        except Exception:
+                            new_text = ""
+                        last_segment = new_text
         else:
-            new_text, last_segment, last_decode_length = _decode_next_token(
-                tokenizer=tokenizer,
-                token_id=token_id,
-                generated_tokens=generated_tokens,
-                use_detokenizer=use_detokenizer,
-                detokenizer=detokenizer,
-                last_segment=last_segment,
-                last_decode_length=last_decode_length,
-            )
+            if use_detokenizer:
+                detokenizer.add_token(token_id)
+                new_text = detokenizer.last_segment
+                last_segment = new_text
+            else:
+                try:
+                    full_decoded = local_decode(
+                        generated_token_arr[:generated_token_count]
+                    )
+                    new_text = full_decoded[last_decode_length:]
+                    last_decode_length = local_len(full_decoded)
+                    last_segment = new_text
+                except Exception:
+                    try:
+                        new_text = local_decode([token_id])
+                    except Exception:
+                        new_text = ""
+                    last_segment = new_text
 
         is_last_token = (n == max_tokens - 1)
         yield GenerationResponse(

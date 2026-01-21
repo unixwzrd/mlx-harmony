@@ -362,6 +362,9 @@ class ByteLevelBPETokenizer:
 
         return text
 
+    def decode_token(self, token_id: int) -> str:
+        return self.decode(token_id, skip_special_tokens=False)
+
     def apply_chat_template(
         self,
         messages: list[dict[str, str]],
