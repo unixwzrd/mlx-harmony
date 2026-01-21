@@ -12,6 +12,8 @@ import mlx.nn as nn
 
 from mlx_harmony.cache import KVCache, make_prompt_cache
 from mlx_harmony.logging import get_logger
+from mlx_harmony.runtime.metrics import TimingStats, timer
+from mlx_harmony.sampling import apply_logits_processors
 
 logger = get_logger(__name__)
 
@@ -179,6 +181,7 @@ def stream_generate(
     clear_cache: bool = True,
     clear_cache_interval: int = 1,
     log_memory_stats: bool = False,
+    log_timing_stats: bool = False,
 ) -> Generator[GenerationResponse, None, None]:
     """
     Generate tokens from a model in a streaming fashion.
@@ -200,19 +203,32 @@ def stream_generate(
     prompt_tokens = _prompt_to_tokens(tokenizer, prompt)
     prompt_cache = _ensure_prompt_cache(model, prompt_cache)
     sampler = _resolve_sampler(sampler)
+    timing_stats = TimingStats() if log_timing_stats else None
 
     if log_memory_stats:
         _log_memory_stats("prefill_start")
 
-    _prefill_kv_cache(
-        model=model,
-        prompt_tokens=prompt_tokens,
-        prompt_cache=prompt_cache,
-        prefill_step_size=prefill_step_size,
-        clear_cache=clear_cache,
-        clear_cache_interval=clear_cache_interval,
-        prefill_start_offset=prefill_start_offset,
-    )
+    if timing_stats is not None:
+        with timer(timing_stats, "prefill"):
+            _prefill_kv_cache(
+                model=model,
+                prompt_tokens=prompt_tokens,
+                prompt_cache=prompt_cache,
+                prefill_step_size=prefill_step_size,
+                clear_cache=clear_cache,
+                clear_cache_interval=clear_cache_interval,
+                prefill_start_offset=prefill_start_offset,
+            )
+    else:
+        _prefill_kv_cache(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            prompt_cache=prompt_cache,
+            prefill_step_size=prefill_step_size,
+            clear_cache=clear_cache,
+            clear_cache_interval=clear_cache_interval,
+            prefill_start_offset=prefill_start_offset,
+        )
 
     if log_memory_stats:
         _log_memory_stats("prefill_end")
@@ -228,28 +244,53 @@ def stream_generate(
         if current_token is None:
             break
 
-        logits = model(current_token, cache=prompt_cache)
-        logits = logits[:, -1, :]
+        if timing_stats is not None:
+            with timer(timing_stats, "model"):
+                logits = model(current_token, cache=prompt_cache)
+                logits = logits[:, -1, :]
+        else:
+            logits = model(current_token, cache=prompt_cache)
+            logits = logits[:, -1, :]
 
-        if logits_processors:
-            if generated_tokens:
-                all_tokens = mx.concatenate(
-                    [prompt_tokens, mx.array(generated_tokens, dtype=mx.uint32)]
+        if generated_tokens:
+            all_tokens = mx.concatenate(
+                [prompt_tokens, mx.array(generated_tokens, dtype=mx.uint32)]
+            )
+        else:
+            all_tokens = prompt_tokens
+        if timing_stats is not None:
+            with timer(timing_stats, "logits_processors"):
+                logits = apply_logits_processors(
+                    tokens=all_tokens,
+                    logits=logits,
+                    processors=logits_processors,
                 )
-            else:
-                all_tokens = prompt_tokens
-            for processor in logits_processors:
-                logits = processor(all_tokens, logits)
+        else:
+            logits = apply_logits_processors(
+                tokens=all_tokens,
+                logits=logits,
+                processors=logits_processors,
+            )
 
-        logprobs = logits - mx.logsumexp(logits, keepdims=True)
-        token_id = int(sampler(logprobs))
+        if timing_stats is not None:
+            with timer(timing_stats, "sampler"):
+                logprobs = logits - mx.logsumexp(logits, keepdims=True)
+                token_id = int(sampler(logprobs))
+        else:
+            logprobs = logits - mx.logsumexp(logits, keepdims=True)
+            token_id = int(sampler(logprobs))
 
         if stop_tokens and token_id in stop_tokens:
             if use_detokenizer:
                 text = last_segment
             else:
-                text = tokenizer.decode(generated_tokens) if generated_tokens else ""
-                text = text[last_decode_length:]
+                if timing_stats is not None:
+                    with timer(timing_stats, "decode"):
+                        text = tokenizer.decode(generated_tokens) if generated_tokens else ""
+                        text = text[last_decode_length:]
+                else:
+                    text = tokenizer.decode(generated_tokens) if generated_tokens else ""
+                    text = text[last_decode_length:]
             yield GenerationResponse(
                 token=token_id,
                 text=text,
@@ -261,15 +302,27 @@ def stream_generate(
         generated_tokens.append(token_id)
         current_token = mx.array([[token_id]], dtype=mx.uint32)
 
-        new_text, last_segment, last_decode_length = _decode_next_token(
-            tokenizer=tokenizer,
-            token_id=token_id,
-            generated_tokens=generated_tokens,
-            use_detokenizer=use_detokenizer,
-            detokenizer=detokenizer,
-            last_segment=last_segment,
-            last_decode_length=last_decode_length,
-        )
+        if timing_stats is not None:
+            with timer(timing_stats, "decode"):
+                new_text, last_segment, last_decode_length = _decode_next_token(
+                    tokenizer=tokenizer,
+                    token_id=token_id,
+                    generated_tokens=generated_tokens,
+                    use_detokenizer=use_detokenizer,
+                    detokenizer=detokenizer,
+                    last_segment=last_segment,
+                    last_decode_length=last_decode_length,
+                )
+        else:
+            new_text, last_segment, last_decode_length = _decode_next_token(
+                tokenizer=tokenizer,
+                token_id=token_id,
+                generated_tokens=generated_tokens,
+                use_detokenizer=use_detokenizer,
+                detokenizer=detokenizer,
+                last_segment=last_segment,
+                last_decode_length=last_decode_length,
+            )
 
         is_last_token = (n == max_tokens - 1)
         yield GenerationResponse(
@@ -292,6 +345,9 @@ def stream_generate(
 
     if log_memory_stats:
         _log_memory_stats("generation_end")
+
+    if timing_stats is not None:
+        logger.info("timing_stats: %s", timing_stats.snapshot())
 
     # Note: We no longer yield a final response here because:
     # 1. The loop already yields all tokens including the last one

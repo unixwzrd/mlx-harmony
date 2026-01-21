@@ -357,3 +357,31 @@ def make_logits_processors(
         processors.append(repetition_penalty_processor(repetition_penalty, repetition_context_size))
 
     return processors
+
+
+def build_logits_processors(
+    *,
+    logit_bias: dict[int, float] | None = None,
+    repetition_penalty: float | None = None,
+    repetition_context_size: int = 20,
+) -> list[Callable[[mx.array, mx.array], mx.array]]:
+    """Build logits processors for the generation loop."""
+    return make_logits_processors(
+        logit_bias=logit_bias,
+        repetition_penalty=repetition_penalty,
+        repetition_context_size=repetition_context_size,
+    )
+
+
+def apply_logits_processors(
+    *,
+    tokens: mx.array,
+    logits: mx.array,
+    processors: list[Callable[[mx.array, mx.array], mx.array]] | None,
+) -> mx.array:
+    """Apply logits processors sequentially."""
+    if not processors:
+        return logits
+    for processor in processors:
+        logits = processor(tokens, logits)
+    return logits

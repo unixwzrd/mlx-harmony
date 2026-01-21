@@ -298,6 +298,25 @@ def write_debug_response(
     _write_debug_block(debug_path, "[DEBUG] Raw response from LLM:", raw_response)
 
 
+def write_debug_token_texts(
+    *,
+    debug_path: Path,
+    token_ids: list[int],
+    decode_token: Callable[[list[int]], str],
+    label: str = "response",
+    mode: str = "off",
+) -> None:
+    """Write per-token decoded text to the debug log (when enabled)."""
+    if mode not in {"out", "both"} or not token_ids:
+        return
+    per_token_lines = [decode_token([token_id]) for token_id in token_ids]
+    _write_debug_block(
+        debug_path,
+        f"[DEBUG] {label} tokens decoded (per token):",
+        "\n".join(per_token_lines),
+    )
+
+
 def load_chat_session(
     *,
     load_file_path: Path | None,
@@ -390,23 +409,31 @@ def write_debug_tokens(
     token_ids: list[int],
     decode_tokens: Callable[[list[int]], str] | None = None,
     label: str = "response",
-    enabled: bool = True,
+    mode: str = "off",
 ) -> None:
-    """Write token IDs and decoded text to the debug log."""
-    if not enabled or not token_ids:
+    """Write per-token decoded text to the debug log (optionally IDs)."""
+    if mode not in {"out", "both"} or not token_ids or decode_tokens is None:
         return
-    _write_debug_block(
-        debug_path,
-        f"[DEBUG] {label} tokens ({len(token_ids)} IDs):",
-        str(token_ids),
-    )
-    if decode_tokens is not None:
-        decoded_all = decode_tokens(token_ids)
+    if mode == "both":
         _write_debug_block(
             debug_path,
-            f"[DEBUG] {label} tokens decoded (raw):",
-            decoded_all,
+            f"[DEBUG] {label} tokens ({len(token_ids)} IDs):",
+            str(token_ids),
         )
+    decoded_all = decode_tokens(token_ids)
+    _write_debug_block(
+        debug_path,
+        f"[DEBUG] {label} tokens decoded (raw):",
+        decoded_all,
+    )
+    per_token_lines = [
+        f"{token_id}\t{decode_tokens([token_id])}" for token_id in token_ids
+    ]
+    _write_debug_block(
+        debug_path,
+        f"[DEBUG] {label} tokens decoded (per token):",
+        "\n".join(per_token_lines),
+    )
 
 
 def write_debug_metrics(

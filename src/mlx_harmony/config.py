@@ -102,6 +102,7 @@ class PromptConfig(BaseModel):
     clear_cache: Optional[bool] = None  # Clear MLX cache during prefill (default: True)
     clear_cache_interval: Optional[int] = None  # Interval for cache clearing (prefill chunks)
     log_memory_stats: Optional[bool] = None  # Log MLX memory stats during generation
+    log_timing_stats: Optional[bool] = None  # Log generation timing stats during generation
 
     # Display truncation limits
     truncate_thinking: Optional[int] = Field(

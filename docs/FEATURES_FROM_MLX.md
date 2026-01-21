@@ -238,6 +238,13 @@ This document identifies valuable features from `mlx-lm` and `mlx-examples` that
 - Some features (like distributed inference) are lower priority for our current scope
 
 ---
+MLX GIT SHA: 1596839256eb3cd0bad3c324a1baa9733c950002
+CURRENT MLX GIT SHA: 0d0d5a0b4be5de121d442a2cd4891f1b4186da2e
+
+MLX_LM GIT SHA: 39a96ab18b77e933d031a8f5777b6e08c19cbe17
+CURRENT MLX_LM GIT SHA: 4100703f1afc689186f53978abdfe1199c51bc8f
+
+
 
 **Last Updated**: 2026-01-06
 

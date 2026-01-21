@@ -9,7 +9,7 @@ from mlx_harmony.tools import execute_tool_call, parse_tool_calls_from_messages
 logger = get_logger(__name__)
 
 
-def handle_tool_calls(
+def run_tools_if_requested(
     *,
     generator: Any,
     tokens: list[int],
@@ -58,10 +58,10 @@ def handle_tool_calls(
             conversation.append(tool_result_msg)
 
         return True, parsed_messages
-    except Exception as e:
+    except Exception as exc:
         logger.warning(
             "Error parsing tool calls: %s (check tool call JSON and enabled tools)",
-            e,
+            exc,
         )
         return False, parsed_messages
 

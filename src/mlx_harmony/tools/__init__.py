@@ -12,26 +12,8 @@ import json
 from typing import Any, Dict, List
 
 from openai_harmony import Message, TextContent
-from pydantic import BaseModel, ConfigDict
 
-
-class ToolConfig(BaseModel):
-    """Lightweight description of an enabled tool."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    name: str
-    enabled: bool
-
-
-class ToolCall(BaseModel):
-    """Represents a parsed tool call from a Harmony message."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    tool_name: str
-    arguments: Dict[str, Any]
-    raw_message: Message
+from mlx_harmony.tools.types import ToolCall, ToolConfig
 
 
 def parse_tool_calls_from_messages(
@@ -136,28 +118,4 @@ def _execute_apply_patch_tool(args: Dict[str, Any]) -> str:
     )
 
 
-def get_tools_for_model(
-    *,
-    browser: bool = False,
-    python: bool = False,
-    apply_patch: bool = False,
-) -> List[ToolConfig]:
-    """
-    Return a list of enabled tools for a GPT‑OSS model.
-
-    Args:
-        browser: Enable browser tool.
-        python: Enable Python tool.
-        apply_patch: Enable apply_patch tool.
-
-    Returns:
-        List of ToolConfig objects for enabled tools.
-    """
-    tools: List[ToolConfig] = []
-    if browser:
-        tools.append(ToolConfig(name="browser", enabled=True))
-    if python:
-        tools.append(ToolConfig(name="python", enabled=True))
-    if apply_patch:
-        tools.append(ToolConfig(name="apply_patch", enabled=True))
-    return tools
+from mlx_harmony.tools.registry import get_tools_for_model

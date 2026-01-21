@@ -12,6 +12,7 @@ from openai_harmony import (
 )
 
 from mlx_harmony.config import PromptConfig, apply_placeholders
+from mlx_harmony.generation.backends import GPTOSSBackend, NativeBackend
 from mlx_harmony.hyperparameters import resolve_param
 from mlx_harmony.prompts.harmony import HarmonyPromptRenderer
 from mlx_harmony.prompts.native import NativePromptRenderer
@@ -78,6 +79,17 @@ class TokenGenerator:
             if self.use_harmony and self.encoding is not None
             else NativePromptRenderer(tokenizer=self.tokenizer)
         )
+        self.backend = (
+            GPTOSSBackend(
+                encoding=self.encoding,
+                tokenizer=self.tokenizer,
+                prompt_config=prompt_config,
+            )
+            if self.use_harmony and self.encoding is not None
+            else NativeBackend(tokenizer=self.tokenizer)
+        )
+        self.last_finish_reason: str | None = None
+        self.last_stop_token_id: int | None = None
 
         # Streamable parser for tool call detection (Harmony only)
         self.streamable_parser: Optional[StreamableParser] = None
@@ -164,6 +176,7 @@ class TokenGenerator:
         clear_cache: Optional[bool] = None,
         clear_cache_interval: Optional[int] = None,
         log_memory_stats: Optional[bool] = None,
+        log_timing_stats: Optional[bool] = None,
     ) -> Iterator[Union[int, Dict[str, Union[int, float, None]]]]:
         """
         Generate tokens with automatic format selection.
@@ -173,31 +186,17 @@ class TokenGenerator:
         """
         # Imported lazily to avoid MLX initialization during module import.
         from mlx_harmony.generate_standalone import stream_generate
-        from mlx_harmony.sampling import make_logits_processors, make_sampler
+        from mlx_harmony.sampling import build_logits_processors, make_sampler
 
         # Use provided prompt token IDs when available (avoids re-rendering prompts).
-        prompt_token_list: Optional[List[int]] = None
-        if prompt_tokens is not None:
-            prompt_input = prompt_tokens
-            if isinstance(prompt_tokens, list):
-                prompt_token_list = prompt_tokens
-        # For Harmony models, get token IDs directly (don't convert to string and back)
-        # This avoids double-encoding: Harmony encoding tokens -> string -> native tokenizer tokens
-        elif self.use_harmony and self.encoding and messages:
-            prompt_token_ids = self.prompt_renderer.render_prompt_tokens(
-                messages, system_message
-            )
-            # Pass token IDs directly to stream_generate (it accepts list[int])
-            prompt_input = prompt_token_ids
-            prompt_token_list = prompt_token_ids
-        else:
-            # For non-Harmony models, use string prompt (will be encoded by stream_generate)
-            prompt_input = self._prepare_prompt(
-                prompt_tokens=prompt_tokens,
-                messages=messages,
-                prompt=prompt,
-                system_message=system_message,
-            )
+        prompt_input, prompt_token_list = self.backend.prepare_prompt(
+            prompt_tokens=prompt_tokens,
+            messages=messages,
+            prompt=prompt,
+            system_message=system_message,
+        )
+        self.last_finish_reason = None
+        self.last_stop_token_id = None
 
         cfg = self.prompt_config
 
@@ -228,7 +227,7 @@ class TokenGenerator:
             ),
         )
 
-        logits_processors = make_logits_processors(
+        logits_processors = build_logits_processors(
             logit_bias=logit_bias,
             repetition_penalty=resolve_param(
                 repetition_penalty,
@@ -317,12 +316,17 @@ class TokenGenerator:
             log_memory_stats=resolve_param(
                 log_memory_stats, cfg.log_memory_stats if cfg else None, False
             ),
+            log_timing_stats=resolve_param(
+                log_timing_stats, cfg.log_timing_stats if cfg else None, False
+            ),
         ):
             token_id = response.token
 
             # Check if this is a stop response (generation ended)
             if response.finish_reason == "stop":
                 # Stop token was generated, don't yield it
+                self.last_finish_reason = response.finish_reason
+                self.last_stop_token_id = int(token_id)
                 break
 
             # Safe to yield - append to tracking list and yield
