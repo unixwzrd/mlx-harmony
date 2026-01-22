@@ -1,7 +1,7 @@
 # Source File Map
 
 **Created**: 2026-01-21
-**Updated**: 2026-01-21
+**Updated**: 2026-01-22
 
 This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmony) and describes their current roles.
 
@@ -50,6 +50,8 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [tokenizer_native.py](../src/mlx_harmony/tokenizer_native.py): Native tokenizer implementation.
 - [runtime/context.py](../src/mlx_harmony/runtime/context.py): RunContext dataclass.
 - [runtime/metrics.py](../src/mlx_harmony/runtime/metrics.py): Timing metrics helpers.
+- [runtime/sampler.py](../src/mlx_harmony/runtime/sampler.py): Sampling protocol definitions.
+- [runtime/tokenizer.py](../src/mlx_harmony/runtime/tokenizer.py): Tokenizer protocol definitions.
 - [hyperparameters.py](../src/mlx_harmony/hyperparameters.py): Hyperparameter precedence helpers.
 
 ## Config

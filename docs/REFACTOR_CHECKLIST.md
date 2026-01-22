@@ -1,11 +1,11 @@
 # Refactor Checklist
 
-**Created**: 2026-01-21
-**Updated**: 2026-01-21
+**Created**: 2026-01-22
+**Updated**: 2026-01-22
 
 ## Purpose
 
-Track the refactor + performance plan from [tmp/MLX-Refactor-and-Performance-00.md](../tmp/MLX-Refactor-and-Performance-00.md) with actionable steps and a place for status/notes.
+Track the refactor + performance plan from [tmp/Codex_Instructions-01.md](../tmp/Codex_Instructions-01.md) with actionable steps and a place for status/notes.
 
 ## Status Legend
 
@@ -14,125 +14,74 @@ Track the refactor + performance plan from [tmp/MLX-Refactor-and-Performance-00.
 - [x] Done
 - [!] Blocked
 
-## Phase 1: Tighten Boundaries (No Behavior Changes)
+## Priority Work Items (Codex_Instructions-01)
 
-### 1) Introduce RunContext
+### 1) Remove StreamableParser from per-token hot path
 
-- [x] Create `src/mlx_harmony/runtime/context.py` with `RunContext` dataclass
-- [x] Move session-level fields into `RunContext`
-- [x] Update `chat/main.py` to build and pass `RunContext`
-- [~] Replace long parameter lists with context usage
+- [ ] Stop calling `StreamableParser.process(token)` inside `chat_generation.stream_generation`
+- [ ] Remove parser seeding from prompt tail tokens
+- [ ] Parse completion once after generation (single-pass parsing)
+- [ ] Confirm tool call detection still works post-parse
 - [ ] Notes:
 
-### 2) Split chat/main.py into bootstrap vs loop
+### 2) Make stop behavior consistent and channel-safe
 
-- [x] Create `src/mlx_harmony/chat_bootstrap.py`
-- [x] Move CLI/config/path/generator init into bootstrap
-- [~] Keep `chat.py` as thin entrypoint
-- [ ] Verify CLI behavior unchanged
+- [ ] Keep Harmony stop tokens from `encoding.stop_tokens_for_assistant_actions()`
+- [ ] Avoid early stops based on StreamableParser channel state
+- [ ] Ensure parsing still finalizes without stop token injection
 - [ ] Notes:
 
-### 3) Separate conversation storage vs rendering
+### 3) Separate model budget from display budget
 
-- [x] Ensure `conversation/*` does not import `generation/*`
-- [x] Ensure render helpers stay out of `generation/*`
-- [x] Fix any cross-imports by inverting dependencies
-- [ ] Notes: Conversation directory is currently empty; no cross-imports found.
-
-## Phase 2: Stabilize Generation API (Swap Models Later)
-
-### 4) Add minimal backend protocol
-
-- [x] Create `src/mlx_harmony/generation/backend.py`
-- [~] Define `Protocol` (encode/decode/stream_generate)
-- [x] Implement GPT‑OSS backend in `generation/backends/gpt_oss_backend.py`
-- [x] Implement native backend in `generation/backends/native_backend.py`
-- [x] Refactor `TokenGenerator` to use backend
-- [ ] Notes:
-  - Protocol currently covers `prepare_prompt` + `decode`; stream generation stays in `TokenGenerator` for now.
-
-### 5) Make tool-calling pluggable
-
-- [x] Create `src/mlx_harmony/tools/registry.py`
-- [x] Create `src/mlx_harmony/tools/runner.py`
-- [x] Move tool execution into `tools/runner.py`
-- [x] Update chat loop to call tool runner
+- [ ] Remove analysis-budget early stop in `chat_generation.stream_generation`
+- [ ] Keep `truncate_thinking`/`truncate_response` only for display/save
 - [ ] Notes:
 
-## Phase 3: Prep for Performance Work (No Tuning Yet)
+### 4) Loop detection policy (fast path vs guard mode)
 
-### 6) Isolate sampling + caching helpers
-
-- [x] Add `build_logits_processors(...)`
-- [x] Add `apply_logits_processors(...)`
-- [x] Update generation loop to use helpers
+- [ ] Add config/CLI flag to disable loop detection in production/benchmark
+- [ ] Default to cheap detector only (e.g., repeated single token)
+- [ ] Move heavier n-gram detection behind the flag
 - [ ] Notes:
 
-### 7) Add optional timing hooks
+### 5) Cache clearing + wired memory stability
 
-- [x] Create `src/mlx_harmony/runtime/metrics.py` (Timer + counters)
-- [x] Wire into generation loop behind config flag
+- [ ] Default `clear_cache` to False when `mlock=true`
+- [ ] Avoid `mx.clear_cache()` inside per-token loop by default
+- [ ] If needed, clear between runs or on memory pressure only
 - [ ] Notes:
 
-## Performance Checklist (From tmp/MLX-Refactor-and-Performance-01.md)
+### 6) Prompt-cache reuse as conversation grows
 
-**Source**: [tmp/MLX-Refactor-and-Performance-01.md](../tmp/MLX-Refactor-and-Performance-01.md)
+- [ ] Ensure prompt prefix stays stable (avoid dynamic fields early)
+- [ ] Preserve longest-common-prefix during truncation
+- [ ] Track `prefill_start_offset` usage across turns
+- [ ] Notes:
 
-### Phase 1: Lock down interfaces
+### 7) Resume generation after max_tokens
 
-- [~] Define `ModelBackend` interface: forward pass, cache init/update, special tokens, limits
-- [x] Define `Tokenizer` interface: encode/decode/streaming decode; no numpy in hot path
-- [x] Confirm `PromptRenderer` interface remains backend-agnostic
-- [x] Define `Sampler` interface: sampling + logits processors separated from I/O/rendering
-- [~] Deliverable: minimal protocol/classes + adapters for GPT-OSS backend without behavior change
+- [ ] Simple resume: append partial assistant + continuation instruction + regen
+- [ ] Fast resume: add resumable state to `stream_generate`/`resume_generate`
+- [ ] No duplicated channel headers on resume
+- [ ] Notes:
 
-### Phase 2: Hot-path audit
+### 8) Fix repetition across Harmony channels
 
-- [x] Hoist repeated attribute lookups into locals inside token loop
-- [x] Pre-bind repeated dict lookups (avoid per-token `.get`) (no per-token `.get` in hot loop)
-- [x] Avoid per-token string concatenation / formatting (no per-token string building in hot loop)
-- [x] Eliminate numpy conversions in hot path (only at boundaries) (no numpy usage found)
-- [x] Add “hot loop checklist” comment atop generation loop
-- [x] Deliverable: apply audit pass, confirm no behavior change
-  - Notes: use `decode_token` when detokenizer is unavailable to avoid full-sequence decode per token.
+- [ ] Confirm no duplicated channel markers in decode/clean steps
+- [ ] Tune repetition penalty defaults/window for Harmony if needed
+- [ ] Notes:
 
-### Phase 3: Reduce call count per token
+## Deliverables
 
-- [x] Inline trivial processors or fuse into a single step function
-- [x] Collapse chains of tiny functions into one local step function
-- [x] Precompute constants outside the loop; keep arrays in MLX
-- [x] Deliverable: fewer Python frames per token step
+- [ ] Benchmark note (before/after): prefill time, TPS, CPU%, GPU%
+- [ ] Unit tests for:
+  - [ ] Stop token behavior (assistant action boundary)
+  - [ ] Resume after max_tokens completes final channel
+  - [ ] Tool call detection still works post-parse
 
-### Phase 4: Allocation & memory-churn control
-
-- [x] Preallocate recurring buffers (token buffers, masks, scratch arrays)
-- [x] Avoid per-token list/dict allocation
-- [x] Avoid building large intermediate strings per token
-- [x] Prefer in-place cache updates where safe
-- [ ] Deliverable: reduced wired-memory oscillation
-
-### Phase 5: GPU utilization improvement
-
-- [~] Batch work into fewer MLX calls
-- [x] Reduce synchronization points
-- [x] Avoid repeated materialization in hot loop (`.item()`, shape queries, conversions)
-- [ ] Deliverable: increased GPU utilization, reduced CPU utilization
-  - Notes: greedy-path logsumexp skip reverted after zero-token runs; needs different approach.
-
-### Tooling & measurement requirements
+## Cross‑Cutting Tasks
 
 - [ ] Keep benchmark harness repeatable (same prompt, tokens, temperature)
 - [ ] After each change: run tests/imports + one benchmark
 - [ ] Report deltas: TPS, CPU%, GPU%, wired memory oscillation, top 20 cProfile
-- [ ] Confirm “no numpy in hot path” (grep or profile evidence)
-
-## Cross‑Cutting Tasks
-
-- [ ] Update imports after each move
-- [ ] Run smoke import test after each batch
-- [ ] Run `python -m pytest -q --maxfail=3 --disable-warnings || true`
-- [ ] Update docs if module boundaries change
-
-## Observations / Open Questions
-
-- [ ] Notes:
+- [ ] Confirm “no numpy in hot path”

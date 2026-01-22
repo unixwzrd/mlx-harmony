@@ -1,24 +1,28 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-21
+**Updated**: 2026-01-22
 
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 2026-01-21 - Unreleased
+## 2026-01-22 - Unreleased
 
 ### Added
 
 - Generation backend protocol with GPT-OSS and native backends.
 - Timing hooks in standalone generation (opt-in per prompt config).
 - Tool registry and tool runner modules for pluggable tool execution.
+- Minimal Harmony repro harness with stop/final boundary reporting and TPS summary.
 
 ### Changed
 
 - Debug logging of raw LLM responses now preserves Harmony markers and stop tokens for full-stream inspection.
+- Added loop/repetition guards to prevent runaway analysis/final loops during generation.
+- Skipped per-token decode and logsumexp on greedy path to reduce CPU overhead.
+- Truncation markers now append `[truncated]` for final/thinking when output is cut short.
 
 ## 2026-01-20 - Unreleased
 

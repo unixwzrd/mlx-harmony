@@ -290,20 +290,58 @@ def repetition_penalty_processor(
             return logits
 
         # Get recent tokens for penalty calculation
-        context_tokens = tokens[-repetition_context_size:] if len(tokens) > repetition_context_size else tokens
+        context_tokens = (
+            tokens[-repetition_context_size:]
+            if len(tokens) > repetition_context_size
+            else tokens
+        )
+        context_tokens = mx.reshape(context_tokens, (-1,))
+        if context_tokens.size == 0:
+            return logits
 
-        # Apply penalty: reduce logits for tokens that appear in recent context
         logits_row = logits[0]
         vocab_size = logits_row.shape[-1]
         penalty = repetition_penalty
-        for token_id in context_tokens.flatten():
-            token_id = int(token_id)
-            if token_id < vocab_size:
-                if logits_row[token_id] > 0:
-                    logits_row[token_id] = logits_row[token_id] / penalty
-                else:
-                    logits_row[token_id] = logits_row[token_id] * penalty
 
+        # Deduplicate token ids without Python loops.
+        # Tokens are expected to be valid model ids; avoid MLX boolean indexing.
+        sorted_tokens = mx.sort(context_tokens)
+        if sorted_tokens.size == 1:
+            unique_tokens = sorted_tokens
+        else:
+            first = mx.array([True], dtype=mx.bool_)
+            rest = sorted_tokens[1:] != sorted_tokens[:-1]
+            unique_mask = mx.concatenate([first, rest])
+            unique_positions = mx.cumsum(unique_mask.astype(mx.int32)) - 1
+            unique_count = int(mx.sum(unique_mask).item())
+            if unique_count <= 0:
+                return logits
+            unique_buffer = mx.full(
+                (sorted_tokens.size,),
+                vocab_size,
+                dtype=sorted_tokens.dtype,
+            )
+            unique_buffer = mx.put_along_axis(
+                unique_buffer,
+                unique_positions,
+                sorted_tokens,
+                axis=0,
+            )
+            unique_tokens = unique_buffer[:unique_count]
+
+        # Vectorized penalty application
+        current_vals = mx.take(logits_row, unique_tokens)
+        updated_vals = mx.where(
+            current_vals > 0,
+            current_vals / penalty,
+            current_vals * penalty,
+        )
+        logits = mx.put_along_axis(
+            logits,
+            mx.reshape(unique_tokens, (1, -1)),
+            mx.reshape(updated_vals, (1, -1)),
+            axis=-1,
+        )
         return logits
 
     processor.context_size = repetition_context_size

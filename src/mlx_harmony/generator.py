@@ -90,6 +90,7 @@ class TokenGenerator:
         )
         self.last_finish_reason: str | None = None
         self.last_stop_token_id: int | None = None
+        self.last_stop_reason: str | None = None
 
         # Streamable parser for tool call detection (Harmony only)
         self.streamable_parser: Optional[StreamableParser] = None
@@ -197,6 +198,7 @@ class TokenGenerator:
         )
         self.last_finish_reason = None
         self.last_stop_token_id = None
+        self.last_stop_reason = None
 
         cfg = self.prompt_config
 
@@ -206,9 +208,11 @@ class TokenGenerator:
 
             mx.random.seed(seed)
 
+        resolved_temp = resolve_param(temperature, cfg.temperature if cfg else None, 1.0)
+        sampler_is_greedy = resolved_temp <= 0.0
         # Build sampler using MLX-LM's sampling utilities.
         sampler = make_sampler(
-            temp=resolve_param(temperature, cfg.temperature if cfg else None, 1.0),
+            temp=resolved_temp,
             top_p=resolve_param(top_p, cfg.top_p if cfg else None, 0.0),
             min_p=resolve_param(min_p, cfg.min_p if cfg else None, 0.0),
             min_tokens_to_keep=resolve_param(
@@ -259,20 +263,12 @@ class TokenGenerator:
         if resolved_max_tokens > 0:
             kwargs["max_tokens"] = resolved_max_tokens
 
-        # For Harmony models, use HarmonyEncoding.stop_tokens() to get token IDs directly
-        # BUT: Filter out <|end|> (200007) - it's just a message separator, not a generation stopper
-        # Only <|return|> (200002) and <|call|> (200012) should stop generation
+        # For Harmony models, use HarmonyEncoding.stop_tokens_for_assistant_actions()
+        # to stop only on assistant boundaries (<|return|>, <|call|>).
         stop_token_ids: List[int] = []
         if self.use_harmony and self.encoding:
-            # Use HarmonyEncoding's stop_tokens() method to get token IDs directly
-            # This handles multi-token sequences correctly (e.g., <|return|>)
-            harmony_stop_ids = self.encoding.stop_tokens()
-            # Filter out <|end|> (200007) - it separates messages but doesn't stop generation
-            # The model generates: analysis<|end|> then final<|return|>
-            # We should only stop on <|return|> or <|call|>, not on <|end|>
-            end_token_id = 200007  # <|end|>
-            filtered_stop_ids = [tid for tid in harmony_stop_ids if tid != end_token_id]
-            stop_token_ids.extend(filtered_stop_ids)
+            harmony_stop_ids = self.encoding.stop_tokens_for_assistant_actions()
+            stop_token_ids.extend(harmony_stop_ids)
 
         # Add user-provided stop tokens
         if stop_tokens:
@@ -319,6 +315,9 @@ class TokenGenerator:
             log_timing_stats=resolve_param(
                 log_timing_stats, cfg.log_timing_stats if cfg else None, False
             ),
+            decode_tokens=False,
+            sampler_is_greedy=sampler_is_greedy,
+            compute_logprobs=return_logprobs,
         ):
             token_id = response.token
 
@@ -326,8 +325,15 @@ class TokenGenerator:
             if response.finish_reason == "stop":
                 # Stop token was generated, don't yield it
                 self.last_finish_reason = response.finish_reason
-                self.last_stop_token_id = int(token_id)
+                self.last_stop_reason = response.stop_reason
+                if response.stop_reason is None:
+                    self.last_stop_token_id = int(token_id)
+                else:
+                    self.last_stop_token_id = None
                 break
+
+            if response.finish_reason == "length":
+                self.last_finish_reason = response.finish_reason
 
             # Safe to yield - append to tracking list and yield
             generated_tokens.append(int(token_id))
