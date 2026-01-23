@@ -1,7 +1,7 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-22
+**Updated**: 2026-01-23
 
 All notable changes to mlx-harmony will be documented in this file.
 
@@ -23,6 +23,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added loop/repetition guards to prevent runaway analysis/final loops during generation.
 - Skipped per-token decode and logsumexp on greedy path to reduce CPU overhead.
 - Truncation markers now append `[truncated]` for final/thinking when output is cut short.
+- Harmony parsing now runs as a single pass after generation (no per-token StreamableParser hot path).
+- Analysis/commentary budget no longer stops generation early; truncation is display-only.
+- Harmony parsing appends stop token for parsing when missing to finalize message boundaries.
+- Harmony parsing now falls back to raw text display when headers are missing and adds `[truncated]` on max-tokens cutoffs.
+- Tool parsing now prepends the assistant header and stop token when needed to handle headerless completions.
+- Built-in time placeholders are now frozen at prompt-config load to stabilize prompt prefixes.
+- Harmony parsing now allows non-strict parsing when a header is prepended to handle headerless completions.
+- Resume prompt now restarts from the beginning to avoid “continued” artifacts after truncation.
+- Resume now omits truncated assistant content from recovery prompts to avoid seeding repetition.
+- Resume now boosts repetition guards for recovery turns (penalty/context size/loop detection).
+- Clarified parsing logs to indicate header-prepend is a local parse step, not a prompt re-submission.
+- Resume prompt now caps recovery lists (max 8 items) to reduce repetition.
+- Loop detection now supports `off`, `cheap`, and `full` modes via config/CLI, with full n-gram checks gated behind `full`.
+- Chat-level loop detection now honors `off/cheap/full` to reduce per-token CPU overhead.
+- Cache clearing is disabled automatically when `mlock` is enabled to reduce wired memory oscillation.
+- Generation-loop cache clearing is now opt-in via `clear_cache_generation` (defaults off).
+- Warning/error logs now route to the debug log file while console stays info-only.
+- Harmony prompt conversation start date is now stable per run to improve prompt cache reuse.
+- Prompt cache reuse now leverages longest-common-prefix and logs prefill offsets in TSV metrics.
+- Added simple resume-on-max-tokens behavior to continue incomplete responses.
+- Harmony default repetition context now uses a larger window when unspecified to reduce repeated analysis/final loops.
+- Debug raw response logging avoids duplicating Harmony headers when the response already includes them.
+- Harmony defaults to a mild repetition penalty when unspecified to reduce looping.
+- Resume retry now triggers when loop detection stops generation, with stronger recovery constraints.
+- Debug console output now suppresses raw responses when an automatic recovery retry is queued.
+- Harmony parse diagnostics now emit full token details only under `--debug` to keep logs consistent.
+- Recovery prompts no longer assume list outputs and resume hyperparameters are restored after recovery.
+- Recovery prompt now adapts list vs paragraph based on the user request to avoid list-specific assumptions.
 
 ## 2026-01-20 - Unreleased
 

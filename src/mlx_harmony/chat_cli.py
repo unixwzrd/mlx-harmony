@@ -77,6 +77,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of previous tokens used for repetition penalty.",
     )
     parser.add_argument(
+        "--loop-detection",
+        choices=["off", "cheap", "full"],
+        default=None,
+        help="Loop detection mode: off, cheap, or full (overrides config).",
+    )
+    parser.add_argument(
         "--prompt-config",
         type=str,
         default=None,

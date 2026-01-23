@@ -60,6 +60,7 @@ class TokenGenerator:
         self.mlock = mlock
         self._prompt_cache: list[object] | None = None
         self._prompt_cache_tokens: list[int] | None = None
+        self._last_prefill_start_offset: int | None = None
 
         # Auto-detect if this is a GPT-OSS model.
         self.is_gpt_oss = self._is_gpt_oss_model(model_path)
@@ -178,6 +179,8 @@ class TokenGenerator:
         clear_cache_interval: Optional[int] = None,
         log_memory_stats: Optional[bool] = None,
         log_timing_stats: Optional[bool] = None,
+        loop_detection: Optional[str] = None,
+        clear_cache_generation: Optional[bool] = None,
     ) -> Iterator[Union[int, Dict[str, Union[int, float, None]]]]:
         """
         Generate tokens with automatic format selection.
@@ -231,20 +234,27 @@ class TokenGenerator:
             ),
         )
 
+        default_repetition_context = 256 if self.use_harmony else 20
+        default_repetition_penalty = 1.05 if self.use_harmony else 0.0
+        resolved_repetition_penalty = resolve_param(
+            repetition_penalty,
+            cfg.repetition_penalty if cfg else None,
+            default_repetition_penalty,
+        )
+        repetition_penalty_value = (
+            resolved_repetition_penalty
+            if resolved_repetition_penalty is not None
+            and resolved_repetition_penalty != 1.0
+            and resolved_repetition_penalty != 0.0
+            else None
+        )
         logits_processors = build_logits_processors(
             logit_bias=logit_bias,
-            repetition_penalty=resolve_param(
-                repetition_penalty,
-                cfg.repetition_penalty if cfg else None,
-                0.0,
-            )
-            if (repetition_penalty or 0.0) != 0.0
-            or (cfg and cfg.repetition_penalty is not None)
-            else None,
+            repetition_penalty=repetition_penalty_value,
             repetition_context_size=resolve_param(
                 repetition_context_size,
                 cfg.repetition_context_size if cfg else None,
-                20,
+                default_repetition_context,
             ),
         )
 
@@ -288,12 +298,29 @@ class TokenGenerator:
             from mlx_harmony.cache import make_prompt_cache
 
             if self._prompt_cache is not None and self._prompt_cache_tokens is not None:
-                cached_len = len(self._prompt_cache_tokens)
-                if cached_len > 0 and prompt_token_list[:cached_len] == self._prompt_cache_tokens:
+                cached_tokens = self._prompt_cache_tokens
+                max_common = min(len(cached_tokens), len(prompt_token_list))
+                common_prefix = 0
+                while (
+                    common_prefix < max_common
+                    and cached_tokens[common_prefix] == prompt_token_list[common_prefix]
+                ):
+                    common_prefix += 1
+                if common_prefix > 0:
                     prompt_cache = self._prompt_cache
-                    prefill_start_offset = cached_len
+                    prefill_start_offset = common_prefix
             if prompt_cache is None:
                 prompt_cache = make_prompt_cache(self.model)
+
+        effective_clear_cache = resolve_param(
+            clear_cache,
+            cfg.clear_cache if cfg else None,
+            True,
+        )
+        if cfg and cfg.mlock:
+            effective_clear_cache = False
+        if self.mlock:
+            effective_clear_cache = False
 
         for response in stream_generate(
             self.model,
@@ -305,15 +332,23 @@ class TokenGenerator:
             stop_tokens=stop_token_ids if stop_token_ids else None,
             prompt_cache=prompt_cache,
             prefill_start_offset=prefill_start_offset,
-            clear_cache=resolve_param(clear_cache, cfg.clear_cache if cfg else None, True),
+            clear_cache=effective_clear_cache,
             clear_cache_interval=resolve_param(
                 clear_cache_interval, cfg.clear_cache_interval if cfg else None, 1
+            ),
+            clear_cache_generation=resolve_param(
+                clear_cache_generation,
+                cfg.clear_cache_generation if cfg else None,
+                False,
             ),
             log_memory_stats=resolve_param(
                 log_memory_stats, cfg.log_memory_stats if cfg else None, False
             ),
             log_timing_stats=resolve_param(
                 log_timing_stats, cfg.log_timing_stats if cfg else None, False
+            ),
+            loop_detection=resolve_param(
+                loop_detection, cfg.loop_detection if cfg else None, "cheap"
             ),
             decode_tokens=False,
             sampler_is_greedy=sampler_is_greedy,
@@ -373,6 +408,7 @@ class TokenGenerator:
         if prompt_token_list is not None and prompt_cache is not None:
             self._prompt_cache = prompt_cache
             self._prompt_cache_tokens = prompt_token_list
+            self._last_prefill_start_offset = prefill_start_offset
 
         # Calculate and store generation stats
         end_time = time.perf_counter()
@@ -481,7 +517,10 @@ class TokenGenerator:
             pass
 
     def parse_messages_from_tokens(
-        self, tokens: List[int]
+        self,
+        tokens: List[int],
+        *,
+        strict: bool = True,
     ) -> List[Message]:
         """
         Parse Harmony messages from completion tokens.
@@ -493,5 +532,5 @@ class TokenGenerator:
                 "parse_messages_from_tokens only works with Harmony encoding"
             )
         return self.encoding.parse_messages_from_completion_tokens(
-            tokens, Role.ASSISTANT
+            tokens, Role.ASSISTANT, strict=strict
         )

@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from openai_harmony import Role
 from unicodefix.transforms import clean_text
 
 from mlx_harmony.logging import get_logger
@@ -30,49 +31,82 @@ def parse_harmony_response(
     display_assistant: Callable[[str, str, bool], None],
     display_thinking: Callable[[str, bool], None],
     truncate_text: Callable[[str, int], str],
+    suppress_display: bool = False,
 ) -> HarmonyParseResult:
     final_text_parts: list[str] = []
     analysis_text_parts: list[str] = []
     assistant_text = ""
     parsed_messages: list[Any] | None = None
 
-    if generator.streamable_parser:
-        parser_state = generator.streamable_parser.state
-        if debug:
-            logger.debug("Parser state before process_eos(): %s", parser_state)
-            logger.debug("Parser current_role: %s", generator.streamable_parser.current_role)
-            logger.debug("Parser current_channel: %s", generator.streamable_parser.current_channel)
-            logger.debug("Parser tokens processed: %d", len(generator.streamable_parser.tokens))
-            if generator.streamable_parser.tokens:
-                first_tokens = generator.streamable_parser.tokens[:20]
-                decoded_start = generator.encoding.decode(first_tokens) if generator.encoding else "N/A"
-                logger.debug("First 20 tokens decoded: %s", decoded_start[:200])
+    parse_tokens = tokens
+    finish_reason = getattr(generator, "last_finish_reason", None)
+    if (
+        finish_reason == "stop"
+        and getattr(generator, "last_stop_token_id", None) is not None
+        and (not tokens or tokens[-1] != generator.last_stop_token_id)
+        and generator.last_stop_token_id not in tokens
+    ):
+        parse_tokens = tokens + [generator.last_stop_token_id]
 
-        try:
-            generator.streamable_parser.process_eos()
-            parsed_messages = generator.streamable_parser.messages
-        except Exception as e:
-            error_msg = str(e)
+    header_tokens: list[int] | None = None
+    parse_strict = True
+    if generator.encoding and 200005 not in parse_tokens[:20]:
+        header_tokens = generator.encoding.encode(
+            "<|start|>assistant<|channel|>analysis<|message|>",
+            allowed_special={"<|start|>", "<|channel|>", "<|message|>"},
+        )
+        parse_tokens = header_tokens + parse_tokens
+        parse_strict = False
+        if debug:
+            logger.warning(
+                "Harmony parsing with prepended assistant header (analysis channel) for completion-only parse"
+            )
+
+    try:
+        parsed_messages = generator.parse_messages_from_tokens(parse_tokens, strict=parse_strict)
+    except Exception as e:
+        error_msg = str(e)
+        if debug:
             logger.error("Harmony parsing failed: %s", error_msg)
-            logger.error("Parser state: %s", parser_state)
-            logger.error("Tokens processed: %d", len(generator.streamable_parser.tokens))
-            if generator.streamable_parser.tokens and generator.encoding:
-                first_tokens = generator.streamable_parser.tokens[:50]
+            logger.error("Tokens processed: %d", len(parse_tokens))
+            if generator.encoding:
+                first_tokens = parse_tokens[:50]
                 decoded_start = generator.encoding.decode(first_tokens)
                 logger.error("First 50 tokens decoded: %s", decoded_start[:500])
-                logger.error("First 20 token IDs: %s", generator.streamable_parser.tokens[:20])
+                logger.error("First 20 token IDs: %s", parse_tokens[:20])
                 channel_token_id = 200005
-                if channel_token_id in generator.streamable_parser.tokens[:20]:
-                    idx = generator.streamable_parser.tokens[:20].index(channel_token_id)
+                if channel_token_id in parse_tokens[:20]:
+                    idx = parse_tokens[:20].index(channel_token_id)
                     logger.error("Found <|channel|> token (200005) at position %d", idx)
                 else:
                     logger.error("<|channel|> token (200005) NOT found in first 20 tokens")
+        else:
+            logger.warning("Harmony parsing failed: %s", error_msg)
+        if generator.encoding:
+            raw_text = generator.encoding.decode(tokens)
+            raw_text = clean_text(raw_text).strip()
+            if raw_text:
+                logger.warning(
+                    "Harmony parsing fallback: treating completion as raw assistant text"
+                )
+                if debug:
+                    logger.debug(
+                        "Harmony raw fallback completion: %s",
+                        raw_text[:4000],
+                    )
+                assistant_text = truncate_text(raw_text, response_limit)
+                if assistant_text and not suppress_display:
+                    display_assistant(assistant_text, assistant_name, render_markdown)
+                return HarmonyParseResult(
+                    assistant_text=assistant_text,
+                    analysis_text_parts=[],
+                    parsed_messages=None,
+                )
+        if debug:
             logger.error("This error indicates the model output is malformed/incomplete:")
             logger.error("  - The parser was waiting for a message header to complete")
             logger.error("  - Model output does not conform to Harmony format structure")
-            raise RuntimeError(f"Failed to parse Harmony messages: {error_msg}") from e
-    else:
-        parsed_messages = generator.parse_messages_from_tokens(tokens)
+        raise RuntimeError(f"Failed to parse Harmony messages: {error_msg}") from e
 
     final_channel_messages: list[str] = []
     if debug:
@@ -104,13 +138,17 @@ def parse_harmony_response(
     if analysis_text_parts:
         joined_analysis = "\n".join(analysis_text_parts)
         thinking_text = truncate_text(joined_analysis.lstrip(" \t").rstrip(" \t"), thinking_limit)
-        if thinking_text:
+        if finish_reason == "length" and thinking_text and not thinking_text.endswith("[truncated]"):
+            thinking_text = f"{thinking_text.rstrip()} ... [truncated]"
+        if thinking_text and not suppress_display:
             display_thinking(thinking_text, render_markdown=render_markdown)
 
     if final_text_parts:
         joined_text = "".join(final_text_parts)
         assistant_text = truncate_text(joined_text.lstrip(" \t").rstrip(" \t"), response_limit)
-        if assistant_text:
+        if finish_reason == "length" and assistant_text and not assistant_text.endswith("[truncated]"):
+            assistant_text = f"{assistant_text.rstrip()} ... [truncated]"
+        if assistant_text and not suppress_display:
             display_assistant(assistant_text, assistant_name, render_markdown)
     elif analysis_text_parts:
         assistant_text = ""

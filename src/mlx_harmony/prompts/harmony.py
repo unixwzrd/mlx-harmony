@@ -23,6 +23,7 @@ class HarmonyPromptRenderer:
     def __init__(self, *, encoding, prompt_config: PromptConfig | None) -> None:
         self.encoding = encoding
         self.prompt_config = prompt_config
+        self._default_conversation_start_date = datetime.now().strftime("%Y-%m-%d")
 
     def render_prompt_text(
         self, messages: list[dict[str, str]], system_message: Optional[str]
@@ -104,7 +105,7 @@ class HarmonyPromptRenderer:
             )
         else:
             sys_content = sys_content.with_conversation_start_date(
-                datetime.now().strftime("%Y-%m-%d")
+                self._default_conversation_start_date
             )
 
         if cfg and cfg.knowledge_cutoff:

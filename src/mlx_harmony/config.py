@@ -93,6 +93,10 @@ class PromptConfig(BaseModel):
         ge=0,
         description="Number of previous tokens to consider for repetition penalty",
     )
+    loop_detection: Optional[str] = Field(
+        default=None,
+        description="Loop detection mode: off, cheap, or full (default: cheap)",
+    )
 
     # Model loading optimizations
     mlock: Optional[bool] = None  # Lock model weights in memory using mlock (macOS Metal only, default: False)
@@ -101,6 +105,7 @@ class PromptConfig(BaseModel):
     reseed_each_turn: Optional[bool] = None  # Reseed before each generation when seed >= 0
     clear_cache: Optional[bool] = None  # Clear MLX cache during prefill (default: True)
     clear_cache_interval: Optional[int] = None  # Interval for cache clearing (prefill chunks)
+    clear_cache_generation: Optional[bool] = None  # Clear MLX cache during generation loop
     log_memory_stats: Optional[bool] = None  # Log MLX memory stats during generation
     log_timing_stats: Optional[bool] = None  # Log generation timing stats during generation
 
@@ -258,6 +263,13 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
     user_placeholders: Dict[str, str] = {
         str(k): str(v) for k, v in (data.get("placeholders", {}) or {}).items()
     }
+    placeholder_keys_upper = {key.upper() for key in user_placeholders}
+    now = datetime.now()
+    now_utc = datetime.now(timezone.utc)
+    builtin_placeholders = _build_builtin_placeholders(now, now_utc)
+    for key, value in builtin_placeholders.items():
+        if key.upper() not in placeholder_keys_upper:
+            user_placeholders[key] = value
 
     # Load example dialogues (list of conversation turns)
     example_dialogues = data.get("example_dialogues")

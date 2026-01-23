@@ -19,7 +19,7 @@ from mlx_harmony.chat_utils import (
 )
 from mlx_harmony.config import load_profiles, load_prompt_config
 from mlx_harmony.generator import TokenGenerator
-from mlx_harmony.logging import get_logger
+from mlx_harmony.logging import configure_debug_file_logging, get_logger
 from mlx_harmony.prompt_cache import PromptTokenCache
 from mlx_harmony.runtime.context import RunContext
 from mlx_harmony.tools import get_tools_for_model
@@ -109,6 +109,7 @@ def bootstrap_chat() -> BootstrapResult:
 
     debug_path = resolve_debug_path(args.debug_file, logs_dir)
     debug_tokens_mode = args.debug_tokens or "off"
+    configure_debug_file_logging(debug_path)
     logger.info("Debug log: %s (tokens: %s)", debug_path, debug_tokens_mode)
 
     assistant_name = get_assistant_name(prompt_config)

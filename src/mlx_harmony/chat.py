@@ -4,7 +4,6 @@ import sys
 import time
 from typing import Any, Literal, TypedDict
 
-from openai_harmony import Role, StreamableParser
 from unicodefix.transforms import clean_text
 
 from mlx_harmony.chat_bootstrap import bootstrap_chat
@@ -102,7 +101,7 @@ class MessageDict(TypedDict, total=False):
     recipient: str  # Optional: for tool messages
     channel: str  # Optional: for Harmony messages (e.g., "commentary", "analysis", "final")
     analysis: str  # Optional: for assistant messages with thinking/analysis
-    hyperparameters: dict[str, float | int | bool]  # Optional: hyperparameters used for generation
+    hyperparameters: dict[str, float | int | bool | str]  # Optional: hyperparameters used for generation
 
 
 logger = get_logger(__name__)
@@ -175,6 +174,8 @@ def main() -> None:
         )
 
     max_tool_iterations = 10  # Prevent infinite loops
+    max_resume_attempts = 2
+    resume_base_hyperparameters: dict[str, float | int | bool | str] | None = None
 
     hyperparameters = build_hyperparameters(
         args,
@@ -231,6 +232,7 @@ def main() -> None:
             continue
 
         # Add timestamp to user message (turn)
+        last_user_text = user_input
         user_content = (
             apply_placeholders(user_input, context.prompt_config.placeholders)
             if context.prompt_config and context.prompt_config.placeholders
@@ -250,6 +252,7 @@ def main() -> None:
 
         # Main generation loop with tool call handling
         tool_iteration = 0
+        resume_attempts = 0
         while tool_iteration < max_tool_iterations:
             tokens: list[int] = []
             prompt_start_time = time.perf_counter()
@@ -288,8 +291,7 @@ def main() -> None:
             )
 
             # Use hyperparameters dict (CLI args already merged with loaded values)
-            # For Harmony models, we'll parse messages to extract final channel content
-            # For Harmony models, use StreamableParser for incremental parsing
+            # For Harmony models, parse messages after generation (single pass)
             # For non-Harmony models, stream tokens directly
             generation_start_time = time.perf_counter()
             # Initialize these early to avoid scope issues (used outside Harmony branch)
@@ -298,19 +300,6 @@ def main() -> None:
             assistant_text = ""
             # Accumulate streamed text for non-Harmony models (avoid decoding twice)
             streamed_text_parts: list[str] = []
-
-            # For Harmony models, reset StreamableParser for this generation
-            if (
-                context.generator.is_gpt_oss
-                and context.generator.use_harmony
-                and context.generator.encoding
-            ):
-                # Create a fresh parser for this generation (reset state)
-                context.generator.streamable_parser = StreamableParser(
-                    context.generator.encoding,
-                    Role.ASSISTANT,
-                    strict=False,
-                )
 
             seed_value = hyperparameters.get("seed", -1)
             reseed_each_turn = bool(hyperparameters.get("reseed_each_turn", False))
@@ -354,6 +343,9 @@ def main() -> None:
                     "tokens_per_second": tokens_per_second,
                     "prompt_start_to_prompt_start_seconds": prompt_start_delta,
                     "max_context_tokens": max_context_tokens,
+                    "prefill_start_offset": getattr(
+                        context.generator, "_last_prefill_start_offset", None
+                    ),
                     **memory_stats,
                 },
             )
@@ -386,7 +378,8 @@ def main() -> None:
                     token_ids=all_generated_tokens,
                     decode_token=context.generator.encoding.decode,
                 )
-                raw_response = f"{raw_prefix}{raw_response}"
+                if raw_prefix and not raw_response.lstrip().startswith("<|"):
+                    raw_response = f"{raw_prefix}{raw_response}"
                 if (
                     context.generator.last_finish_reason == "stop"
                     and context.generator.last_stop_token_id is not None
@@ -410,12 +403,19 @@ def main() -> None:
                     )
                     if stop_text and not raw_response.endswith(stop_text):
                         raw_response = f"{raw_response}{stop_text}"
+            resume_reason: str | None = None
+            if context.generator.last_finish_reason == "length":
+                resume_reason = "length"
+            elif context.generator.last_stop_reason == "loop_detected":
+                resume_reason = "loop_detected"
+            should_resume = resume_reason is not None and resume_attempts < max_resume_attempts
+
             cleaned_response = clean_text(raw_response)
             write_debug_response(
                 debug_path=context.debug_path,
                 raw_response=raw_response,
                 cleaned_response=cleaned_response,
-                show_console=args.debug,
+                show_console=args.debug and not should_resume,
             )
             write_debug_token_texts(
                 debug_path=context.debug_path,
@@ -428,6 +428,22 @@ def main() -> None:
                 label="response",
                 mode=args.debug_tokens or "off",
             )
+            if should_resume:
+                resume_base_hyperparameters = hyperparameters.copy()
+                if resume_reason == "loop_detected":
+                    print("[INFO] Response became repetitive; rethinking to complete the final answer...")
+                else:
+                    print("[INFO] Response truncated; rethinking to complete the final answer...")
+                resume_hyperparameters = hyperparameters.copy()
+                current_penalty = float(resume_hyperparameters.get("repetition_penalty") or 1.0)
+                penalty_floor = 1.15 if resume_reason == "length" else 1.25
+                resume_hyperparameters["repetition_penalty"] = max(current_penalty, penalty_floor)
+                current_context = int(resume_hyperparameters.get("repetition_context_size") or 0)
+                context_floor = 1024 if resume_reason == "length" else 2048
+                resume_hyperparameters["repetition_context_size"] = max(current_context, context_floor)
+                resume_hyperparameters["loop_detection"] = "full"
+            else:
+                resume_hyperparameters = hyperparameters
 
             if context.generator.is_gpt_oss and context.generator.use_harmony:
                 parse_result = parse_harmony_response(
@@ -442,6 +458,7 @@ def main() -> None:
                     display_assistant=display_assistant,
                     display_thinking=display_thinking,
                     truncate_text=truncate_text,
+                    suppress_display=should_resume,
                 )
                 assistant_text = parse_result.assistant_text
                 analysis_text_parts = parse_result.analysis_text_parts
@@ -451,6 +468,78 @@ def main() -> None:
                 # Use accumulated streamed text (avoid decoding twice)
                 print()  # Newline after streaming
                 assistant_text = "".join(streamed_text_parts)
+
+            if should_resume:
+                parent_id = conversation[-1].get("id") if conversation else None
+                message_id = make_message_id()
+                assistant_turn = {
+                    "id": message_id,
+                    "parent_id": parent_id,
+                    "cache_key": message_id,
+                    "role": "assistant",
+                    "content": "[Response truncated - recovery in progress]",
+                    "timestamp": make_timestamp(),
+                }
+                if hyperparameters and hyperparameters != last_saved_hyperparameters:
+                    assistant_turn["hyperparameters"] = hyperparameters.copy()
+                    last_saved_hyperparameters = hyperparameters.copy()
+                conversation.append(assistant_turn)
+
+                list_keywords = (
+                    "list",
+                    "names",
+                    "examples",
+                    "top ",
+                    "best ",
+                    "types",
+                    "kinds",
+                    "ways",
+                    "steps",
+                    "ideas",
+                )
+                list_likely = False
+                if last_user_text:
+                    lowered = last_user_text.lower()
+                    list_likely = any(keyword in lowered for keyword in list_keywords)
+
+                if resume_reason == "loop_detected":
+                    resume_prompt = (
+                        "Your previous reply became repetitive. Provide a concise final answer from the "
+                        "beginning with no repeated phrases. Use a short paragraph (no lists). Do not say "
+                        "'continued' or refer to earlier output."
+                    )
+                else:
+                    if list_likely:
+                        resume_prompt = (
+                            "Your previous reply was truncated. Provide the complete answer "
+                            "from the beginning. Do not say 'continued' or refer to earlier output. "
+                            "Keep the answer concise; if a list is appropriate, limit it to at most 8 "
+                            "items and do not repeat any item."
+                        )
+                    else:
+                        resume_prompt = (
+                            "Your previous reply was truncated. Provide the complete answer "
+                            "from the beginning. Do not say 'continued' or refer to earlier output. "
+                            "Keep the answer concise and avoid repeating phrases. Use a short paragraph."
+                        )
+                parent_id = conversation[-1].get("id")
+                message_id = make_message_id()
+                resume_turn = {
+                    "id": message_id,
+                    "parent_id": parent_id,
+                    "cache_key": message_id,
+                    "role": "user",
+                    "content": resume_prompt,
+                    "timestamp": make_timestamp(),
+                }
+                conversation.append(resume_turn)
+                resume_attempts += 1
+                hyperparameters = resume_hyperparameters
+                continue
+
+            if resume_base_hyperparameters is not None and not should_resume:
+                hyperparameters = resume_base_hyperparameters
+                resume_base_hyperparameters = None
 
             should_continue, parsed_messages = run_tools_if_requested(
                 generator=context.generator,

@@ -206,8 +206,10 @@ def stream_generate(
     stop_tokens: list[int] | None = None,
     clear_cache: bool = True,
     clear_cache_interval: int = 1,
+    clear_cache_generation: bool = False,
     log_memory_stats: bool = False,
     log_timing_stats: bool = False,
+    loop_detection: str = "cheap",
     decode_tokens: bool = True,
     sampler_is_greedy: bool = False,
     compute_logprobs: bool = False,
@@ -302,15 +304,26 @@ def stream_generate(
         prompt_tokens[-repetition_window:] if repetition_window > 0 else prompt_tokens
     )
     stop_token_set = set(stop_tokens) if stop_tokens else None
-    loop_sizes = (8, 16, 32, 64)
+    loop_detection_mode = loop_detection or "cheap"
+    if loop_detection_mode not in ("off", "cheap", "full"):
+        loop_detection_mode = "cheap"
+
     repeat_token_count = 16
-    low_var_window = 128
-    low_var_unique_max = 8
-    ngram_size = 16
-    ngram_repeat_threshold = 3
-    ngram_window_max = 128
+    loop_sizes: tuple[int, ...] = ()
+    low_var_window = 0
+    low_var_unique_max = 0
+    ngram_size = 0
+    ngram_repeat_threshold = 0
+    ngram_window_max = 0
     ngram_history: deque[tuple[int, ...]] = deque()
     ngram_counts: dict[tuple[int, ...], int] = {}
+    if loop_detection_mode == "full":
+        loop_sizes = (8, 16, 32, 64)
+        low_var_window = 128
+        low_var_unique_max = 8
+        ngram_size = 16
+        ngram_repeat_threshold = 3
+        ngram_window_max = 128
 
     for n in range(max_tokens):  # noqa: B007
         if current_token is None:
@@ -438,33 +451,7 @@ def stream_generate(
         if is_last_token:
             break
 
-        if n % 8 == 0:
-            if len(generated_tokens) >= ngram_size:
-                ngram = tuple(generated_tokens[-ngram_size:])
-                ngram_history.append(ngram)
-                ngram_counts[ngram] = ngram_counts.get(ngram, 0) + 1
-                if len(ngram_history) > ngram_window_max:
-                    old = ngram_history.popleft()
-                    old_count = ngram_counts.get(old, 0) - 1
-                    if old_count <= 0:
-                        ngram_counts.pop(old, None)
-                    else:
-                        ngram_counts[old] = old_count
-                if ngram_counts.get(ngram, 0) >= ngram_repeat_threshold:
-                    logger.warning(
-                        "loop_detected: ngram_repeat size=%d count=%d tokens=%d",
-                        ngram_size,
-                        ngram_counts.get(ngram, 0),
-                        len(generated_tokens),
-                    )
-                    yield GenerationResponse(
-                        token=token_id,
-                        text="",
-                        logprobs=logprobs,
-                        finish_reason="stop",
-                        stop_reason="loop_detected",
-                    )
-                    break
+        if loop_detection_mode != "off" and n % 8 == 0:
             if len(generated_tokens) >= repeat_token_count:
                 recent = generated_tokens[-repeat_token_count:]
                 if len(set(recent)) == 1:
@@ -481,12 +468,23 @@ def stream_generate(
                         stop_reason="loop_detected",
                     )
                     break
-            for loop_size in loop_sizes:
-                if len(generated_tokens) >= loop_size * 2:
-                    if generated_tokens[-loop_size:] == generated_tokens[-2 * loop_size:-loop_size]:
+            if loop_detection_mode == "full":
+                if len(generated_tokens) >= ngram_size:
+                    ngram = tuple(generated_tokens[-ngram_size:])
+                    ngram_history.append(ngram)
+                    ngram_counts[ngram] = ngram_counts.get(ngram, 0) + 1
+                    if len(ngram_history) > ngram_window_max:
+                        old = ngram_history.popleft()
+                        old_count = ngram_counts.get(old, 0) - 1
+                        if old_count <= 0:
+                            ngram_counts.pop(old, None)
+                        else:
+                            ngram_counts[old] = old_count
+                    if ngram_counts.get(ngram, 0) >= ngram_repeat_threshold:
                         logger.warning(
-                            "loop_detected: repeat_size=%d tokens=%d",
-                            loop_size,
+                            "loop_detected: ngram_repeat size=%d count=%d tokens=%d",
+                            ngram_size,
+                            ngram_counts.get(ngram, 0),
                             len(generated_tokens),
                         )
                         yield GenerationResponse(
@@ -497,28 +495,44 @@ def stream_generate(
                             stop_reason="loop_detected",
                         )
                         break
-            else:
-                loop_size = None
-            if loop_size is not None:
-                break
-            if len(generated_tokens) >= low_var_window:
-                if len(set(generated_tokens[-low_var_window:])) <= low_var_unique_max:
-                    logger.warning(
-                        "loop_detected: low_variance window=%d unique_max=%d tokens=%d",
-                        low_var_window,
-                        low_var_unique_max,
-                        len(generated_tokens),
-                    )
-                    yield GenerationResponse(
-                        token=token_id,
-                        text="",
-                        logprobs=logprobs,
-                        finish_reason="stop",
-                        stop_reason="loop_detected",
-                    )
+                for loop_size in loop_sizes:
+                    if len(generated_tokens) >= loop_size * 2:
+                        if generated_tokens[-loop_size:] == generated_tokens[-2 * loop_size:-loop_size]:
+                            logger.warning(
+                                "loop_detected: repeat_size=%d tokens=%d",
+                                loop_size,
+                                len(generated_tokens),
+                            )
+                            yield GenerationResponse(
+                                token=token_id,
+                                text="",
+                                logprobs=logprobs,
+                                finish_reason="stop",
+                                stop_reason="loop_detected",
+                            )
+                            break
+                else:
+                    loop_size = None
+                if loop_size is not None:
                     break
+                if len(generated_tokens) >= low_var_window:
+                    if len(set(generated_tokens[-low_var_window:])) <= low_var_unique_max:
+                        logger.warning(
+                            "loop_detected: low_variance window=%d unique_max=%d tokens=%d",
+                            low_var_window,
+                            low_var_unique_max,
+                            len(generated_tokens),
+                        )
+                        yield GenerationResponse(
+                            token=token_id,
+                            text="",
+                            logprobs=logprobs,
+                            finish_reason="stop",
+                            stop_reason="loop_detected",
+                        )
+                        break
 
-        if clear_cache and clear_cache_interval > 0:
+        if clear_cache_generation and clear_cache_interval > 0:
             if n > 0 and n % (clear_cache_interval * 256) == 0:
                 mx.clear_cache()
 

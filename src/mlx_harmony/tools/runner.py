@@ -29,7 +29,26 @@ def run_tools_if_requested(
 
     try:
         if parsed_messages is None:
-            parsed_messages = generator.parse_messages_from_tokens(tokens)
+            parse_tokens = tokens
+            parse_strict = True
+            if (
+                getattr(generator, "last_finish_reason", None) == "stop"
+                and getattr(generator, "last_stop_token_id", None) is not None
+                and (not tokens or tokens[-1] != generator.last_stop_token_id)
+                and generator.last_stop_token_id not in tokens
+            ):
+                parse_tokens = tokens + [generator.last_stop_token_id]
+            if generator.encoding and 200005 not in parse_tokens[:20]:
+                header_tokens = generator.encoding.encode(
+                    "<|start|>assistant<|channel|>analysis<|message|>",
+                    allowed_special={"<|start|>", "<|channel|>", "<|message|>"},
+                )
+                parse_tokens = header_tokens + parse_tokens
+                parse_strict = False
+                logger.warning(
+                    "Tool parsing with prepended assistant header (analysis channel) for completion-only parse"
+                )
+            parsed_messages = generator.parse_messages_from_tokens(parse_tokens, strict=parse_strict)
         tool_calls = parse_tool_calls_from_messages(parsed_messages, tools)
 
         if not tool_calls:

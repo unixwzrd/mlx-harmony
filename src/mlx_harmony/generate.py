@@ -58,6 +58,12 @@ def main() -> None:
         help="Number of previous tokens used for repetition penalty.",
     )
     parser.add_argument(
+        "--loop-detection",
+        choices=["off", "cheap", "full"],
+        default=None,
+        help="Loop detection mode: off, cheap, or full (overrides config).",
+    )
+    parser.add_argument(
         "--max-tokens",
         type=int,
         default=None,
@@ -116,6 +122,7 @@ def main() -> None:
             top_k=args.top_k,
             repetition_penalty=args.repetition_penalty,
             repetition_context_size=args.repetition_context_size,
+            loop_detection=args.loop_detection,
         )
     )
     text = generator.tokenizer.decode([int(t) for t in tokens])

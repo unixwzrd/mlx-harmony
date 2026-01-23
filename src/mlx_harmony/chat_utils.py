@@ -61,7 +61,7 @@ def build_help_text() -> str:
     )
 
 
-def render_hyperparameters(hyperparameters: dict[str, float | int | bool]) -> str:
+def render_hyperparameters(hyperparameters: dict[str, float | int | bool | str]) -> str:
     """Render hyperparameters to a user-facing string."""
     if not hyperparameters:
         return "\n[INFO] Current hyperparameters:\n  (using defaults)\n"
@@ -123,8 +123,8 @@ def parse_hyperparameter_update(
 
 def parse_command(
     user_input: str,
-    hyperparameters: dict[str, float | int | bool],
-) -> tuple[bool, bool, str, dict[str, float | int | bool]]:
+    hyperparameters: dict[str, float | int | bool | str],
+) -> tuple[bool, bool, str, dict[str, float | int | bool | str]]:
     """Parse chat commands and return (handled, should_apply, message, updates)."""
     user_input_stripped = user_input.strip()
     user_input_lower = user_input_stripped.lower()
@@ -251,10 +251,10 @@ def detect_model_max_context_tokens(model_path: str) -> int | None:
 
 def build_hyperparameters(
     args: Any,
-    loaded_hyperparameters: dict[str, float | int | bool],
+    loaded_hyperparameters: dict[str, float | int | bool | str],
     prompt_config: Any | None,
     is_harmony: bool,
-) -> dict[str, float | int | bool]:
+) -> dict[str, float | int | bool | str]:
     """Merge CLI, loaded, and config hyperparameters into a single dict."""
     default_max_tokens = 1024 if is_harmony else 512
     cfg = prompt_config
@@ -326,6 +326,15 @@ def build_hyperparameters(
                 loaded_hyperparameters.get("seed")
                 if loaded_hyperparameters.get("seed") is not None
                 else resolve_param(None, cfg.seed if cfg else None, -1)
+            )
+        ),
+        "loop_detection": (
+            args.loop_detection
+            if args.loop_detection is not None
+            else (
+                loaded_hyperparameters.get("loop_detection")
+                if loaded_hyperparameters.get("loop_detection") is not None
+                else resolve_param(None, cfg.loop_detection if cfg else None, "cheap")
             )
         ),
         "reseed_each_turn": (

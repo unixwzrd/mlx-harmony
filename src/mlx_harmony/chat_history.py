@@ -465,6 +465,7 @@ def _format_metrics_tsv(metrics: dict[str, Any]) -> str:
         "tokens_per_second",
         "prompt_start_to_prompt_start_seconds",
         "max_context_tokens",
+        "prefill_start_offset",
     ]
     memory_keys = sorted(key for key in metrics if key.startswith("memory_"))
     keys.extend(memory_keys)
@@ -483,6 +484,7 @@ def _format_metrics_tsv_header(metrics: dict[str, Any]) -> str | None:
         "tokens_per_second",
         "prompt_start_to_prompt_start_seconds",
         "max_context_tokens",
+        "prefill_start_offset",
     ]
     memory_keys = sorted(key for key in metrics if key.startswith("memory_"))
     keys.extend(memory_keys)

@@ -16,7 +16,7 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 
 - [chat_bootstrap.py](../src/mlx_harmony/chat_bootstrap.py): Chat startup/bootstrap wiring.
 - [chat_cli.py](../src/mlx_harmony/chat_cli.py): CLI argument parsing for chat.
-- [chat_generation.py](../src/mlx_harmony/chat_generation.py): Streaming generation orchestration.
+- [chat_generation.py](../src/mlx_harmony/chat_generation.py): Streaming generation orchestration (no per-token Harmony parsing).
 - [chat_harmony.py](../src/mlx_harmony/chat_harmony.py): Harmony parsing and message extraction.
 - [chat_history.py](../src/mlx_harmony/chat_history.py): Debug logging and chat metadata helpers.
 - [chat_io.py](../src/mlx_harmony/chat_io.py): Read user input and load/save chat sessions.
