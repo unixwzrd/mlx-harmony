@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from unicodefix.transforms import clean_text
-
 from mlx_harmony.logging import get_logger
 
 logger = get_logger(__name__)
@@ -17,7 +15,7 @@ def stream_generation(
     prompt_token_ids: list[int] | None,
     hyperparameters: dict[str, float | int | bool | str],
     seed: int | None,
-    on_text: Callable[[str], None],
+    on_text: Callable[[int], None] | None,
 ) -> tuple[list[int], list[int], list[str]]:
     tokens: list[int] = []
     all_generated_tokens: list[int] = []
@@ -46,11 +44,8 @@ def stream_generation(
         tokens.append(token_int)
         all_generated_tokens.append(token_int)
 
-        if not (generator.is_gpt_oss and generator.use_harmony):
-            text = generator.tokenizer.decode([int(token_id)])
-            text = clean_text(text)
-            on_text(text)
-            streamed_text_parts.append(text)
+        if on_text is not None:
+            on_text(token_int)
 
         if loop_detection != "off":
             if len(tokens) >= repeat_token_count:
@@ -62,6 +57,7 @@ def stream_generation(
                         len(tokens),
                     )
                     generator.last_finish_reason = "stop"
+                    generator.last_stop_reason = "loop_detected"
                     break
 
             if loop_detection == "full":
@@ -74,6 +70,7 @@ def stream_generation(
                                 len(tokens),
                             )
                             generator.last_finish_reason = "stop"
+                            generator.last_stop_reason = "loop_detected"
                             break
                 else:
                     loop_size = None
@@ -90,6 +87,7 @@ def stream_generation(
                             len(tokens),
                         )
                         generator.last_finish_reason = "stop"
+                        generator.last_stop_reason = "loop_detected"
                         break
 
     return tokens, all_generated_tokens, streamed_text_parts

@@ -41,4 +41,4 @@ class GPTOSSBackend(ModelBackend):
         return self._tokenizer
 
     def get_stop_tokens(self) -> list[int]:
-        return list(self._encoding.stop_tokens())
+        return list(self._encoding.stop_tokens_for_assistant_actions())

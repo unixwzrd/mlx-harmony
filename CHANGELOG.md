@@ -8,6 +8,33 @@ All notable changes to mlx-harmony will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2026-01-23 - Unreleased
+
+### Added
+
+- Token-level repetition detector module for model-agnostic loop detection.
+- Controller scaffolding split into `chat_turn`, `chat_retry`, `chat_attempt`, `chat_adapters`, and `chat_types`.
+- Lightweight `chat_controller` facade re-exporting controller helpers.
+- Harmony and native adapters added to controller scaffolding.
+- Chat parsing/decoding now uses adapters to keep model-specific logic out of `chat.py`.
+- Retry decision and recovery prompt construction moved into controller helpers.
+- Chat now streams via adapters (model-agnostic streaming path).
+- `chat_generation.stream_generation` no longer decodes/prints tokens; adapters handle streaming output.
+- Per-attempt prompt/completion artifacts written under `logs/` when debug logging is enabled.
+ - Harmony debug decoding now prefers `decode_utf8` for lossless token rendering.
+ - Harmony parsing retry now falls back to `strict=False` before raw-text fallback.
+
+### Changed
+
+- Standalone generation now uses token-based loop detection with unified stop signaling.
+- Chat-level loop detection now sets `last_stop_reason` to `loop_detected` for reliable retries.
+- Controller now emits full prompt + completion artifacts (raw/cleaned/tokens/parse/retry) per attempt.
+- Added a lightweight text repetition fallback that can trigger retries when token-level checks miss loops.
+- Raw response logging no longer appends stop tokens that were not produced by the model.
+- Turn orchestration now lives in `chat_turn.run_chat_turn`, shrinking `chat.py`.
+ - Harmony prompt text rendering now mirrors the prompt-token header logic for accurate debug prompts.
+ - Artifact emission is enabled when `--debug-file` is provided (not only `--debug`).
+
 ## 2026-01-22 - Unreleased
 
 ### Added

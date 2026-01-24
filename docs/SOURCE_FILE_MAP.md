@@ -1,7 +1,7 @@
 # Source File Map
 
 **Created**: 2026-01-21
-**Updated**: 2026-01-22
+**Updated**: 2026-01-23
 
 This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmony) and describes their current roles.
 
@@ -15,6 +15,7 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 ## Chat Core (Root Modules)
 
 - [chat_bootstrap.py](../src/mlx_harmony/chat_bootstrap.py): Chat startup/bootstrap wiring.
+- [chat_controller.py](../src/mlx_harmony/chat_controller.py): Facade re-export for chat turn + retry/adapter helpers.
 - [chat_cli.py](../src/mlx_harmony/chat_cli.py): CLI argument parsing for chat.
 - [chat_generation.py](../src/mlx_harmony/chat_generation.py): Streaming generation orchestration (no per-token Harmony parsing).
 - [chat_harmony.py](../src/mlx_harmony/chat_harmony.py): Harmony parsing and message extraction.
@@ -24,12 +25,18 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [chat_prompt.py](../src/mlx_harmony/chat_prompt.py): Prompt building and truncation helpers.
 - [chat_render.py](../src/mlx_harmony/chat_render.py): Rendering of assistant/thinking output.
 - [chat_utils.py](../src/mlx_harmony/chat_utils.py): Command parsing and hyperparameter resolution.
+- [chat_adapters.py](../src/mlx_harmony/chat_adapters.py): Model adapter protocol + Harmony/native adapters.
+- [chat_attempt.py](../src/mlx_harmony/chat_attempt.py): Single-attempt generation + artifacts.
+- [chat_retry.py](../src/mlx_harmony/chat_retry.py): Retry policy + recovery prompt handling.
+- [chat_turn.py](../src/mlx_harmony/chat_turn.py): Turn orchestration (prompt → generate → parse → retry).
+- [chat_types.py](../src/mlx_harmony/chat_types.py): Shared chat dataclasses for controller stack.
 
 ## Generation
 
 - [generator.py](../src/mlx_harmony/generator.py): TokenGenerator implementation.
 - [generate_standalone.py](../src/mlx_harmony/generate_standalone.py): Core generation loop.
 - [sampling.py](../src/mlx_harmony/sampling.py): Logits processors and sampling utilities.
+- [repetition_tokens.py](../src/mlx_harmony/repetition_tokens.py): Token-level repetition detection utilities.
 - [prompt_cache.py](../src/mlx_harmony/prompt_cache.py): Prompt token caching helpers.
 - [cache.py](../src/mlx_harmony/cache.py): KV cache and rotating cache implementation.
 - [generation/backend.py](../src/mlx_harmony/generation/backend.py): Backend protocol definitions.

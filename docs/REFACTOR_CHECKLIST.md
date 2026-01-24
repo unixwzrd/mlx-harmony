@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Track the refactor + performance plan from [tmp/Codex_Instructions-01.md](../tmp/Codex_Instructions-01.md) with actionable steps and a place for status/notes.
+Track the refactor + performance plan from [Codex_Instructions-05](../tmp/Codex_Instructions-05.md) with actionable steps and status.
 
 ## Status Legend
 
@@ -14,80 +14,81 @@ Track the refactor + performance plan from [tmp/Codex_Instructions-01.md](../tmp
 - [x] Done
 - [!] Blocked
 
-## Priority Work Items (Codex_Instructions-01)
+## Priority Work Items (Codex_Instructions-05)
 
-### 1) Remove StreamableParser from per-token hot path
+### 1) Controller + Adapter Architecture
 
-- [x] Stop calling `StreamableParser.process(token)` inside `chat_generation.stream_generation`
-- [x] Remove parser seeding from prompt tail tokens
-- [x] Parse completion once after generation (single-pass parsing)
-- [x] Confirm tool call detection still works post-parse
-- [ ] Notes: Tool parsing now reuses header prepend + stop token when parsing completion tokens; needs run validation.
+- [x] Split controller stack into focused modules (`chat_turn`, `chat_retry`, `chat_attempt`, `chat_adapters`, `chat_types`).
+- [x] Keep `chat_controller.py` as a lightweight facade (re-exports only).
+- [x] Define `ModelAdapter` protocol and shared dataclasses for controller types.
+- [x] Implement `HarmonyAdapter` (parsing/display uses `parse_harmony_response`).
+- [x] Implement `NativeAdapter` (streaming decode + final channel).
+- [x] Move model-specific parsing/display out of `chat.py`.
+- [x] `chat.py` delegates to the turn runner (goal <250 LOC).
 
-### 2) Make stop behavior consistent and channel-safe
+### 2) Token-First Repetition Detection (new module)
 
-- [ ] Keep Harmony stop tokens from `encoding.stop_tokens_for_assistant_actions()`
-- [x] Avoid early stops based on StreamableParser channel state
-- [~] Ensure parsing still finalizes without stop token injection
-- [~] Add safe fallback when completion lacks Harmony headers (raw text)
-- [ ] Notes: Parsing now appends stop token for parse-only when missing; raw-text fallback added for malformed outputs; header-prepended parses run non-strict; needs validation in runs.
+- [x] Add `mlx_harmony/repetition_tokens.py` with `TokenRepetitionConfig` + `TokenRepetitionDetector`.
+- [x] Integrate detector into `generate_standalone.stream_generate` (primary hot loop).
+- [x] On detection: set `finish_reason="stop"` and `stop_reason="loop_detected"`.
+- [x] Ensure `TokenGenerator.generate` captures `last_stop_reason` in all stop paths.
 
-### 3) Separate model budget from display budget
+### 3) Model-Agnostic Retry Policy (controller-owned)
 
-- [x] Remove analysis-budget early stop in `chat_generation.stream_generation`
-- [x] Keep `truncate_thinking`/`truncate_response` only for display/save
-- [ ] Notes:
+- [x] Retry on `finish_reason=="length"`, `stop_reason=="loop_detected"`, or post-parse repetition.
+- [x] Retry attempts capped (existing `max_resume_attempts`).
+- [x] Temporary hyperparameter bumps during retry (penalty/context/loop_detection).
+- [x] Restore user-configured hyperparameters after retry.
+- [x] Retry guidance is transient and not persisted in conversation history.
 
-### 4) Loop detection policy (fast path vs guard mode)
+### 4) Stream Generation: Model-Agnostic
 
-- [x] Add config/CLI flag to disable loop detection in production/benchmark
-- [x] Default to cheap detector only (e.g., repeated single token)
-- [x] Move heavier n-gram detection behind the flag
-- [x] Gate chat-level loop detection to `off/cheap/full` to reduce per-token CPU
-- [ ] Notes: Validate with benchmark run (cheap vs full/off) and log loop_detected rates.
+- [x] Remove decoding/printing logic from `chat_generation.stream_generation`.
+- [x] Return tokens only; adapter handles decoding/display.
+- [x] Remove Harmony-specific logic from `chat_generation`.
 
-### 5) Cache clearing + wired memory stability
+### 5) Prompt + Artifact Logging (exact rendered prompt)
 
-- [x] Default `clear_cache` to False when `mlock=true`
-- [x] Avoid `mx.clear_cache()` inside per-token loop by default
-- [ ] If needed, clear between runs or on memory pressure only
-- [ ] Notes:
+- [x] For each attempt, write artifacts under `logs/`:
+  - [x] `prompt.full.<turn>.<attempt>.txt`
+  - [x] `prompt.tokens.<turn>.<attempt>.json`
+  - [x] `completion.tokens.<turn>.<attempt>.json`
+  - [x] `completion.raw.<turn>.<attempt>.txt`
+  - [x] `completion.cleaned.<turn>.<attempt>.txt`
+  - [x] `parse.channels.<turn>.<attempt>.json`
+  - [x] `retry.decision.<turn>.<attempt>.json`
+- [x] Ensure `prepare_prompt()` writes the exact rendered prompt string.
 
-### 6) Prompt-cache reuse as conversation grows
+### 6) Stop Behavior + Parsing Consistency
 
-- [x] Ensure prompt prefix stays stable (avoid dynamic fields early)
-- [x] Preserve longest-common-prefix during truncation
-- [x] Track `prefill_start_offset` usage across turns
-- [ ] Notes: Built-in time placeholders now frozen at prompt config load; LCP reused via prompt cache; prefill_start_offset logged in metrics.
+- [x] Ensure stop tokens are from `encoding.stop_tokens_for_assistant_actions()`.
+- [x] Ensure no early stop based on channel heuristics.
+- [x] Ensure parsing completes without stop token injection (or explicitly append for parsing only).
+- [x] Use permissive Harmony parsing retry (`strict=False`) before raw-text fallback.
+- [x] Decode Harmony debug text with `decode_utf8` where available.
 
-### 7) Resume generation after max_tokens
+### 7) Loop-Detection Flags
 
-- [x] Simple resume: append partial assistant + continuation instruction + regen
-- [ ] Fast resume: add resumable state to `stream_generate`/`resume_generate`
-- [ ] No duplicated channel headers on resume
-- [x] Notes: Resume now avoids injecting partial assistant content into the prompt; recovery uses a placeholder assistant turn.
-- [x] Notes: Resume now applies stronger repetition guards, caps recovery lists, and can retry on loop-detected stalls.
-- [x] Notes: Recovery prompts no longer assume list output and resume hyperparameters restore after recovery.
-- [x] Notes: Recovery prompt now adapts list vs paragraph based on the user request.
+- [x] Keep `off/cheap/full` modes; `cheap` default.
+- [x] Ensure hot-loop checks are bounded and `check_every` is honored.
 
-### 8) Fix repetition across Harmony channels
+### 8) Post-Parse Repetition Check (optional fallback)
 
-- [x] Confirm no duplicated channel markers in decode/clean steps
-- [~] Tune repetition penalty defaults/window for Harmony if needed
-- [~] Add truncation marker when max_tokens ends mid-channel
-- [ ] Notes:
+- [x] Add light text repetition checks per channel (analysis/commentary/final).
+- [x] Trigger retry decision when repeated phrases detected.
 
 ## Deliverables
 
-- [ ] Benchmark note (before/after): prefill time, TPS, CPU%, GPU%
-- [ ] Unit tests for:
-  - [ ] Stop token behavior (assistant action boundary)
-  - [ ] Resume after max_tokens completes final channel
-  - [ ] Tool call detection still works post-parse
+- [ ] Update `CHANGELOG.md` for each batch.
+- [ ] Benchmark note (prefill time, TPS, CPU%, GPU%).
+- [ ] Unit tests:
+  - [ ] Stop token behavior
+  - [ ] Retry after max_tokens
+  - [ ] Tool call detection after post-parse
 
 ## Cross‑Cutting Tasks
 
-- [ ] Keep benchmark harness repeatable (same prompt, tokens, temperature)
-- [ ] After each change: run tests/imports + one benchmark
-- [ ] Report deltas: TPS, CPU%, GPU%, wired memory oscillation, top 20 cProfile
-- [ ] Confirm “no numpy in hot path”
+- [ ] Keep benchmark harness repeatable (same prompt, tokens, temperature).
+- [ ] After each change: run tests/imports + one benchmark.
+- [ ] Report deltas: TPS, CPU%, GPU%, wired memory oscillation, top 20 cProfile.
+- [ ] Confirm “no numpy in hot path”.

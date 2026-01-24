@@ -11,6 +11,14 @@ from mlx_harmony.logging import get_logger
 
 logger = get_logger(__name__)
 
+
+def _decode_tokens(encoding: Any, tokens: list[int]) -> str:
+    decode_utf8 = getattr(encoding, "decode_utf8", None)
+    if callable(decode_utf8):
+        return decode_utf8(tokens)
+    return encoding.decode(tokens)
+
+
 @dataclass(frozen=True)
 class HarmonyParseResult:
     assistant_text: str
@@ -66,47 +74,63 @@ def parse_harmony_response(
         parsed_messages = generator.parse_messages_from_tokens(parse_tokens, strict=parse_strict)
     except Exception as e:
         error_msg = str(e)
-        if debug:
-            logger.error("Harmony parsing failed: %s", error_msg)
-            logger.error("Tokens processed: %d", len(parse_tokens))
-            if generator.encoding:
-                first_tokens = parse_tokens[:50]
-                decoded_start = generator.encoding.decode(first_tokens)
-                logger.error("First 50 tokens decoded: %s", decoded_start[:500])
-                logger.error("First 20 token IDs: %s", parse_tokens[:20])
-                channel_token_id = 200005
-                if channel_token_id in parse_tokens[:20]:
-                    idx = parse_tokens[:20].index(channel_token_id)
-                    logger.error("Found <|channel|> token (200005) at position %d", idx)
-                else:
-                    logger.error("<|channel|> token (200005) NOT found in first 20 tokens")
-        else:
-            logger.warning("Harmony parsing failed: %s", error_msg)
         if generator.encoding:
-            raw_text = generator.encoding.decode(tokens)
-            raw_text = clean_text(raw_text).strip()
-            if raw_text:
-                logger.warning(
-                    "Harmony parsing fallback: treating completion as raw assistant text"
+            try:
+                parsed_messages = generator.parse_messages_from_tokens(
+                    parse_tokens,
+                    strict=False,
                 )
+            except Exception:
+                parsed_messages = None
+            else:
                 if debug:
-                    logger.debug(
-                        "Harmony raw fallback completion: %s",
-                        raw_text[:4000],
+                    logger.warning(
+                        "Harmony parsing retry succeeded with strict=False"
                     )
-                assistant_text = truncate_text(raw_text, response_limit)
-                if assistant_text and not suppress_display:
-                    display_assistant(assistant_text, assistant_name, render_markdown)
-                return HarmonyParseResult(
-                    assistant_text=assistant_text,
-                    analysis_text_parts=[],
-                    parsed_messages=None,
-                )
-        if debug:
-            logger.error("This error indicates the model output is malformed/incomplete:")
-            logger.error("  - The parser was waiting for a message header to complete")
-            logger.error("  - Model output does not conform to Harmony format structure")
-        raise RuntimeError(f"Failed to parse Harmony messages: {error_msg}") from e
+        if parsed_messages is not None:
+            pass
+        else:
+            if debug:
+                logger.error("Harmony parsing failed: %s", error_msg)
+                logger.error("Tokens processed: %d", len(parse_tokens))
+                if generator.encoding:
+                    first_tokens = parse_tokens[:50]
+                    decoded_start = _decode_tokens(generator.encoding, first_tokens)
+                    logger.error("First 50 tokens decoded: %s", decoded_start[:500])
+                    logger.error("First 20 token IDs: %s", parse_tokens[:20])
+                    channel_token_id = 200005
+                    if channel_token_id in parse_tokens[:20]:
+                        idx = parse_tokens[:20].index(channel_token_id)
+                        logger.error("Found <|channel|> token (200005) at position %d", idx)
+                    else:
+                        logger.error("<|channel|> token (200005) NOT found in first 20 tokens")
+            else:
+                logger.warning("Harmony parsing failed: %s", error_msg)
+            if generator.encoding:
+                raw_text = _decode_tokens(generator.encoding, tokens)
+                raw_text = clean_text(raw_text).strip()
+                if raw_text:
+                    logger.warning(
+                        "Harmony parsing fallback: treating completion as raw assistant text"
+                    )
+                    if debug:
+                        logger.debug(
+                            "Harmony raw fallback completion: %s",
+                            raw_text[:4000],
+                        )
+                    assistant_text = truncate_text(raw_text, response_limit)
+                    if assistant_text and not suppress_display:
+                        display_assistant(assistant_text, assistant_name, render_markdown)
+                    return HarmonyParseResult(
+                        assistant_text=assistant_text,
+                        analysis_text_parts=[],
+                        parsed_messages=None,
+                    )
+            if debug:
+                logger.error("This error indicates the model output is malformed/incomplete:")
+                logger.error("  - The parser was waiting for a message header to complete")
+                logger.error("  - Model output does not conform to Harmony format structure")
+            raise RuntimeError(f"Failed to parse Harmony messages: {error_msg}") from e
 
     final_channel_messages: list[str] = []
     if debug:
@@ -174,7 +198,11 @@ def parse_harmony_response(
         logger.error("  - Model output is malformed")
         logger.error("  - Parsing logic has a bug")
         if debug:
-            raw_text = generator.encoding.decode(tokens) if generator.encoding else "[encoding not available]"
+            raw_text = (
+                _decode_tokens(generator.encoding, tokens)
+                if generator.encoding
+                else "[encoding not available]"
+            )
             logger.debug("Raw decoded text: %s...", raw_text[:500])
         raise RuntimeError("Failed to parse Harmony messages: no parsed messages and no streamed content")
 

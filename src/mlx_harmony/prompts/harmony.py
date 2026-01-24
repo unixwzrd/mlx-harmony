@@ -32,6 +32,18 @@ class HarmonyPromptRenderer:
         prompt_tokens = self.encoding.render_conversation_for_completion(
             conversation, Role.ASSISTANT
         )
+        assistant_header = self.encoding.encode(
+            "<|start|>assistant", allowed_special={"<|start|>"}
+        )
+        if (
+            len(prompt_tokens) >= len(assistant_header)
+            and prompt_tokens[-len(assistant_header):] == assistant_header
+        ):
+            channel_header = self.encoding.encode(
+                "<|channel|>analysis<|message|>",
+                allowed_special={"<|channel|>", "<|message|>"},
+            )
+            prompt_tokens = prompt_tokens + channel_header
         return self.encoding.decode(prompt_tokens)
 
     def render_prompt_tokens(
