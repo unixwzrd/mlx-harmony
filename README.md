@@ -1,7 +1,7 @@
 # MLX Harmony
 
 **Created**: 2026-01-12
-**Updated**: 2026-01-12
+**Updated**: 2026-01-25
 
 ![MLX Harmony banner Image](docs/images/MLX_Harmony_Banner.png)
 
@@ -86,7 +86,7 @@ This will pull in compatible versions of:
 - `fastapi`, `uvicorn` (for the HTTP server)
 - Plus a few support libs listed in `pyproject.toml`.
 
-**Native tokenization:** `mlx-harmony` uses pure Python native tokenizer loading (no Rust, no sentencepiece, no jinja2, no mlx-lm tokenizers) to avoid PyTorch dependency. Tokenizers are loaded directly from `tokenizer.json` files using pure Python ByteLevel BPE implementation. This provides faster startup and eliminates all external tokenizer dependencies. The implementation is based on GPT-2 style ByteLevel BPE and is compatible with GPT-OSS models.
+**Native tokenization:** `mlx-harmony` uses pure Python native tokenizer loading (no Rust, no sentencepiece, no jinja2, no external tokenizer wrappers) to avoid PyTorch dependency. Tokenizers are loaded directly from `tokenizer.json` files using a ByteLevel BPE implementation. This provides faster startup and eliminates external tokenizer dependencies. The current implementation supports BPE `tokenizer.json` files and simple string-based chat templates.
 
 You'll need a working MLX setup (typically Python 3.12+ on Apple Silicon).
 

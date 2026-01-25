@@ -10,7 +10,7 @@ import glob
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-# Use our standalone loader instead of mlx_lm to avoid PyTorch dependency
+# Use our standalone loader to avoid external tokenizer/model dependencies
 from mlx_harmony.loader import load_model_standalone
 from mlx_harmony.logging import get_logger
 from mlx_harmony.tokenizer_native import ByteLevelBPETokenizer

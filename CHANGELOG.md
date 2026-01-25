@@ -1,12 +1,21 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-23
+**Updated**: 2026-01-25
 
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 2026-01-25 - Unreleased
+
+### Changed
+
+- Length retries now bump `max_tokens` to reduce repeated truncation and ask for slight concision.
+- Loader now fails fast for non-GPT-OSS model types instead of importing mlx-lm.
+- Native tokenizer documentation updated to reflect the implemented BPE-only path.
+- Troubleshooting and test docs now use mlx-harmony commands for model download checks.
 
 ## 2026-01-23 - Unreleased
 
@@ -22,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `chat_generation.stream_generation` no longer decodes/prints tokens; adapters handle streaming output.
 - Per-attempt prompt/completion artifacts written under `logs/` when debug logging is enabled.
  - Harmony debug decoding now prefers `decode_utf8` for lossless token rendering.
- - Harmony parsing retry now falls back to `strict=False` before raw-text fallback.
+- Harmony parsing retry now falls back to `strict=False` before raw-text fallback.
 
 ### Changed
 

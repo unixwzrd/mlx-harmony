@@ -33,6 +33,10 @@ def build_retry_plan(
         )
 
     resume_hyperparameters = hyperparameters.copy()
+    current_max_tokens_raw = resume_hyperparameters.get("max_tokens")
+    current_max_tokens: int | None = None
+    if isinstance(current_max_tokens_raw, (int, float)):
+        current_max_tokens = int(current_max_tokens_raw)
     current_penalty = float(resume_hyperparameters.get("repetition_penalty") or 1.0)
     if resume_reason == "length":
         penalty_floor = 1.15
@@ -48,57 +52,29 @@ def build_retry_plan(
         context_floor = 1024
     resume_hyperparameters["repetition_context_size"] = max(current_context, context_floor)
     resume_hyperparameters["loop_detection"] = "full"
-
-    list_keywords = (
-        "list",
-        "names",
-        "examples",
-        "top ",
-        "best ",
-        "types",
-        "kinds",
-        "ways",
-        "steps",
-        "ideas",
-    )
-    list_likely = False
-    if last_user_text:
-        lowered = last_user_text.lower()
-        list_likely = any(keyword in lowered for keyword in list_keywords)
+    if resume_reason == "length" and current_max_tokens:
+        bumped_tokens = int(current_max_tokens * 1.25)
+        resume_hyperparameters["max_tokens"] = max(current_max_tokens, bumped_tokens)
 
     if resume_reason == "loop_detected":
         resume_prompt = (
-            "Your previous reply became repetitive. Provide a concise final answer from the "
-            "beginning with no repeated phrases. Use a short paragraph (no lists). Do not say "
-            "'continued' or refer to earlier output."
+            "Your previous reply was repetitive or unreadable. "
+            "Please provide the complete answer again from the beginning. "
+            "Do not refer to earlier output."
         )
     elif resume_reason == "repetitive_text":
-        if list_likely:
-            resume_prompt = (
-                "Your previous reply became repetitive. Provide a concise final answer from the "
-                "beginning. Do not say 'continued' or refer to earlier output. If you use a list, "
-                "limit it to at most 8 items and do not repeat any item."
-            )
-        else:
-            resume_prompt = (
-                "Your previous reply became repetitive. Provide a concise final answer from the "
-                "beginning. Use a short paragraph, avoid repeating phrases, and do not say "
-                "'continued' or refer to earlier output."
-            )
+        resume_prompt = (
+            "Your previous reply was repetitive or unreadable. "
+            "Please provide the complete answer again from the beginning. "
+            "Do not refer to earlier output."
+        )
     else:
-        if list_likely:
-            resume_prompt = (
-                "Your previous reply was truncated. Provide the complete answer "
-                "from the beginning. Do not say 'continued' or refer to earlier output. "
-                "Keep the answer concise; if a list is appropriate, limit it to at most 8 "
-                "items and do not repeat any item."
-            )
-        else:
-            resume_prompt = (
-                "Your previous reply was truncated. Provide the complete answer "
-                "from the beginning. Do not say 'continued' or refer to earlier output. "
-                "Keep the answer concise and avoid repeating phrases. Use a short paragraph."
-            )
+        resume_prompt = (
+            "Your previous reply was incomplete or unreadable. "
+            "Please provide the complete answer again from the beginning. "
+            "If needed, be slightly more concise to fit the available space. "
+            "Do not refer to earlier output."
+        )
 
     return RetryPlan(
         should_retry=True,

@@ -1,7 +1,7 @@
 # Test Suite
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-11
+**Updated**: 2026-01-25
 
 This directory contains the test suite for `mlx-harmony`.
 
@@ -182,7 +182,7 @@ If HuggingFace model download fails:
 
 1. Check internet connection
 2. Verify HuggingFace Hub access
-3. Try manually downloading: `python -c "from mlx_lm import load; load('mlx-community/Qwen1.5-0.5B-Chat-4bit')"`
+3. Try manually downloading: `mlx-harmony-generate --model mlx-community/Qwen1.5-0.5B-Chat-4bit --prompt "ping" --max-tokens 1`
 
 ### Tests Are Slow
 

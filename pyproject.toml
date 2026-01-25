@@ -5,7 +5,7 @@ description = "Multi-model MLX inference with GPT-OSS Harmony format and tools"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "mlx-lm>=0.1.0",  # Used only for non-GPT-OSS model architectures (mlx_lm.models.*). GPT-OSS models use local implementation (no mlx_lm dependency).
+    # "mlx-lm>=0.1.0",  # Used only for non-GPT-OSS model architectures (mlx_lm.models.*). GPT-OSS models use local implementation (no mlx_lm dependency).
     "huggingface-hub>=0.20.0",  # For downloading models from HuggingFace Hub
     "openai-harmony>=0.0.8",  # For Harmony encoding/decoding (required for GPT-OSS)
     "fastapi>=0.100.0",

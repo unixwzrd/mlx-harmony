@@ -10,7 +10,6 @@ from mlx_harmony.chat_prompt import (
     prepare_prompt,
     truncate_conversation_for_context,
 )
-from mlx_harmony.chat_retry import apply_retry_to_conversation
 from mlx_harmony.chat_types import TurnResult
 from mlx_harmony.tools.runner import has_tool_calls, run_tools_if_requested
 
@@ -50,6 +49,7 @@ def run_chat_turn(
     tool_iteration = 0
     resume_attempts = 0
     resume_base_hyperparameters: dict[str, float | int | bool | str] | None = None
+    pending_resume_prompt: str | None = None
 
     while tool_iteration < max_tool_iterations:
         prompt_start_time = time.perf_counter()
@@ -60,10 +60,19 @@ def run_chat_turn(
         )
         last_prompt_start_time = prompt_start_time
 
+        working_conversation = conversation
+        if pending_resume_prompt:
+            working_conversation = list(conversation) + [
+                {
+                    "role": "user",
+                    "content": pending_resume_prompt,
+                }
+            ]
+
         system_message = None
         prompt_conversation, prompt_token_count = truncate_conversation_for_context(
             generator=generator,
-            conversation=conversation,
+            conversation=working_conversation,
             system_message=system_message,
             max_context_tokens=max_context_tokens,
         )
@@ -144,21 +153,15 @@ def run_chat_turn(
                 print("[INFO] Response truncated; rethinking to complete the final answer...")
 
         if outcome.should_resume and outcome.resume_prompt:
-            last_saved_hyperparameters = apply_retry_to_conversation(
-                conversation=conversation,
-                make_message_id=make_message_id,
-                make_timestamp=make_timestamp,
-                resume_prompt=outcome.resume_prompt,
-                last_saved_hyperparameters=last_saved_hyperparameters,
-                hyperparameters=hyperparameters,
-            )
             resume_attempts += 1
             hyperparameters = outcome.resume_hyperparameters or hyperparameters
+            pending_resume_prompt = outcome.resume_prompt
             continue
 
         if resume_base_hyperparameters is not None and not outcome.should_resume:
             hyperparameters = resume_base_hyperparameters
             resume_base_hyperparameters = None
+        pending_resume_prompt = None
 
         should_continue, parsed_messages = run_tools_if_requested(
             generator=generator,

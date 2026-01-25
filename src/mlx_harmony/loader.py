@@ -2,12 +2,11 @@
 Standalone model loading for MLX Harmony.
 
 This module provides model loading without depending on mlx-lm's high-level load function.
-For GPT-OSS models, we use our own model architecture (no mlx_lm dependency).
-For other models, we fall back to mlx-lm model architectures (can be extracted later).
+For GPT-OSS models, we use our own model architecture (no mlx-lm dependency).
+Other model architectures are not yet bundled with mlx-harmony.
 """
 
 import glob
-import importlib
 import json
 from pathlib import Path
 from typing import Any
@@ -108,7 +107,7 @@ def _get_model_classes(config: dict[str, Any]) -> tuple[type[nn.Module], type]:
     model_type = config["model_type"]
     model_type = MODEL_REMAPPING.get(model_type, model_type)
 
-    # For GPT-OSS models, use our local model architecture (no mlx_lm dependency)
+    # For GPT-OSS models, use our local model architecture (no mlx-lm dependency)
     if model_type == "gpt_oss":
         try:
             from mlx_harmony.models.gpt_oss import Model, ModelArgs
@@ -116,17 +115,12 @@ def _get_model_classes(config: dict[str, Any]) -> tuple[type[nn.Module], type]:
         except ImportError as e:
             raise ValueError(f"Failed to load GPT-OSS model architecture: {e}") from e
 
-    # For other models, fall back to mlx_lm (for now - can be extracted later)
-    try:
-        # Import model architecture from mlx_lm.models
-        arch = importlib.import_module(f"mlx_lm.models.{model_type}")
-    except ImportError as e:
-        raise ValueError(f"Model type {model_type} not supported: {e}") from e
-
-    if not hasattr(arch, "Model") or not hasattr(arch, "ModelArgs"):
-        raise ValueError(f"Model module {model_type} missing Model or ModelArgs class")
-
-    return arch.Model, arch.ModelArgs
+    raise ValueError(
+        "Model type %s is not supported yet. "
+        "mlx-harmony currently bundles GPT-OSS only; "
+        "other architectures must be added under mlx_harmony.models."
+        % model_type
+    )
 
 
 def _load_weights(model_path: Path) -> dict[str, mx.array]:
@@ -350,7 +344,7 @@ def load_model_standalone(
         weights = model.sanitize(weights)
 
     # Apply quantization if needed (nn.quantize() will handle conversion of layers)
-    # This matches mlx_lm and mlx-examples approach: use regular layers, then nn.quantize()
+    # This matches mlx-examples approach: use regular layers, then nn.quantize()
     # SwitchLinear has to_quantized() method, so nn.quantize() will convert it when scales are in weights
     _apply_quantization(model, config, weights)
 

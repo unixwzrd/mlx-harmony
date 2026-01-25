@@ -1,11 +1,11 @@
 # Refactor Checklist
 
 **Created**: 2026-01-22
-**Updated**: 2026-01-23
+**Updated**: 2026-01-25
 
 ## Purpose
 
-Track the refactor + performance plan from [Codex_Instructions-05](../tmp/Codex_Instructions-05.md) with actionable steps and status.
+Track the refactor + performance plan from [Codex_Instructions-06](../tmp/Codex_Instructions-06.md) with actionable steps and status.
 
 ## Status Legend
 
@@ -14,7 +14,40 @@ Track the refactor + performance plan from [Codex_Instructions-05](../tmp/Codex_
 - [x] Done
 - [!] Blocked
 
-## Priority Work Items (Codex_Instructions-05)
+## Priority Work Items (Codex_Instructions-06)
+
+### 1) KV Windowing (RotatingKVCache)
+
+- [ ] Add `max_kv_size` (or `kv_window_tokens`) to `PromptConfig`.
+- [ ] Thread `max_kv_size` into `make_prompt_cache(...)` from `TokenGenerator.generate`.
+- [ ] Default to rotating cache when `max_kv_size` is set.
+- [ ] Acceptance: long‑run TPS stops degrading past the window.
+- [ ] Acceptance: wired memory plateaus (no large oscillations).
+
+### 2) Prompt Size Control (steady state)
+
+- [ ] Tighten prompt truncation to stay below max context in long runs.
+- [ ] Prefer dropping oldest turns earlier (performance mode).
+- [ ] Optional perf mode settings: smaller `max_tokens`, smaller retained history, smaller KV window.
+- [ ] Define perf mode settings in config/CLI (opt-in) and document intended use.
+- [ ] Acceptance: prompt_tokens stays below `max_context_tokens` with a safety margin in long runs.
+
+### 3) Hot Loop Cleanup (`generate_standalone.stream_generate`)
+
+- [ ] Remove Python `generated_tokens` list (use `generated_token_count` only).
+- [ ] Run repetition detection every N tokens (e.g., every 8).
+- [ ] Avoid per‑token `mx.concatenate` for repetition window; update every N tokens or rolling buffer.
+
+### 4) Cache Clearing Discipline
+
+- [ ] Ensure `clear_cache_generation` stays false in normal runs.
+- [ ] Avoid periodic `mx.clear_cache()` unless debugging memory churn.
+
+### 5) Instrumentation (make next profile decisive)
+
+- [ ] Add `kv_len` (effective context length) to timing stats.
+- [ ] Add `max_kv_size` and `repetition_window` columns to timing stats.
+- [ ] Add `loop_detection_mode` column to timing stats.
 
 ### 1) Controller + Adapter Architecture
 

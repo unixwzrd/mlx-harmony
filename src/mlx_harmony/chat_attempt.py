@@ -174,11 +174,30 @@ def run_generation_attempt(
 def _detect_text_repetition(text: str) -> bool:
     if not text:
         return False
-    tokens = text.split()
-    if len(tokens) < 80:
+    normalized_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            continue
+        if stripped in {"---", "***", "___"}:
+            continue
+        if stripped.startswith(("-", "*", "+")):
+            stripped = stripped.lstrip("-*+").strip()
+        elif stripped[:2].isdigit() and stripped[1] == ".":
+            stripped = stripped[2:].strip()
+        elif len(stripped) > 2 and stripped[0].isdigit() and stripped[1].isdigit() and stripped[2] == ".":
+            stripped = stripped[3:].strip()
+        if stripped:
+            normalized_lines.append(stripped.lower())
+    normalized_text = " ".join(normalized_lines)
+    tokens = normalized_text.split()
+    if len(tokens) < 120:
         return False
     window = 240
     tail = tokens[-window:] if len(tokens) > window else tokens
+    unique_ratio = len(set(tail)) / max(len(tail), 1)
     ngram_sizes = (6, 8)
     for ngram_size in ngram_sizes:
         if len(tail) < ngram_size * 3:
@@ -187,14 +206,16 @@ def _detect_text_repetition(text: str) -> bool:
         for idx in range(len(tail) - ngram_size + 1):
             gram = tuple(tail[idx : idx + ngram_size])
             counts[gram] = counts.get(gram, 0) + 1
-            if counts[gram] >= 3:
+            if counts[gram] >= 4 and unique_ratio < 0.65:
                 return True
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) >= 6:
         line_counts: dict[str, int] = {}
         for line in lines[-30:]:
+            if len(line) < 40:
+                continue
             line_counts[line] = line_counts.get(line, 0) + 1
-            if line_counts[line] >= 3:
+            if line_counts[line] >= 3 and unique_ratio < 0.7:
                 return True
     return False
 

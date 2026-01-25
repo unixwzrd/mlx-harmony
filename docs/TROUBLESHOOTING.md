@@ -1,7 +1,7 @@
 # Troubleshooting Guide
 
-**Created**: 2026-01-07  
-**Last Updated**: 2026-01-09
+**Created**: 2026-01-07
+**Updated**: 2026-01-25
 
 Common issues and solutions for `mlx-harmony`.
 
@@ -64,8 +64,11 @@ Common issues and solutions for `mlx-harmony`.
 1. For HuggingFace models, ensure the model exists:
 
    ```bash
-   # Test with mlx-lm directly
-   python -c "from mlx_lm import load; load('mlx-community/Qwen1.5-0.5B-Chat-4bit')"
+   # Test with mlx-harmony directly
+   mlx-harmony-generate \
+     --model mlx-community/Qwen1.5-0.5B-Chat-4bit \
+     --prompt "ping" \
+     --max-tokens 1
    ```
 
 2. For local models, use absolute paths:
@@ -92,7 +95,10 @@ Common issues and solutions for `mlx-harmony`.
 3. Pre-download model manually:
 
    ```bash
-   python -c "from mlx_lm import load; load('model-name')"
+   mlx-harmony-generate \
+     --model model-name \
+     --prompt "ping" \
+     --max-tokens 1
    ```
 
 4. Use a smaller model for testing (e.g., `mlx-community/Qwen1.5-0.5B-Chat-4bit`)
