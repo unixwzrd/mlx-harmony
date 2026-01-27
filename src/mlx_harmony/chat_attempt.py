@@ -66,15 +66,30 @@ def run_generation_attempt(
     )
 
     memory_stats = collect_memory_stats()
+    max_kv_size = None
+    if getattr(generator, "prompt_config", None) is not None:
+        max_kv_size = getattr(generator.prompt_config, "max_kv_size", None)
+    repetition_window = hyperparameters.get("repetition_context_size")
+    loop_detection_mode = hyperparameters.get("loop_detection")
+    kv_len = prompt_token_count
+    if max_kv_size is not None:
+        try:
+            kv_len = min(prompt_token_count, int(max_kv_size))
+        except (TypeError, ValueError):
+            kv_len = prompt_token_count
     write_debug_metrics(
         debug_path=debug_path,
         metrics={
             "prompt_tokens": prompt_token_count,
+            "kv_len": kv_len,
             "generated_tokens": num_generated_tokens,
             "elapsed_seconds": generation_elapsed,
             "tokens_per_second": tokens_per_second,
             "prompt_start_to_prompt_start_seconds": prompt_start_delta,
             "max_context_tokens": max_context_tokens,
+            "max_kv_size": max_kv_size,
+            "repetition_window": repetition_window,
+            "loop_detection_mode": loop_detection_mode,
             "prefill_start_offset": getattr(generator, "_last_prefill_start_offset", None),
             **memory_stats,
         },
@@ -95,9 +110,12 @@ def run_generation_attempt(
     )
 
     cleaned_response = clean_text(raw_response)
-    repetition_detected = _detect_text_repetition(cleaned_response)
+    repetition_detected = _detect_token_repetition(all_generated_tokens, generator)
+    finish_reason = generator.last_finish_reason
+    if finish_reason == "length" and _looks_complete_response(cleaned_response):
+        finish_reason = None
     retry_plan = build_retry_plan(
-        last_finish_reason=generator.last_finish_reason,
+        last_finish_reason=finish_reason,
         last_stop_reason=generator.last_stop_reason,
         repetition_detected=repetition_detected,
         resume_attempts=resume_attempts,
@@ -217,6 +235,60 @@ def _detect_text_repetition(text: str) -> bool:
             line_counts[line] = line_counts.get(line, 0) + 1
             if line_counts[line] >= 3 and unique_ratio < 0.7:
                 return True
+    return False
+
+
+def _filter_repetition_tokens(token_ids: list[int], generator: Any) -> list[int]:
+    if not token_ids:
+        return []
+    if getattr(generator, "use_harmony", False):
+        return [token_id for token_id in token_ids if token_id < 200000]
+    return token_ids
+
+
+def _detect_token_repetition(token_ids: list[int], generator: Any) -> bool:
+    filtered = _filter_repetition_tokens(token_ids, generator)
+    if len(filtered) < 160:
+        return False
+    window = 256
+    tail = filtered[-window:] if len(filtered) > window else filtered
+    unique_ratio = len(set(tail)) / max(len(tail), 1)
+    if len(tail) >= 96 and tail[-48:] == tail[-96:-48] and unique_ratio < 0.75:
+        return True
+    for ngram_size in (12, 16):
+        if len(tail) < ngram_size * 3:
+            continue
+        counts: dict[tuple[int, ...], int] = {}
+        for idx in range(len(tail) - ngram_size + 1):
+            gram = tuple(tail[idx : idx + ngram_size])
+            counts[gram] = counts.get(gram, 0) + 1
+            if counts[gram] >= 3 and unique_ratio < 0.7:
+                return True
+    return False
+
+
+def _looks_complete_response(text: str) -> bool:
+    if not text:
+        return False
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if stripped.endswith("```"):
+        return True
+    last_line = ""
+    for line in reversed(stripped.splitlines()):
+        candidate = line.strip()
+        if candidate:
+            last_line = candidate
+            break
+    if not last_line:
+        return False
+    if last_line.endswith(("...", "…")):
+        return False
+    if last_line.endswith(("-", "•", "*")):
+        return False
+    if last_line.endswith((".", "!", "?", ":", ";", "”", "\"", "'")):
+        return True
     return False
 
 

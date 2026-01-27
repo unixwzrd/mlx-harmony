@@ -70,11 +70,17 @@ def run_chat_turn(
             ]
 
         system_message = None
+        max_context_tokens_margin: int | None = None
+        if getattr(generator, "prompt_config", None) is not None:
+            max_context_tokens_margin = getattr(
+                generator.prompt_config, "max_context_tokens_margin", None
+            )
         prompt_conversation, prompt_token_count = truncate_conversation_for_context(
             generator=generator,
             conversation=working_conversation,
             system_message=system_message,
             max_context_tokens=max_context_tokens,
+            max_context_tokens_margin=max_context_tokens_margin,
         )
         prompt_token_ids = build_prompt_token_ids(
             generator=generator,

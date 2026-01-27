@@ -288,7 +288,6 @@ def stream_generate(
         current_token = current_token_arr
     else:
         current_token = None
-    generated_tokens: list[int] = []
     generated_token_arr = local_mx.zeros((max_tokens,), dtype=local_mx.uint32)
     generated_token_count = 0
 
@@ -316,6 +315,9 @@ def stream_generate(
         repetition_detector = TokenRepetitionDetector(
             TokenRepetitionConfig(mode=loop_detection_mode)
         )
+    repetition_check_every = 8
+    window_update_every = 8
+    window_tokens = prompt_tail_tokens if repetition_window > 0 else prompt_tokens
 
     for n in range(max_tokens):  # noqa: B007
         if current_token is None:
@@ -331,18 +333,19 @@ def stream_generate(
 
         if fused_logits_processor is not None:
             if repetition_window > 0:
-                generated_tail_count = repetition_window - len(prompt_tail_tokens)
-                if generated_tail_count > 0 and generated_token_count > 0:
-                    tail_start = max(0, generated_token_count - generated_tail_count)
-                    tail_tokens = generated_token_arr[tail_start:generated_token_count]
-                    window_tokens = local_concat(
-                        [
-                            prompt_tail_tokens,
-                            tail_tokens,
-                        ]
-                    )
-                else:
-                    window_tokens = prompt_tail_tokens
+                if n == 0 or (n % window_update_every) == 0:
+                    generated_tail_count = repetition_window - len(prompt_tail_tokens)
+                    if generated_tail_count > 0 and generated_token_count > 0:
+                        tail_start = max(0, generated_token_count - generated_tail_count)
+                        tail_tokens = generated_token_arr[tail_start:generated_token_count]
+                        window_tokens = local_concat(
+                            [
+                                prompt_tail_tokens,
+                                tail_tokens,
+                            ]
+                        )
+                    else:
+                        window_tokens = prompt_tail_tokens
             else:
                 window_tokens = prompt_tokens
             if timing_stats is not None:
@@ -383,7 +386,6 @@ def stream_generate(
             )
             break
 
-        generated_tokens.append(token_id)
         if generated_token_count < max_tokens:
             generated_token_arr[generated_token_count] = token_id
             generated_token_count += 1
@@ -443,10 +445,10 @@ def stream_generate(
         if is_last_token:
             break
 
-        if repetition_detector is not None:
+        if repetition_detector is not None and (n % repetition_check_every) == (repetition_check_every - 1):
             reason = repetition_detector.update(token_id)
             if reason:
-                logger.warning("%s tokens=%d", reason, len(generated_tokens))
+                logger.warning("%s tokens=%d", reason, generated_token_count)
                 yield GenerationResponse(
                     token=token_id,
                     text="",

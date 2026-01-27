@@ -211,8 +211,13 @@ def resolve_max_context_tokens(
         return args.max_context_tokens
     if loaded_max_context_tokens is not None and loaded_model_path == model_path:
         return loaded_max_context_tokens
-    if prompt_config and prompt_config.max_context_tokens:
-        return prompt_config.max_context_tokens
+    if prompt_config:
+        perf_mode = bool(getattr(prompt_config, "performance_mode", False))
+        perf_max_context = getattr(prompt_config, "perf_max_context_tokens", None)
+        if perf_mode and perf_max_context:
+            return perf_max_context
+        if prompt_config.max_context_tokens:
+            return prompt_config.max_context_tokens
     if profile_data and profile_data.get("max_context_tokens"):
         return int(profile_data["max_context_tokens"])
 

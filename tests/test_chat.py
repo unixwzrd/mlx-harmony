@@ -12,6 +12,7 @@ from mlx_harmony.chat_history import normalize_dir_path
 from mlx_harmony.chat_io import read_user_input
 from mlx_harmony.chat_prompt import truncate_conversation_for_context
 from mlx_harmony.chat_utils import parse_command
+from mlx_harmony.prompt_cache import PromptTokenCache
 
 
 class TestConversationIO:
@@ -154,6 +155,44 @@ class TestChatHelpers:
         assert len(trimmed) == 2
         assert prompt_tokens <= 8
         assert trimmed[0]["content"] == "reply"
+
+    def test_truncate_conversation_preserves_system_and_developer_with_cache(self):
+        """Keep system/developer messages while truncating with prompt cache enabled."""
+        class StubGenerator:
+            def __init__(self) -> None:
+                self.use_harmony = True
+                self.encoding = object()
+                self.prompt_token_cache = PromptTokenCache()
+
+            def render_prompt_tokens(self, messages, _system_message=None):
+                base_prefix = [0, 1]
+                assistant_start = [2, 3]
+                token_ids: list[int] = []
+                for idx, _msg in enumerate(messages):
+                    token_ids.extend([10 + idx * 2, 11 + idx * 2])
+                return base_prefix + token_ids + assistant_start
+
+        generator = StubGenerator()
+        conversation = [
+            {"role": "system", "content": "system", "cache_key": "system"},
+            {"role": "developer", "content": "developer", "cache_key": "developer"},
+            {"role": "user", "content": "oldest user", "cache_key": "u1"},
+            {"role": "assistant", "content": "reply", "cache_key": "a1"},
+            {"role": "user", "content": "newest user", "cache_key": "u2"},
+        ]
+        trimmed, prompt_tokens = truncate_conversation_for_context(
+            generator=generator,
+            conversation=conversation,
+            system_message=None,
+            max_context_tokens=12,
+        )
+        roles = [msg["role"] for msg in trimmed]
+        assert "system" in roles
+        assert "developer" in roles
+        assert roles[0] == "system"
+        assert roles[1] == "developer"
+        assert all(msg.get("content") != "oldest user" for msg in trimmed)
+        assert prompt_tokens >= 12
 
 
 class TestChatIntegration:

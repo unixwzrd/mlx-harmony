@@ -60,6 +60,7 @@ class TokenGenerator:
         self.mlock = mlock
         self._prompt_cache: list[object] | None = None
         self._prompt_cache_tokens: list[int] | None = None
+        self._prompt_cache_max_kv_size: int | None = None
         self._last_prefill_start_offset: int | None = None
 
         # Auto-detect if this is a GPT-OSS model.
@@ -260,8 +261,13 @@ class TokenGenerator:
 
         # Resolve max_tokens: CLI/function arg > prompt_config > default
         resolved_max_tokens = max_tokens
-        if resolved_max_tokens is None and cfg and cfg.max_tokens is not None:
-            resolved_max_tokens = cfg.max_tokens
+        if resolved_max_tokens is None and cfg:
+            perf_mode = bool(getattr(cfg, "performance_mode", False))
+            perf_max_tokens = getattr(cfg, "perf_max_tokens", None)
+            if perf_mode and perf_max_tokens is not None:
+                resolved_max_tokens = perf_max_tokens
+            elif cfg.max_tokens is not None:
+                resolved_max_tokens = cfg.max_tokens
         # Default max_tokens: 1024 for Harmony models (to allow for both analysis and final channels),
         # 512 for other models
         if resolved_max_tokens is None:
@@ -297,7 +303,20 @@ class TokenGenerator:
         if prompt_token_list is not None:
             from mlx_harmony.cache import make_prompt_cache
 
-            if self._prompt_cache is not None and self._prompt_cache_tokens is not None:
+            max_kv_size: int | None = None
+            if cfg:
+                perf_mode = bool(getattr(cfg, "performance_mode", False))
+                perf_max_kv_size = getattr(cfg, "perf_max_kv_size", None)
+                if perf_mode and perf_max_kv_size is not None:
+                    max_kv_size = int(perf_max_kv_size)
+                elif cfg.max_kv_size is not None:
+                    max_kv_size = int(cfg.max_kv_size)
+
+            if (
+                self._prompt_cache is not None
+                and self._prompt_cache_tokens is not None
+                and self._prompt_cache_max_kv_size == max_kv_size
+            ):
                 cached_tokens = self._prompt_cache_tokens
                 max_common = min(len(cached_tokens), len(prompt_token_list))
                 common_prefix = 0
@@ -310,7 +329,7 @@ class TokenGenerator:
                     prompt_cache = self._prompt_cache
                     prefill_start_offset = common_prefix
             if prompt_cache is None:
-                prompt_cache = make_prompt_cache(self.model)
+                prompt_cache = make_prompt_cache(self.model, max_kv_size=max_kv_size)
 
         effective_clear_cache = resolve_param(
             clear_cache,
@@ -408,6 +427,7 @@ class TokenGenerator:
         if prompt_token_list is not None and prompt_cache is not None:
             self._prompt_cache = prompt_cache
             self._prompt_cache_tokens = prompt_token_list
+            self._prompt_cache_max_kv_size = max_kv_size
             self._last_prefill_start_offset = prefill_start_offset
 
         # Calculate and store generation stats

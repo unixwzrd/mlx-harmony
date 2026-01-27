@@ -42,6 +42,27 @@ class PromptConfig(BaseModel):
         ge=1,
         description="Maximum prompt context tokens (truncate history to fit when set)",
     )
+    max_context_tokens_margin: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Safety margin to subtract from max_context_tokens during truncation",
+    )
+    performance_mode: Optional[bool] = None
+    perf_max_tokens: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Performance mode max tokens override (applies when performance_mode is true)",
+    )
+    perf_max_context_tokens: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Performance mode max context override (applies when performance_mode is true)",
+    )
+    perf_max_kv_size: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Performance mode KV window override (applies when performance_mode is true)",
+    )
     temperature: Optional[float] = Field(
         default=None,
         ge=0.0,
@@ -96,6 +117,11 @@ class PromptConfig(BaseModel):
     loop_detection: Optional[str] = Field(
         default=None,
         description="Loop detection mode: off, cheap, or full (default: cheap)",
+    )
+    max_kv_size: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Maximum KV cache size (enables rotating KV cache when set)",
     )
 
     # Model loading optimizations

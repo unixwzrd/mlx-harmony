@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Length-based retries now skip when the decoded response appears complete to avoid unnecessary reruns.
+- Post-parse repetition checks now use token IDs to reduce false positives from markdown formatting.
+- Stream generation hot loop now avoids per-token token list growth and reduces repetition checks/window rebuild frequency.
+- Timing stats now include kv length, kv window, repetition window, and loop detection mode.
 - Length retries now bump `max_tokens` to reduce repeated truncation and ask for slight concision.
 - Loader now fails fast for non-GPT-OSS model types instead of importing mlx-lm.
 - Native tokenizer documentation updated to reflect the implemented BPE-only path.
@@ -21,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Prompt config performance mode overrides (`performance_mode` + `perf_*` settings).
+- Prompt config `max_context_tokens_margin` to reserve a safety buffer below max context.
+- Prompt config `max_kv_size` to enable rotating KV cache windowing.
 - Token-level repetition detector module for model-agnostic loop detection.
 - Controller scaffolding split into `chat_turn`, `chat_retry`, `chat_attempt`, `chat_adapters`, and `chat_types`.
 - Lightweight `chat_controller` facade re-exporting controller helpers.

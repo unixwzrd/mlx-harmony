@@ -69,9 +69,21 @@ def truncate_conversation_for_context(
     conversation: list[dict[str, Any]],
     system_message: str | None,
     max_context_tokens: int | None,
+    max_context_tokens_margin: int | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """Return a truncated conversation and prompt token count."""
-    if not max_context_tokens or max_context_tokens <= 0:
+    effective_max_context = max_context_tokens
+    if max_context_tokens and max_context_tokens_margin is not None:
+        if max_context_tokens_margin >= max_context_tokens:
+            logger.warning(
+                "max_context_tokens_margin=%s >= max_context_tokens=%s; ignoring margin",
+                max_context_tokens_margin,
+                max_context_tokens,
+            )
+        else:
+            effective_max_context = max_context_tokens - max_context_tokens_margin
+
+    if not effective_max_context or effective_max_context <= 0:
         prompt_tokens = len(generator.render_prompt_tokens(conversation, system_message))
         return conversation, prompt_tokens
     if not conversation:
@@ -85,11 +97,18 @@ def truncate_conversation_for_context(
             generator=generator,
             system_message=system_message,
         )
-        if total_tokens <= max_context_tokens:
+        if total_tokens <= effective_max_context:
             return conversation, total_tokens
         trimmed = list(conversation)
-        while trimmed and total_tokens > max_context_tokens:
-            cache_key = trimmed[0].get("cache_key")
+        while trimmed and total_tokens > effective_max_context:
+            drop_index: int | None = None
+            for idx, msg in enumerate(trimmed):
+                if msg.get("role") not in ("system", "developer"):
+                    drop_index = idx
+                    break
+            if drop_index is None:
+                break
+            cache_key = trimmed[drop_index].get("cache_key")
             delta = cache.message_tokens.get(cache_key) if cache_key else None
             if delta is None:
                 total_tokens = cache.rebuild(
@@ -97,30 +116,30 @@ def truncate_conversation_for_context(
                     generator=generator,
                     system_message=system_message,
                 )
-                if total_tokens <= max_context_tokens:
+                if total_tokens <= effective_max_context:
                     return trimmed, total_tokens
                 delta = cache.message_tokens.get(cache_key) if cache_key else None
                 if delta is None:
                     break
-            trimmed = trimmed[1:]
+            trimmed = trimmed[:drop_index] + trimmed[drop_index + 1 :]
             total_tokens -= delta
 
-        if total_tokens > max_context_tokens:
+        if total_tokens > effective_max_context:
             logger.warning(
-                "Prompt exceeds max_context_tokens=%s even after truncation",
-                max_context_tokens,
+                "Prompt exceeds effective max_context_tokens=%s even after truncation",
+                effective_max_context,
             )
         return trimmed, total_tokens
 
     trimmed = list(conversation)
     while True:
         token_ids = generator.render_prompt_tokens(trimmed, system_message)
-        if len(token_ids) <= max_context_tokens:
+        if len(token_ids) <= effective_max_context:
             return trimmed, len(token_ids)
         if len(trimmed) <= 1:
             logger.warning(
-                "Prompt exceeds max_context_tokens=%s even after truncation",
-                max_context_tokens,
+                "Prompt exceeds effective max_context_tokens=%s even after truncation",
+                effective_max_context,
             )
             return trimmed, len(token_ids)
         # Drop the oldest non-system/developer message first.

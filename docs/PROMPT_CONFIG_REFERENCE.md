@@ -1,7 +1,7 @@
 # Prompt Config Reference
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-12
+**Updated**: 2026-01-25
 
 This document explains all parameters available in the prompt configuration JSON file (`--prompt-config`).
 
@@ -24,6 +24,12 @@ This document explains all parameters available in the prompt configuration JSON
   - [Sampling Parameters](#sampling-parameters)
     - [`max_tokens` (integer, optional)](#max_tokens-integer-optional)
     - [`max_context_tokens` (integer, optional)](#max_context_tokens-integer-optional)
+    - [`max_context_tokens_margin` (integer, optional)](#max_context_tokens_margin-integer-optional)
+    - [`max_kv_size` (integer, optional)](#max_kv_size-integer-optional)
+    - [`performance_mode` (boolean, optional)](#performance_mode-boolean-optional)
+    - [`perf_max_tokens` (integer, optional)](#perf_max_tokens-integer-optional)
+    - [`perf_max_context_tokens` (integer, optional)](#perf_max_context_tokens-integer-optional)
+    - [`perf_max_kv_size` (integer, optional)](#perf_max_kv_size-integer-optional)
     - [`seed` (integer, optional)](#seed-integer-optional)
     - [`reseed_each_turn` (boolean, optional)](#reseed_each_turn-boolean-optional)
     - [`temperature` (float, optional)](#temperature-float-optional)
@@ -295,6 +301,78 @@ conversation turns are truncated (FIFO) to keep the prompt within this limit.
 
 ```json
 "max_context_tokens": 4096
+```
+
+### `max_context_tokens_margin` (integer, optional)
+
+Safety margin to subtract from `max_context_tokens` during truncation. This keeps
+the prompt comfortably below the model’s context window in long runs.
+
+**Example:**
+
+```json
+"max_context_tokens_margin": 512
+```
+
+**Notes:**
+
+- If the margin is greater than or equal to `max_context_tokens`, it is ignored.
+
+### `max_kv_size` (integer, optional)
+
+Maximum KV cache size for attention. When set, `mlx-harmony` uses a rotating KV cache
+to cap effective context length and stabilize performance/memory in long runs.
+
+**Example:**
+
+```json
+"max_kv_size": 4096
+```
+
+**Notes:**
+
+- Set this to a value smaller than your model’s full context to keep tokens/sec stable.
+- This is independent of `max_context_tokens` (prompt truncation); both can be used together.
+
+### `performance_mode` (boolean, optional)
+
+Enable performance mode overrides for prompt size and KV windowing. When true, the
+`perf_*` fields below take precedence over the standard values.
+
+**Example:**
+
+```json
+"performance_mode": true
+```
+
+### `perf_max_tokens` (integer, optional)
+
+Performance mode override for `max_tokens`.
+
+**Example:**
+
+```json
+"perf_max_tokens": 512
+```
+
+### `perf_max_context_tokens` (integer, optional)
+
+Performance mode override for `max_context_tokens`.
+
+**Example:**
+
+```json
+"perf_max_context_tokens": 8192
+```
+
+### `perf_max_kv_size` (integer, optional)
+
+Performance mode override for `max_kv_size` (KV window size).
+
+**Example:**
+
+```json
+"perf_max_kv_size": 4096
 ```
 
 ### `seed` (integer, optional)

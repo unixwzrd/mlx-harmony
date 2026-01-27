@@ -18,25 +18,25 @@ Track the refactor + performance plan from [Codex_Instructions-06](../tmp/Codex_
 
 ### 1) KV Windowing (RotatingKVCache)
 
-- [ ] Add `max_kv_size` (or `kv_window_tokens`) to `PromptConfig`.
-- [ ] Thread `max_kv_size` into `make_prompt_cache(...)` from `TokenGenerator.generate`.
-- [ ] Default to rotating cache when `max_kv_size` is set.
+- [x] Add `max_kv_size` (or `kv_window_tokens`) to `PromptConfig`.
+- [x] Thread `max_kv_size` into `make_prompt_cache(...)` from `TokenGenerator.generate`.
+- [x] Default to rotating cache when `max_kv_size` is set.
 - [ ] Acceptance: long‑run TPS stops degrading past the window.
 - [ ] Acceptance: wired memory plateaus (no large oscillations).
 
 ### 2) Prompt Size Control (steady state)
 
-- [ ] Tighten prompt truncation to stay below max context in long runs.
+- [x] Tighten prompt truncation to stay below max context in long runs.
 - [ ] Prefer dropping oldest turns earlier (performance mode).
-- [ ] Optional perf mode settings: smaller `max_tokens`, smaller retained history, smaller KV window.
-- [ ] Define perf mode settings in config/CLI (opt-in) and document intended use.
+- [x] Optional perf mode settings: smaller `max_tokens`, smaller retained history, smaller KV window.
+- [~] Define perf mode settings in config/CLI (opt-in) and document intended use.
 - [ ] Acceptance: prompt_tokens stays below `max_context_tokens` with a safety margin in long runs.
 
 ### 3) Hot Loop Cleanup (`generate_standalone.stream_generate`)
 
-- [ ] Remove Python `generated_tokens` list (use `generated_token_count` only).
-- [ ] Run repetition detection every N tokens (e.g., every 8).
-- [ ] Avoid per‑token `mx.concatenate` for repetition window; update every N tokens or rolling buffer.
+- [x] Remove Python `generated_tokens` list (use `generated_token_count` only).
+- [x] Run repetition detection every N tokens (e.g., every 8).
+- [x] Avoid per‑token `mx.concatenate` for repetition window; update every N tokens or rolling buffer.
 
 ### 4) Cache Clearing Discipline
 
@@ -45,9 +45,9 @@ Track the refactor + performance plan from [Codex_Instructions-06](../tmp/Codex_
 
 ### 5) Instrumentation (make next profile decisive)
 
-- [ ] Add `kv_len` (effective context length) to timing stats.
-- [ ] Add `max_kv_size` and `repetition_window` columns to timing stats.
-- [ ] Add `loop_detection_mode` column to timing stats.
+- [x] Add `kv_len` (effective context length) to timing stats.
+- [x] Add `max_kv_size` and `repetition_window` columns to timing stats.
+- [x] Add `loop_detection_mode` column to timing stats.
 
 ### 1) Controller + Adapter Architecture
 

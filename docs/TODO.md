@@ -77,6 +77,7 @@ _Add quick TODOs here as they come up during development:_
 - [ ] Add max context window handling from model config (with override)
 - [ ] Add seed support for deterministic chat/profiling runs
 - [ ] Add CLI option to manually retry a truncated answer
+- [ ] Create [ADDITIONAL_UNIT_TESTS.md](./ADDITIONAL_UNIT_TESTS.md) and track new unit-test targets
 
 ---
 
