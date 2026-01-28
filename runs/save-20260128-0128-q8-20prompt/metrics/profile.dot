@@ -1,0 +1,48 @@
+digraph {
+	tooltip=" "
+	graph [fontname=Arial, nodesep=0.125, ranksep=0.25];
+	node [fontcolor=white, fontname=Arial, height=0, shape=box, style=filled, width=0];
+	edge [fontname=Arial];
+	121 [color="#78ca07", fontcolor="#ffffff", fontsize="10.00", label="generator:182:generate\n64.43%\n(0.02%)\n9291×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py"];
+	121 -> 863 [arrowsize="0.80", color="#78ca07", fontcolor="#78ca07", fontsize="10.00", label="64.41%\n9311×", labeldistance="2.58", penwidth="2.58"];
+	122 [color="#ff0000", fontcolor="#ffffff", fontsize="10.00", label="chat:75:main\n100.00%\n(0.00%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py"];
+	122 -> 125 [arrowsize="0.81", color="#7ccb07", fontcolor="#7ccb07", fontsize="10.00", label="64.88%\n20×", labeldistance="2.60", penwidth="2.60"];
+	122 -> 700 [arrowsize="0.59", color="#0ba164", fontcolor="#0ba164", fontsize="10.00", label="35.11%\n1×", labeldistance="1.40", penwidth="1.40"];
+	125 [color="#7ccb07", fontcolor="#ffffff", fontsize="10.00", label="chat_turn:17:run_chat_turn\n64.88%\n(0.00%)\n20×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_turn.py"];
+	125 -> 242 [arrowsize="0.80", color="#7acb07", fontcolor="#7acb07", fontsize="10.00", label="64.66%\n20×", labeldistance="2.59", penwidth="2.59"];
+	126 [color="#78ca07", fontcolor="#ffffff", fontsize="10.00", label="chat_generation:10:stream_generation\n64.45%\n(0.02%)\n20×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_generation.py"];
+	126 -> 121 [arrowsize="0.80", color="#78ca07", fontcolor="#78ca07", fontsize="10.00", label="64.43%\n9291×", labeldistance="2.58", penwidth="2.58"];
+	159 [color="#0d267a", fontcolor="#ffffff", fontsize="10.00", label="generate_standalone:79:_prefill_kv_cache\n5.85%\n(5.84%)\n20×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py"];
+	221 [color="#0d1074", fontcolor="#ffffff", fontsize="10.00", label="quantized:242:__call__\n0.70%\n(0.67%)\n1126631×", tooltip="/Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/quantized.py"];
+	224 [color="#0d1074", fontcolor="#ffffff", fontsize="10.00", label="switch_layers:91:__call__\n0.88%\n(0.76%)\n670392×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py"];
+	242 [color="#7acb07", fontcolor="#ffffff", fontsize="10.00", label="chat_attempt:15:run_generation_attempt\n64.66%\n(0.00%)\n20×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py"];
+	242 -> 1701 [arrowsize="0.80", color="#78ca07", fontcolor="#78ca07", fontsize="10.00", label="64.45%\n20×", labeldistance="2.58", penwidth="2.58"];
+	245 [color="#0ba165", fontcolor="#ffffff", fontsize="10.00", label="loader:211:load_model_standalone\n35.00%\n(34.76%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/loader.py"];
+	700 [color="#0ba164", fontcolor="#ffffff", fontsize="10.00", label="chat_bootstrap:47:bootstrap_chat\n35.11%\n(0.00%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_bootstrap.py"];
+	700 -> 1116 [arrowsize="0.59", color="#0ba164", fontcolor="#0ba164", fontsize="10.00", label="35.11%\n1×", labeldistance="1.40", penwidth="1.40"];
+	859 [color="#0d1575", fontcolor="#ffffff", fontsize="10.00", label="sampling:288:processor\n1.86%\n(1.86%)\n9291×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/sampling.py"];
+	863 [color="#78ca07", fontcolor="#ffffff", fontsize="10.00", label="generate_standalone:199:stream_generate\n64.41%\n(51.32%)\n9311×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py"];
+	863 -> 159 [arrowsize="0.35", color="#0d267a", fontcolor="#0d267a", fontsize="10.00", label="5.85%\n20×", labeldistance="0.50", penwidth="0.50"];
+	863 -> 859 [arrowsize="0.35", color="#0d1575", fontcolor="#0d1575", fontsize="10.00", label="1.86%\n9291×", labeldistance="0.50", penwidth="0.50"];
+	863 -> 1897 [arrowsize="0.35", color="#0d247a", fontcolor="#0d247a", fontsize="10.00", label="5.38%\n9291×", labeldistance="0.50", penwidth="0.50"];
+	1116 [color="#0ba164", fontcolor="#ffffff", fontsize="10.00", label="generator:30:__init__\n35.11%\n(0.00%)\n1×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py"];
+	1116 -> 245 [arrowsize="0.59", color="#0ba165", fontcolor="#0ba165", fontsize="10.00", label="35.00%\n1×", labeldistance="1.40", penwidth="1.40"];
+	1701 [color="#78ca07", fontcolor="#ffffff", fontsize="10.00", label="chat_adapters:52:stream\n64.45%\n(0.00%)\n20×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_adapters.py"];
+	1701 -> 126 [arrowsize="0.80", color="#78ca07", fontcolor="#78ca07", fontsize="10.00", label="64.45%\n20×", labeldistance="2.58", penwidth="2.58"];
+	1891 [color="#0d1275", fontcolor="#ffffff", fontsize="10.00", label="switch_layers:204:__call__\n1.38%\n(0.24%)\n223464×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py"];
+	1891 -> 224 [arrowsize="0.35", color="#0d1074", fontcolor="#0d1074", fontsize="10.00", label="0.88%\n670392×", labeldistance="0.50", penwidth="0.50"];
+	1895 [color="#0d247a", fontcolor="#ffffff", fontsize="10.00", label="gpt_oss:208:__call__\n5.37%\n(0.06%)\n9311×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py"];
+	1895 -> 1908 [arrowsize="0.35", color="#0d2479", fontcolor="#0d2479", fontsize="10.00", label="5.25%\n223464×", labeldistance="0.50", penwidth="0.50"];
+	1896 [color="#0d1575", fontcolor="#ffffff", fontsize="10.00", label="gpt_oss:156:__call__\n1.99%\n(0.25%)\n223464×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py"];
+	1896 -> 221 [arrowsize="0.35", color="#0d0d73", fontcolor="#0d0d73", fontsize="10.00", label="0.14%\n223464×", labeldistance="0.50", penwidth="0.50"];
+	1896 -> 1891 [arrowsize="0.35", color="#0d1275", fontcolor="#0d1275", fontsize="10.00", label="1.38%\n223464×", labeldistance="0.50", penwidth="0.50"];
+	1897 [color="#0d247a", fontcolor="#ffffff", fontsize="10.00", label="gpt_oss:242:__call__\n5.39%\n(0.01%)\n9311×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py"];
+	1897 -> 1895 [arrowsize="0.35", color="#0d247a", fontcolor="#0d247a", fontsize="10.00", label="5.37%\n9311×", labeldistance="0.50", penwidth="0.50"];
+	1898 [color="#0d1976", fontcolor="#ffffff", fontsize="10.00", label="gpt_oss:114:__call__\n2.85%\n(0.56%)\n223464×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py"];
+	1898 -> 221 [arrowsize="0.35", color="#0d0f73", fontcolor="#0d0f73", fontsize="10.00", label="0.56%\n893856×", labeldistance="0.50", penwidth="0.50"];
+	1898 -> 1909 [arrowsize="0.35", color="#0d1174", fontcolor="#0d1174", fontsize="10.00", label="1.10%\n446928×", labeldistance="0.50", penwidth="0.50"];
+	1908 [color="#0d2479", fontcolor="#ffffff", fontsize="10.00", label="gpt_oss:178:__call__\n5.25%\n(0.21%)\n223464×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py"];
+	1908 -> 1896 [arrowsize="0.35", color="#0d1575", fontcolor="#0d1575", fontsize="10.00", label="1.99%\n223464×", labeldistance="0.50", penwidth="0.50"];
+	1908 -> 1898 [arrowsize="0.35", color="#0d1976", fontcolor="#0d1976", fontsize="10.00", label="2.85%\n223464×", labeldistance="0.50", penwidth="0.50"];
+	1909 [color="#0d1174", fontcolor="#ffffff", fontsize="10.00", label="rope_utils:164:__call__\n1.10%\n(1.06%)\n446928×", tooltip="/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/rope_utils.py"];
+}

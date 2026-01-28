@@ -205,7 +205,7 @@ def restore_chat_metadata(
     *,
     chat_arg: str | None,
     chat_file_path: Path | None,
-    model_path: str,
+    model_path: str | None,
     prompt_config_path: str | None,
     prompt_config: Any | None,
     loaded_metadata: dict[str, Any],
@@ -322,7 +322,7 @@ def load_chat_session(
     load_file_path: Path | None,
     chat_file_path: Path | None,
     chat_arg: str | None,
-    model_path: str,
+    model_path: str | None,
     prompt_config_path: str | None,
     prompt_config: Any | None,
     load_conversation: Callable[[Path], tuple[list[dict[str, Any]], dict[str, Any]]],
@@ -330,7 +330,7 @@ def load_chat_session(
     resolve_dirs: Callable[[Any | None], tuple[Path, Path]],
 ) -> tuple[
     list[dict[str, Any]],
-    str,
+    str | None,
     str | None,
     Any | None,
     Path | None,
@@ -459,12 +459,21 @@ def write_debug_metrics(
 def _format_metrics_tsv(metrics: dict[str, Any]) -> str:
     """Format metrics as a TSV line for easy extraction."""
     keys = [
+        "row_index",
+        "timestamp_iso",
+        "timestamp_unix",
         "prompt_tokens",
+        "kv_len",
+        "completion_tokens",
         "generated_tokens",
+        "prefill_seconds",
         "elapsed_seconds",
         "tokens_per_second",
         "prompt_start_to_prompt_start_seconds",
         "max_context_tokens",
+        "max_kv_size",
+        "repetition_window",
+        "loop_detection_mode",
         "prefill_start_offset",
     ]
     memory_keys = sorted(key for key in metrics if key.startswith("memory_"))
@@ -478,12 +487,21 @@ def _format_metrics_tsv_header(metrics: dict[str, Any]) -> str | None:
     if getattr(_format_metrics_tsv_header, "_header_written", False):
         return None
     keys = [
+        "row_index",
+        "timestamp_iso",
+        "timestamp_unix",
         "prompt_tokens",
+        "kv_len",
+        "completion_tokens",
         "generated_tokens",
+        "prefill_seconds",
         "elapsed_seconds",
         "tokens_per_second",
         "prompt_start_to_prompt_start_seconds",
         "max_context_tokens",
+        "max_kv_size",
+        "repetition_window",
+        "loop_detection_mode",
         "prefill_start_offset",
     ]
     memory_keys = sorted(key for key in metrics if key.startswith("memory_"))

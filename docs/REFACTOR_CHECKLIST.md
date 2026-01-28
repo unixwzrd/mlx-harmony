@@ -1,7 +1,7 @@
 # Refactor Checklist
 
 **Created**: 2026-01-22
-**Updated**: 2026-01-25
+**Updated**: 2026-01-28
 
 ## Purpose
 
@@ -21,16 +21,18 @@ Track the refactor + performance plan from [Codex_Instructions-06](../tmp/Codex_
 - [x] Add `max_kv_size` (or `kv_window_tokens`) to `PromptConfig`.
 - [x] Thread `max_kv_size` into `make_prompt_cache(...)` from `TokenGenerator.generate`.
 - [x] Default to rotating cache when `max_kv_size` is set.
-- [ ] Acceptance: long‑run TPS stops degrading past the window.
-- [ ] Acceptance: wired memory plateaus (no large oscillations).
+- [~] KV windowing acceptance checks (ongoing; validate across multiple max_kv_size configs).
+- [~] Acceptance: long‑run TPS stops degrading past the window (needs multi-size runs).
+- [~] Acceptance: wired memory plateaus (no large oscillations) (needs multi-size runs).
 
 ### 2) Prompt Size Control (steady state)
 
 - [x] Tighten prompt truncation to stay below max context in long runs.
-- [ ] Prefer dropping oldest turns earlier (performance mode).
+- [x] Prefer dropping oldest turns earlier (performance mode).
+- [x] Add configurable perf-mode early truncation policy (token budget) with hard max-context cap.
 - [x] Optional perf mode settings: smaller `max_tokens`, smaller retained history, smaller KV window.
-- [~] Define perf mode settings in config/CLI (opt-in) and document intended use.
-- [ ] Acceptance: prompt_tokens stays below `max_context_tokens` with a safety margin in long runs.
+- [x] Define perf mode settings in config/CLI (opt-in) and document intended use.
+- [~] Acceptance: prompt_tokens stays below `max_context_tokens` with a safety margin in long runs (needs multi-size runs).
 
 ### 3) Hot Loop Cleanup (`generate_standalone.stream_generate`)
 
@@ -40,8 +42,9 @@ Track the refactor + performance plan from [Codex_Instructions-06](../tmp/Codex_
 
 ### 4) Cache Clearing Discipline
 
-- [ ] Ensure `clear_cache_generation` stays false in normal runs.
-- [ ] Avoid periodic `mx.clear_cache()` unless debugging memory churn.
+- [x] Cache clearing discipline checks.
+- [x] Ensure `clear_cache_generation` stays false in normal runs.
+- [x] Avoid periodic `mx.clear_cache()` unless debugging memory churn.
 
 ### 5) Instrumentation (make next profile decisive)
 

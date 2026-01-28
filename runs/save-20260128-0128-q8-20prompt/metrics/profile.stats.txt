@@ -1,0 +1,60 @@
+Wed Jan 28 01:34:45 2026    stats/profile.stats
+
+         24487826 function calls (24313083 primitive calls) in 373.944 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2638 to 50 due to restriction <50>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.001    0.001  373.950  373.950 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py:75(main)
+       20    0.001    0.000  242.607   12.130 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_turn.py:17(run_chat_turn)
+       20    0.001    0.000  241.791   12.090 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py:15(run_generation_attempt)
+       20    0.000    0.000  241.015   12.051 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_adapters.py:52(stream)
+       20    0.067    0.003  241.015   12.051 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_generation.py:10(stream_generation)
+     9291    0.065    0.000  240.937    0.026 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py:182(generate)
+     9311  191.914    0.021  240.857    0.026 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py:199(stream_generate)
+        1    0.000    0.000  131.279  131.279 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_bootstrap.py:47(bootstrap_chat)
+        1    0.000    0.000  131.276  131.276 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py:30(__init__)
+        1  129.999  129.999  130.868  130.868 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/loader.py:211(load_model_standalone)
+       20   21.828    1.091   21.874    1.094 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py:79(_prefill_kv_cache)
+     9311    0.035    0.000   20.143    0.002 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py:242(__call__)
+     9311    0.238    0.000   20.078    0.002 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py:208(__call__)
+   223464    0.790    0.000   19.634    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py:178(__call__)
+   223464    2.112    0.000   10.664    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py:114(__call__)
+   223464    0.943    0.000    7.445    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py:156(__call__)
+     9291    6.944    0.001    6.952    0.001 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/sampling.py:288(processor)
+   223464    0.913    0.000    5.146    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py:204(__call__)
+   446928    3.956    0.000    4.111    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/rope_utils.py:164(__call__)
+   670392    2.853    0.000    3.287    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py:91(__call__)
+  1126631    2.497    0.000    2.615    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/quantized.py:242(__call__)
+  4975042    1.037    0.000    1.580    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/base.py:99(__getattr__)
+   111732    0.990    0.000    0.990    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/cache.py:29(update_and_fetch)
+      304    0.011    0.000    0.731    0.002 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/openai_harmony/__init__.py:540(encode)
+  6827023    0.717    0.000    0.717    0.000 {method 'get' of 'dict' objects}
+      304    0.001    0.000    0.715    0.002 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/openai_harmony/__init__.py:67(_special_token_regex)
+        1    0.154    0.154    0.713    0.713 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py:470(load_tokenizer_native)
+   223464    0.706    0.000    0.706    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py:46(mlx_topk)
+   111732    0.059    0.000    0.650    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/cache.py:235(update_and_fetch)
+      122    0.000    0.000    0.636    0.005 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py:515(render_prompt_tokens)
+      122    0.003    0.000    0.636    0.005 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompts/harmony.py:49(render_prompt_tokens)
+   223464    0.629    0.000    0.629    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py:74(__call__)
+698625/696212    0.175    0.000    0.596    0.000 {built-in method builtins.hasattr}
+     7322    0.031    0.000    0.596    0.000 {method 'join' of 'str' objects}
+   111492    0.575    0.000    0.586    0.000 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/cache.py:193(_update_in_place)
+   331482    0.047    0.000    0.564    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/openai_harmony/__init__.py:68(<genexpr>)
+       20    0.000    0.000    0.549    0.027 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_prompt.py:66(truncate_conversation_for_context)
+       20    0.000    0.000    0.548    0.027 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompt_cache.py:134(update_with_conversation)
+   331228    0.061    0.000    0.517    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/re/__init__.py:255(escape)
+   339077    0.470    0.000    0.470    0.000 {method 'translate' of 'str' objects}
+       20    0.000    0.000    0.457    0.023 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_adapters.py:87(parse)
+       20    0.001    0.000    0.457    0.023 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_harmony.py:29(parse_harmony_response)
+       81    0.000    0.000    0.449    0.006 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompt_cache.py:47(_ensure_base_tokens)
+       25    0.001    0.000    0.449    0.018 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/json/__init__.py:274(load)
+   456239    0.444    0.000    0.444    0.000 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/mlx/nn/layers/normalization.py:142(__call__)
+       40    0.000    0.000    0.367    0.009 /Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompt_cache.py:72(_message_token_ids)
+       60    0.106    0.002    0.364    0.006 /Users/unixwzrd/miniconda3/envs/ConnectomeAI/lib/python3.12/site-packages/unicodefix/transforms.py:27(clean_text)
+    289/4    0.001    0.000    0.328    0.082 <frozen importlib._bootstrap>:1349(_find_and_load)
+    286/4    0.001    0.000    0.328    0.082 <frozen importlib._bootstrap>:1304(_find_and_load_unlocked)
+    270/4    0.000    0.000    0.328    0.082 <frozen importlib._bootstrap>:911(_load_unlocked)
+
+

@@ -1,7 +1,7 @@
 # Prompt Config Reference
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-25
+**Updated**: 2026-01-27
 
 This document explains all parameters available in the prompt configuration JSON file (`--prompt-config`).
 
@@ -16,6 +16,8 @@ This document explains all parameters available in the prompt configuration JSON
     - [`example_dialogues` (array of arrays, optional)](#example_dialogues-array-of-arrays-optional)
   - [Placeholders](#placeholders)
     - [`placeholders` (object, optional)](#placeholders-object-optional)
+    - [`deterministic_time_enabled` (boolean, optional)](#deterministic_time_enabled-boolean-optional)
+    - [`deterministic_time_iso` (string, optional)](#deterministic_time_iso-string-optional)
     - [Built-in Placeholders](#built-in-placeholders)
       - [Date Placeholders](#date-placeholders)
       - [Time Placeholders](#time-placeholders)
@@ -30,6 +32,7 @@ This document explains all parameters available in the prompt configuration JSON
     - [`perf_max_tokens` (integer, optional)](#perf_max_tokens-integer-optional)
     - [`perf_max_context_tokens` (integer, optional)](#perf_max_context_tokens-integer-optional)
     - [`perf_max_kv_size` (integer, optional)](#perf_max_kv_size-integer-optional)
+    - [`perf_prompt_token_budget` (integer, optional)](#perf_prompt_token_budget-integer-optional)
     - [`seed` (integer, optional)](#seed-integer-optional)
     - [`reseed_each_turn` (boolean, optional)](#reseed_each_turn-boolean-optional)
     - [`temperature` (float, optional)](#temperature-float-optional)
@@ -42,6 +45,7 @@ This document explains all parameters available in the prompt configuration JSON
     - [`xtc_probability` (float, optional)](#xtc_probability-float-optional)
     - [`xtc_threshold` (float, optional)](#xtc_threshold-float-optional)
     - [`xtc_special_tokens` (array of integers, optional)](#xtc_special_tokens-array-of-integers-optional)
+    - [`end_token_strings` (array of strings, optional)](#end_token_strings-array-of-strings-optional)
   - [Model Loading Optimizations](#model-loading-optimizations)
     - [`mlock` (boolean, optional)](#mlock-boolean-optional)
     - [`lazy` (boolean, optional)](#lazy-boolean-optional)
@@ -56,6 +60,7 @@ This document explains all parameters available in the prompt configuration JSON
   - [Tips](#tips)
   - [Memory Management](#memory-management)
   - [Markdown Rendering](#markdown-rendering)
+  - [Timing Metrics](#timing-metrics)
 
 ## Harmony-Specific Parameters (GPT-OSS Models Only)
 
@@ -171,9 +176,35 @@ User-defined placeholder mappings for text substitution. These are applied to al
 }
 ```
 
+### `deterministic_time_enabled` (boolean, optional)
+
+Enable deterministic time placeholder resolution. When true, built-in time/date placeholders use
+`deterministic_time_iso` instead of the current time. When false or omitted, placeholders use the
+current time at placeholder expansion. If enabled and `deterministic_time_iso` is missing, the loader
+warns and defaults to `2000-01-01T00:00:00Z`. If enabled and `seed` is missing or random, it warns and
+defaults to `seed=0` and `reseed_each_turn=false`.
+
+**Example:**
+
+```json
+"deterministic_time_enabled": true
+```
+
+### `deterministic_time_iso` (string, optional)
+
+Fixed UTC timestamp (ISO 8601) used when `deterministic_time_enabled` is true. All built-in time
+placeholders are derived from this value.
+
+**Example:**
+
+```json
+"deterministic_time_iso": "2026-01-27T12:00:00Z"
+```
+
 ### Built-in Placeholders
 
-Built-in placeholders are expanded when the prompt is rendered (at generation time), so they always reflect the current date/time.
+Built-in placeholders are expanded when placeholders are applied, using the current date/time unless
+`deterministic_time_enabled` is set.
 
 #### Date Placeholders
 
@@ -373,6 +404,17 @@ Performance mode override for `max_kv_size` (KV window size).
 
 ```json
 "perf_max_kv_size": 4096
+```
+
+### `perf_prompt_token_budget` (integer, optional)
+
+Performance mode early truncation budget for prompt tokens. When set, the prompt is truncated
+to this budget (or smaller) before the hard `max_context_tokens` limit.
+
+**Example:**
+
+```json
+"perf_prompt_token_budget": 4096
 ```
 
 ### `seed` (integer, optional)
@@ -636,6 +678,17 @@ Or with explicit token IDs (advanced users only):
 
 **Note:** Token IDs are model-specific and must match the tokenizer used by your model. If you're unsure of the correct token IDs, leave this as `null` to use auto-detection. This is an experimental feature - use with caution.
 
+### `end_token_strings` (array of strings, optional)
+
+Optional list of token strings that should stop generation when emitted. For Harmony models, this
+defaults to `["<|endoftext|>"]` when not set.
+
+**Example:**
+
+```json
+"end_token_strings": ["<|endoftext|>"]
+```
+
 ## Model Loading Optimizations
 
 ### `mlock` (boolean, optional)
@@ -823,6 +876,24 @@ mlx-harmony-chat --model openai/gpt-oss-20b --no-markdown
 ```
 
 This is useful if you prefer plain text output or are piping output to other tools.
+
+---
+
+## Timing Metrics
+
+When `log_timing_stats` is enabled, debug logs emit TSV rows with these fields:
+
+- `prompt_tokens`
+- `completion_tokens`
+- `generated_tokens`
+- `prefill_seconds`
+- `elapsed_seconds`
+- `tokens_per_second`
+- `kv_len`
+- `max_kv_size`
+- `repetition_window`
+- `loop_detection_mode`
+- `prefill_start_offset`
 
 ---
 

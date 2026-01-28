@@ -1,0 +1,758 @@
+{
+  "calls_per_token_step_estimate": null,
+  "hot_suspects": {
+    "dict.get": {
+      "cumtime": 0.7900530330000001,
+      "ncalls": 6827023,
+      "where": "~:0(<method 'get' of 'dict' objects>)"
+    },
+    "mlx.array": {
+      "cumtime": 438.457594334,
+      "ncalls": 1,
+      "where": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py:75(main)"
+    },
+    "str.join": {
+      "cumtime": 0.6338050630000001,
+      "ncalls": 7322,
+      "where": "~:0(<method 'join' of 'str' objects>)"
+    },
+    "str.translate": {
+      "cumtime": 0.49761795700000006,
+      "ncalls": 339077,
+      "where": "~:0(<method 'translate' of 'str' objects>)"
+    }
+  },
+  "primitive_calls": 24312535,
+  "profile_stats": "stats/profile.stats",
+  "static": {
+    "top_complexity": [
+      {
+        "complexity": 49,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_harmony.py",
+        "lineno": 29,
+        "qualname": "parse_harmony_response"
+      },
+      {
+        "complexity": 48,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py",
+        "lineno": 199,
+        "qualname": "stream_generate"
+      },
+      {
+        "complexity": 47,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py",
+        "lineno": 182,
+        "qualname": "TokenGenerator.generate"
+      },
+      {
+        "complexity": 34,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompts/harmony.py",
+        "lineno": 70,
+        "qualname": "HarmonyPromptRenderer._build_conversation"
+      },
+      {
+        "complexity": 31,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_turn.py",
+        "lineno": 17,
+        "qualname": "run_chat_turn"
+      },
+      {
+        "complexity": 30,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_prompt.py",
+        "lineno": 66,
+        "qualname": "truncate_conversation_for_context"
+      },
+      {
+        "complexity": 28,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py",
+        "lineno": 470,
+        "qualname": "load_tokenizer_native"
+      },
+      {
+        "complexity": 27,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py",
+        "lineno": 75,
+        "qualname": "main"
+      },
+      {
+        "complexity": 27,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py",
+        "lineno": 214,
+        "qualname": "_detect_text_repetition"
+      },
+      {
+        "complexity": 21,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/config.py",
+        "lineno": 267,
+        "qualname": "load_prompt_config"
+      },
+      {
+        "complexity": 21,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/loader.py",
+        "lineno": 211,
+        "qualname": "load_model_standalone"
+      },
+      {
+        "complexity": 19,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 25,
+        "qualname": "_ensure_metadata_fields"
+      },
+      {
+        "complexity": 18,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_retry.py",
+        "lineno": 8,
+        "qualname": "build_retry_plan"
+      },
+      {
+        "complexity": 18,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/repetition_tokens.py",
+        "lineno": 33,
+        "qualname": "TokenRepetitionDetector.update"
+      },
+      {
+        "complexity": 17,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py",
+        "lineno": 79,
+        "qualname": "_prefill_kv_cache"
+      },
+      {
+        "complexity": 17,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py",
+        "lineno": 130,
+        "qualname": "TokenGenerator._resolve_end_token_ids"
+      },
+      {
+        "complexity": 16,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_bootstrap.py",
+        "lineno": 47,
+        "qualname": "bootstrap_chat"
+      },
+      {
+        "complexity": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 24,
+        "qualname": "normalize_dir_path"
+      },
+      {
+        "complexity": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tools/runner.py",
+        "lineno": 12,
+        "qualname": "run_tools_if_requested"
+      },
+      {
+        "complexity": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_generation.py",
+        "lineno": 10,
+        "qualname": "stream_generation"
+      },
+      {
+        "complexity": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 120,
+        "qualname": "resolve_chat_paths"
+      },
+      {
+        "complexity": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 175,
+        "qualname": "validate_chat_container"
+      },
+      {
+        "complexity": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/config.py",
+        "lineno": 440,
+        "qualname": "parse_dialogue_text"
+      },
+      {
+        "complexity": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 245,
+        "qualname": "Model.sanitize"
+      },
+      {
+        "complexity": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tools/__init__.py",
+        "lineno": 19,
+        "qualname": "parse_tool_calls_from_messages"
+      },
+      {
+        "complexity": 13,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py",
+        "lineno": 15,
+        "qualname": "run_generation_attempt"
+      },
+      {
+        "complexity": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 204,
+        "qualname": "restore_chat_metadata"
+      },
+      {
+        "complexity": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/sampling.py",
+        "lineno": 159,
+        "qualname": "sample_xtc"
+      },
+      {
+        "complexity": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py",
+        "lineno": 291,
+        "qualname": "ByteLevelBPETokenizer.decode"
+      },
+      {
+        "complexity": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py",
+        "lineno": 368,
+        "qualname": "ByteLevelBPETokenizer.apply_chat_template"
+      },
+      {
+        "complexity": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_io.py",
+        "lineno": 150,
+        "qualname": "load_conversation"
+      },
+      {
+        "complexity": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 130,
+        "qualname": "migrate_chat_data"
+      },
+      {
+        "complexity": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 249,
+        "qualname": "main"
+      },
+      {
+        "complexity": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_utils.py",
+        "lineno": 199,
+        "qualname": "resolve_max_context_tokens"
+      },
+      {
+        "complexity": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py",
+        "lineno": 473,
+        "qualname": "TokenGenerator._prepare_prompt"
+      },
+      {
+        "complexity": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/cache.py",
+        "lineno": 243,
+        "qualname": "RotatingKVCache.make_mask"
+      },
+      {
+        "complexity": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py",
+        "lineno": 286,
+        "qualname": "_detect_token_repetition"
+      },
+      {
+        "complexity": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py",
+        "lineno": 307,
+        "qualname": "_looks_complete_response"
+      },
+      {
+        "complexity": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_io.py",
+        "lineno": 68,
+        "qualname": "save_conversation"
+      },
+      {
+        "complexity": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_utils.py",
+        "lineno": 257,
+        "qualname": "build_hyperparameters"
+      }
+    ],
+    "top_fan_in": [
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/cache.py",
+        "lineno": 24,
+        "qualname": "KVCache.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/cache.py",
+        "lineno": 131,
+        "qualname": "RotatingKVCache.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py",
+        "lineno": 32,
+        "qualname": "GenerationResponse.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generation/backends/gpt_oss_backend.py",
+        "lineno": 9,
+        "qualname": "GPTOSSBackend.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generation/backends/native_backend.py",
+        "lineno": 11,
+        "qualname": "NativeBackend.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py",
+        "lineno": 30,
+        "qualname": "TokenGenerator.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/logging.py",
+        "lineno": 11,
+        "qualname": "_MaxLevelFilter.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 71,
+        "qualname": "SwiGLU.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 79,
+        "qualname": "AttentionBlock.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 138,
+        "qualname": "MLPBlock.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 169,
+        "qualname": "TransformerBlock.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 192,
+        "qualname": "GptOssMoeModel.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 235,
+        "qualname": "Model.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/rope_utils.py",
+        "lineno": 15,
+        "qualname": "SuScaledRoPE.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/rope_utils.py",
+        "lineno": 55,
+        "qualname": "Llama3RoPE.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/rope_utils.py",
+        "lineno": 109,
+        "qualname": "YarnRoPE.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py",
+        "lineno": 30,
+        "qualname": "QuantizedSwitchLinear.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py",
+        "lineno": 116,
+        "qualname": "SwitchLinear.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py",
+        "lineno": 181,
+        "qualname": "SwiGLU.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py",
+        "lineno": 189,
+        "qualname": "SwitchGLU.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py",
+        "lineno": 231,
+        "qualname": "QuantizedSwitchGLU.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompt_cache.py",
+        "lineno": 13,
+        "qualname": "PromptTokenCache.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompts/harmony.py",
+        "lineno": 23,
+        "qualname": "HarmonyPromptRenderer.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompts/native.py",
+        "lineno": 9,
+        "qualname": "NativePromptRenderer.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/repetition_tokens.py",
+        "lineno": 23,
+        "qualname": "TokenRepetitionDetector.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py",
+        "lineno": 23,
+        "qualname": "SimpleStreamingDetokenizer.__init__"
+      },
+      {
+        "fan_in": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py",
+        "lineno": 81,
+        "qualname": "ByteLevelBPETokenizer.__init__"
+      },
+      {
+        "fan_in": 9,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 55,
+        "qualname": "make_timestamp"
+      },
+      {
+        "fan_in": 5,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 64,
+        "qualname": "make_message_id"
+      },
+      {
+        "fan_in": 5,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 255,
+        "qualname": "_write_debug_block"
+      },
+      {
+        "fan_in": 4,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_render.py",
+        "lineno": 14,
+        "qualname": "display_assistant"
+      },
+      {
+        "fan_in": 4,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/config.py",
+        "lineno": 267,
+        "qualname": "load_prompt_config"
+      },
+      {
+        "fan_in": 3,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 74,
+        "qualname": "find_last_hyperparameters"
+      },
+      {
+        "fan_in": 3,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 130,
+        "qualname": "migrate_chat_data"
+      },
+      {
+        "fan_in": 3,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_utils.py",
+        "lineno": 41,
+        "qualname": "truncate_text"
+      },
+      {
+        "fan_in": 3,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/config.py",
+        "lineno": 536,
+        "qualname": "load_profiles"
+      },
+      {
+        "fan_in": 2,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/cache.py",
+        "lineno": 310,
+        "qualname": "make_prompt_cache"
+      },
+      {
+        "fan_in": 2,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_generation.py",
+        "lineno": 10,
+        "qualname": "stream_generation"
+      },
+      {
+        "fan_in": 2,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 15,
+        "qualname": "normalize_chat_name"
+      },
+      {
+        "fan_in": 2,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 69,
+        "qualname": "make_chat_id"
+      }
+    ],
+    "top_fan_out": [
+      {
+        "fan_out": 35,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate_standalone.py",
+        "lineno": 199,
+        "qualname": "stream_generate"
+      },
+      {
+        "fan_out": 32,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/loader.py",
+        "lineno": 211,
+        "qualname": "load_model_standalone"
+      },
+      {
+        "fan_out": 30,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_harmony.py",
+        "lineno": 29,
+        "qualname": "parse_harmony_response"
+      },
+      {
+        "fan_out": 26,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_turn.py",
+        "lineno": 17,
+        "qualname": "run_chat_turn"
+      },
+      {
+        "fan_out": 24,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat.py",
+        "lineno": 75,
+        "qualname": "main"
+      },
+      {
+        "fan_out": 24,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py",
+        "lineno": 182,
+        "qualname": "TokenGenerator.generate"
+      },
+      {
+        "fan_out": 23,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py",
+        "lineno": 15,
+        "qualname": "run_generation_attempt"
+      },
+      {
+        "fan_out": 23,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/prompts/harmony.py",
+        "lineno": 70,
+        "qualname": "HarmonyPromptRenderer._build_conversation"
+      },
+      {
+        "fan_out": 22,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/config.py",
+        "lineno": 267,
+        "qualname": "load_prompt_config"
+      },
+      {
+        "fan_out": 21,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_bootstrap.py",
+        "lineno": 47,
+        "qualname": "bootstrap_chat"
+      },
+      {
+        "fan_out": 18,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_io.py",
+        "lineno": 68,
+        "qualname": "save_conversation"
+      },
+      {
+        "fan_out": 17,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_attempt.py",
+        "lineno": 214,
+        "qualname": "_detect_text_repetition"
+      },
+      {
+        "fan_out": 17,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py",
+        "lineno": 470,
+        "qualname": "load_tokenizer_native"
+      },
+      {
+        "fan_out": 15,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_prompt.py",
+        "lineno": 66,
+        "qualname": "truncate_conversation_for_context"
+      },
+      {
+        "fan_out": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generate.py",
+        "lineno": 13,
+        "qualname": "main"
+      },
+      {
+        "fan_out": 14,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/sampling.py",
+        "lineno": 288,
+        "qualname": "processor"
+      },
+      {
+        "fan_out": 13,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 249,
+        "qualname": "main"
+      },
+      {
+        "fan_out": 13,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/convert_dialogue.py",
+        "lineno": 20,
+        "qualname": "main"
+      },
+      {
+        "fan_out": 13,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py",
+        "lineno": 130,
+        "qualname": "TokenGenerator._resolve_end_token_ids"
+      },
+      {
+        "fan_out": 13,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/sampling.py",
+        "lineno": 63,
+        "qualname": "sample_top_p"
+      },
+      {
+        "fan_out": 13,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tools/runner.py",
+        "lineno": 12,
+        "qualname": "run_tools_if_requested"
+      },
+      {
+        "fan_out": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_io.py",
+        "lineno": 150,
+        "qualname": "load_conversation"
+      },
+      {
+        "fan_out": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 175,
+        "qualname": "validate_chat_container"
+      },
+      {
+        "fan_out": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/config.py",
+        "lineno": 440,
+        "qualname": "parse_dialogue_text"
+      },
+      {
+        "fan_out": 12,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/server.py",
+        "lineno": 62,
+        "qualname": "chat_completions"
+      },
+      {
+        "fan_out": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_generation.py",
+        "lineno": 10,
+        "qualname": "stream_generation"
+      },
+      {
+        "fan_out": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_migration.py",
+        "lineno": 130,
+        "qualname": "migrate_chat_data"
+      },
+      {
+        "fan_out": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_utils.py",
+        "lineno": 124,
+        "qualname": "parse_command"
+      },
+      {
+        "fan_out": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/logging.py",
+        "lineno": 30,
+        "qualname": "configure_debug_file_logging"
+      },
+      {
+        "fan_out": 11,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/repetition_tokens.py",
+        "lineno": 33,
+        "qualname": "TokenRepetitionDetector.update"
+      },
+      {
+        "fan_out": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 120,
+        "qualname": "resolve_chat_paths"
+      },
+      {
+        "fan_out": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_utils.py",
+        "lineno": 232,
+        "qualname": "detect_model_max_context_tokens"
+      },
+      {
+        "fan_out": 10,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/gpt_oss.py",
+        "lineno": 114,
+        "qualname": "AttentionBlock.__call__"
+      },
+      {
+        "fan_out": 9,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 320,
+        "qualname": "load_chat_session"
+      },
+      {
+        "fan_out": 9,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/generator.py",
+        "lineno": 30,
+        "qualname": "TokenGenerator.__init__"
+      },
+      {
+        "fan_out": 9,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py",
+        "lineno": 204,
+        "qualname": "SwitchGLU.__call__"
+      },
+      {
+        "fan_out": 9,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/models/switch_layers.py",
+        "lineno": 255,
+        "qualname": "QuantizedSwitchGLU.__call__"
+      },
+      {
+        "fan_out": 9,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/tokenizer_native.py",
+        "lineno": 291,
+        "qualname": "ByteLevelBPETokenizer.decode"
+      },
+      {
+        "fan_out": 8,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_history.py",
+        "lineno": 519,
+        "qualname": "display_resume_message"
+      },
+      {
+        "fan_out": 8,
+        "file": "/Users/mps/projects/AI-PROJECTS/mlx-harmony/src/mlx_harmony/chat_io.py",
+        "lineno": 39,
+        "qualname": "read_user_input"
+      }
+    ]
+  },
+  "token_steps_estimate_from__decode_next_token": null,
+  "total_calls": 24487278,
+  "total_time_seconds": 438.45119593600015
+}

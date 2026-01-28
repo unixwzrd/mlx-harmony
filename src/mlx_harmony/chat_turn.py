@@ -50,6 +50,7 @@ def run_chat_turn(
     resume_attempts = 0
     resume_base_hyperparameters: dict[str, float | int | bool | str] | None = None
     pending_resume_prompt: str | None = None
+    base_hyperparameters = hyperparameters.copy()
 
     while tool_iteration < max_tool_iterations:
         prompt_start_time = time.perf_counter()
@@ -115,6 +116,7 @@ def run_chat_turn(
             raw_prompt=raw_prompt,
             system_message=system_message,
             hyperparameters=hyperparameters,
+            base_hyperparameters=base_hyperparameters,
             seed=effective_seed,
             on_text=lambda text: print(text, end="", flush=True),
             assistant_name=assistant_name,
@@ -178,6 +180,7 @@ def run_chat_turn(
             hyperparameters=hyperparameters,
         )
         if should_continue:
+            base_hyperparameters = hyperparameters.copy()
             tool_iteration += 1
             continue
 

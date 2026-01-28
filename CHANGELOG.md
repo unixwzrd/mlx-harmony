@@ -1,31 +1,40 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-25
+**Updated**: 2026-01-27
 
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 2026-01-25 - Unreleased
+## 2026-01-28 - Unreleased
 
 ### Changed
 
 - Length-based retries now skip when the decoded response appears complete to avoid unnecessary reruns.
 - Post-parse repetition checks now use token IDs to reduce false positives from markdown formatting.
+- Analysis-only Harmony responses now trigger a retry asking for a final answer.
+- Chat can now resume with `--chat` alone when the history metadata includes `model_path` (errors clearly if missing).
+- Prompt config now supports deterministic time placeholders via `deterministic_time_enabled` + `deterministic_time_iso`.
+- Deterministic time mode now warns and applies defaults for missing time/seed settings.
+- Performance mode now supports an early prompt token budget for truncation.
 - Stream generation hot loop now avoids per-token token list growth and reduces repetition checks/window rebuild frequency.
 - Timing stats now include kv length, kv window, repetition window, and loop detection mode.
 - Length retries now bump `max_tokens` to reduce repeated truncation and ask for slight concision.
 - Loader now fails fast for non-GPT-OSS model types instead of importing mlx-lm.
 - Native tokenizer documentation updated to reflect the implemented BPE-only path.
 - Troubleshooting and test docs now use mlx-harmony commands for model download checks.
+- Harmony generation now stops on `<|endoftext|>` to prevent injected spillover.
+- Prompt config now supports `end_token_strings` to configure end-of-response token strings.
+- Timing metrics now include `completion_tokens` and `prefill_seconds`.
 
 ## 2026-01-23 - Unreleased
 
 ### Added
 
 - Prompt config performance mode overrides (`performance_mode` + `perf_*` settings).
+- CLI flags for performance mode overrides in chat and generate commands.
 - Prompt config `max_context_tokens_margin` to reserve a safety buffer below max context.
 - Prompt config `max_kv_size` to enable rotating KV cache windowing.
 - Token-level repetition detector module for model-agnostic loop detection.

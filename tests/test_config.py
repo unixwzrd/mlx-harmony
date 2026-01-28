@@ -146,6 +146,60 @@ class TestPromptConfigLoading:
         assert isinstance(config.example_dialogues, list)
         assert config.example_dialogues[0][0]["content"] == "Hello Mia"
 
+    def test_load_system_and_developer_placeholders_without_user_placeholders(
+        self, temp_dir: Path
+    ):
+        """System/developer placeholders expand even when placeholders map is empty."""
+        config_file = temp_dir / "system-dev-placeholders.json"
+        config_data = {
+            "system_model_identity": "System time <|TIMEU|>",
+            "developer_instructions": "Developer time <|TIMEU|>",
+        }
+        config_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+        config = load_prompt_config(str(config_file))
+        assert config is not None
+        assert "<|TIMEU|>" not in (config.system_model_identity or "")
+        assert "<|TIMEU|>" not in (config.developer_instructions or "")
+
+    def test_load_deterministic_time(self, temp_dir: Path):
+        """Test deterministic time placeholder loading."""
+        config_file = temp_dir / "deterministic-time.json"
+        config_data = {
+            "deterministic_time_enabled": True,
+            "deterministic_time_iso": "2026-01-27T12:00:00Z",
+            "system_model_identity": "System at <|TIMEU|>",
+        }
+        config_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+        config = load_prompt_config(str(config_file))
+        assert config is not None
+        assert config.deterministic_time_enabled is True
+        assert config.deterministic_time_iso == "2026-01-27T12:00:00Z"
+        assert config.placeholders["TIMEU"] == "12:00:00 UTC"
+        assert config.system_model_identity == "System at 12:00:00 UTC"
+
+    def test_deterministic_time_defaults_seed_and_time(
+        self, temp_dir: Path, caplog: pytest.LogCaptureFixture
+    ):
+        """Deterministic mode defaults missing time and seed values with warnings."""
+        config_file = temp_dir / "deterministic-defaults.json"
+        config_data = {
+            "deterministic_time_enabled": True,
+            "system_model_identity": "System at <|TIMEU|>",
+        }
+        config_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+        with caplog.at_level("WARNING"):
+            config = load_prompt_config(str(config_file))
+        assert config is not None
+        assert config.deterministic_time_iso == "2000-01-01T00:00:00Z"
+        assert config.placeholders["TIMEU"] == "00:00:00 UTC"
+        assert config.seed == 0
+        assert config.reseed_each_turn is False
+        assert "deterministic_time_iso" in caplog.text
+        assert "defaulting seed=0" in caplog.text
+
     def test_load_nonexistent_config(self):
         """Test loading a non-existent config returns None."""
         config = load_prompt_config("nonexistent.json")

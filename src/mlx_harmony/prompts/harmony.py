@@ -100,8 +100,6 @@ class HarmonyPromptRenderer:
         elif cfg and cfg.system_model_identity:
             sys_content = sys_content.with_model_identity(
                 apply_placeholders(cfg.system_model_identity, cfg.placeholders)
-                if cfg.placeholders
-                else cfg.system_model_identity
             )
 
         if cfg and cfg.reasoning_effort:
@@ -131,10 +129,8 @@ class HarmonyPromptRenderer:
             dev_content = DeveloperContent.new().with_instructions(developer_override)
             harmony_messages.append(Message.from_role_and_content(Role.DEVELOPER, dev_content))
         elif cfg and cfg.developer_instructions:
-            instructions = (
-                apply_placeholders(cfg.developer_instructions, cfg.placeholders)
-                if cfg.placeholders
-                else cfg.developer_instructions
+            instructions = apply_placeholders(
+                cfg.developer_instructions, cfg.placeholders
             )
             dev_content = DeveloperContent.new().with_instructions(instructions)
             harmony_messages.append(

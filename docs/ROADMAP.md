@@ -1,7 +1,7 @@
 # MLX-Harmony Roadmap
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-11
+**Updated**: 2026-01-28
 
 **Project Status**: ✅ v0.2.0 - Standalone Implementation with Markdown Rendering
 
@@ -12,6 +12,20 @@ This roadmap tracks planned enhancements, improvements, and features for `mlx-ha
 ---
 
 ## 🎯 High Priority
+
+### Model Conversion and Import
+
+- [ ] **External Model Conversion to MLX**
+  - [ ] Convert Hugging Face safetensors models to MLX and store locally or publish to Hugging Face Hub
+  - [ ] Convert GGUF models to MLX and store locally or publish to Hugging Face Hub
+  - [ ] Validate converted models against reference outputs (token parity and short prompts)
+  - [ ] Document supported architectures and limitations
+
+- [ ] **On-the-fly Conversion**
+  - [ ] Load safetensors models and convert to MLX in-memory for immediate use
+  - [ ] Load GGUF models and convert to MLX in-memory for immediate use
+  - [ ] Cache converted weights to avoid repeated conversions
+  - [ ] Expose CLI options to control conversion output and cache locations
 
 ### Model Management CLI
 

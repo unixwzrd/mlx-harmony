@@ -36,12 +36,14 @@ class GenerationResponse:
         logprobs: mx.array | None = None,
         finish_reason: str | None = None,
         stop_reason: str | None = None,
+        timing_stats: dict[str, float] | None = None,
     ):
         self.token = token
         self.text = text
         self.logprobs = logprobs
         self.finish_reason = finish_reason
         self.stop_reason = stop_reason
+        self.timing_stats = timing_stats
 
 
 def _prompt_to_tokens(tokenizer, prompt: str | mx.array | list[int]) -> mx.array:
@@ -378,11 +380,13 @@ def stream_generate(
 
         if stop_token_set and token_id in stop_token_set:
             text = last_segment
+            timing_snapshot = timing_stats.snapshot() if timing_stats is not None else None
             yield GenerationResponse(
                 token=token_id,
                 text=text,
                 logprobs=logprobs,
                 finish_reason="stop",
+                timing_stats=timing_snapshot,
             )
             break
 
@@ -435,11 +439,15 @@ def stream_generate(
                         last_segment = new_text
 
         is_last_token = (n == max_tokens - 1)
+        timing_snapshot = None
+        if is_last_token and timing_stats is not None:
+            timing_snapshot = timing_stats.snapshot()
         yield GenerationResponse(
             token=token_id,
             text=new_text,
             logprobs=logprobs,
             finish_reason="length" if is_last_token else None,
+            timing_stats=timing_snapshot,
         )
 
         if is_last_token:
@@ -449,12 +457,14 @@ def stream_generate(
             reason = repetition_detector.update(token_id)
             if reason:
                 logger.warning("%s tokens=%d", reason, generated_token_count)
+                timing_snapshot = timing_stats.snapshot() if timing_stats is not None else None
                 yield GenerationResponse(
                     token=token_id,
                     text="",
                     logprobs=logprobs,
                     finish_reason="stop",
                     stop_reason="loop_detected",
+                    timing_stats=timing_snapshot,
                 )
                 break
 

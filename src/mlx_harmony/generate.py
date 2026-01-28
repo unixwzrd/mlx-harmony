@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import argparse
 
-from mlx_harmony.config import load_profiles, load_prompt_config
+from mlx_harmony.config import (
+    apply_performance_overrides,
+    load_profiles,
+    load_prompt_config,
+)
 from mlx_harmony.generator import TokenGenerator
 
 
@@ -76,6 +80,30 @@ def main() -> None:
         help="Path to JSON file with Harmony prompt configuration (GPT-OSS).",
     )
     parser.add_argument(
+        "--performance-mode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable performance mode overrides from prompt config.",
+    )
+    parser.add_argument(
+        "--perf-max-tokens",
+        type=int,
+        default=None,
+        help="Performance mode override for max_tokens.",
+    )
+    parser.add_argument(
+        "--perf-max-context-tokens",
+        type=int,
+        default=None,
+        help="Performance mode override for max_context_tokens.",
+    )
+    parser.add_argument(
+        "--perf-max-kv-size",
+        type=int,
+        default=None,
+        help="Performance mode override for max_kv_size.",
+    )
+    parser.add_argument(
         "--profile",
         type=str,
         default=None,
@@ -109,6 +137,13 @@ def main() -> None:
     prompt_config_path = args.prompt_config or profile_prompt_cfg
     prompt_config = (
         load_prompt_config(prompt_config_path) if prompt_config_path else None
+    )
+    prompt_config = apply_performance_overrides(
+        prompt_config,
+        performance_mode=args.performance_mode,
+        perf_max_tokens=args.perf_max_tokens,
+        perf_max_context_tokens=args.perf_max_context_tokens,
+        perf_max_kv_size=args.perf_max_kv_size,
     )
 
     generator = TokenGenerator(model_path, prompt_config=prompt_config)

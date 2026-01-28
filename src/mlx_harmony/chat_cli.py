@@ -154,6 +154,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Reseed before each generation when seed >= 0.",
     )
     parser.add_argument(
+        "--performance-mode",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable performance mode overrides from prompt config.",
+    )
+    parser.add_argument(
+        "--perf-max-tokens",
+        type=int,
+        default=None,
+        help="Performance mode override for max_tokens.",
+    )
+    parser.add_argument(
+        "--perf-max-context-tokens",
+        type=int,
+        default=None,
+        help="Performance mode override for max_context_tokens.",
+    )
+    parser.add_argument(
+        "--perf-max-kv-size",
+        type=int,
+        default=None,
+        help="Performance mode override for max_kv_size.",
+    )
+    parser.add_argument(
         "--no-markdown",
         action="store_true",
         default=False,

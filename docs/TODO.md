@@ -1,7 +1,7 @@
 # TODO Checklist
 
 **Created**: 2026-01-09
-**Updated**: 2026-01-25
+**Updated**: 2026-01-28
 
 Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
 
@@ -46,6 +46,7 @@ _These are items actively planned for upcoming releases. For comprehensive long-
 - [x] Added \help command for out-of-band commands
 - [x] Added error handling for invalid \ commands
 - [x] Removed prewarm_cache feature
+- [ ] Add readline-based CLI input editing (vi/emacs modes) for manual prompt entry
 
 ### Documentation
 
@@ -54,6 +55,8 @@ _These are items actively planned for upcoming releases. For comprehensive long-
 - [x] Prompt config reference documentation
 - [x] Memory management guide
 - [x] Beautiful markdown rendering for assistant responses (rich library integration, similar to glow/mdless)
+- [ ] Add a unified User Guide (usage + tuning, including perf-mode) that consolidates scattered config docs
+- [ ] Add a Developer Guide (architecture overview + extension points) for contributors
 - [ ] API documentation setup (Sphinx/MkDocs)
 - [ ] Tool usage tutorial (when tool executors are implemented)
 - [ ] Update [README.md](../README.md) and [FEATURES_FROM_MLX.md](./FEATURES_FROM_MLX.md) if defaults/behavior change
@@ -78,6 +81,10 @@ _Add quick TODOs here as they come up during development:_
 - [ ] Add seed support for deterministic chat/profiling runs
 - [ ] Add CLI option to manually retry a truncated answer
 - [ ] Create [ADDITIONAL_UNIT_TESTS.md](./ADDITIONAL_UNIT_TESTS.md) and track new unit-test targets
+- [ ] Persist resolved placeholders in chat metadata to keep time/placeholder values stable across runs
+- [ ] Generate loop micro-optimizations in [generate_standalone.py](../src/mlx_harmony/generate_standalone.py): remove per-token allocations; avoid list growth inside the loop; avoid per-token Python conversions; precompute stop token set/constants
+- [ ] Model-call boundary micro-optimizations: minimize Python overhead per token (avoid extra checks unless needed)
+- [ ] Investigate unbuffered model-weight loading for large models (assess IO impact and MLX compatibility)
 
 ---
 

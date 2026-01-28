@@ -17,7 +17,11 @@ from mlx_harmony.chat_utils import (
     get_truncate_limits,
     resolve_profile_and_prompt_config,
 )
-from mlx_harmony.config import load_profiles, load_prompt_config
+from mlx_harmony.config import (
+    apply_performance_overrides,
+    load_profiles,
+    load_prompt_config,
+)
 from mlx_harmony.generator import TokenGenerator
 from mlx_harmony.logging import configure_debug_file_logging, get_logger
 from mlx_harmony.prompt_cache import PromptTokenCache
@@ -80,6 +84,19 @@ def bootstrap_chat() -> BootstrapResult:
         load_conversation=load_conversation,
         load_prompt_config=load_prompt_config,
         resolve_dirs=resolve_dirs_from_config,
+    )
+    if not model_path:
+        if load_file_path and load_file_path.exists():
+            raise SystemExit(
+                "Model not found in chat metadata; pass --model or update the chat file."
+            )
+        raise SystemExit("Model must be provided via --model or --profile")
+    prompt_config = apply_performance_overrides(
+        prompt_config,
+        performance_mode=args.performance_mode,
+        perf_max_tokens=args.perf_max_tokens,
+        perf_max_context_tokens=args.perf_max_context_tokens,
+        perf_max_kv_size=args.perf_max_kv_size,
     )
     if updated_chats_dir is not None and updated_logs_dir is not None:
         chats_dir = updated_chats_dir

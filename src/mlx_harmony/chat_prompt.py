@@ -83,6 +83,17 @@ def truncate_conversation_for_context(
         else:
             effective_max_context = max_context_tokens - max_context_tokens_margin
 
+    cfg = getattr(generator, "prompt_config", None)
+    perf_mode = bool(getattr(cfg, "performance_mode", False))
+    perf_prompt_budget = getattr(cfg, "perf_prompt_token_budget", None)
+    if perf_mode and perf_prompt_budget and effective_max_context:
+        try:
+            perf_budget = int(perf_prompt_budget)
+        except (TypeError, ValueError):
+            perf_budget = None
+        if perf_budget and perf_budget > 0:
+            effective_max_context = min(effective_max_context, perf_budget)
+
     if not effective_max_context or effective_max_context <= 0:
         prompt_tokens = len(generator.render_prompt_tokens(conversation, system_message))
         return conversation, prompt_tokens

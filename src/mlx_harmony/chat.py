@@ -200,7 +200,7 @@ def main() -> None:
         last_user_text = user_input
         user_content = (
             apply_placeholders(user_input, context.prompt_config.placeholders)
-            if context.prompt_config and context.prompt_config.placeholders
+            if context.prompt_config
             else user_input
         )
         parent_id = conversation[-1].get("id") if conversation else None

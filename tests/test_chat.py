@@ -156,6 +156,34 @@ class TestChatHelpers:
         assert prompt_tokens <= 8
         assert trimmed[0]["content"] == "reply"
 
+    def test_truncate_conversation_perf_prompt_budget(self):
+        """Use perf prompt token budget for early truncation."""
+        class StubConfig:
+            performance_mode = True
+            perf_prompt_token_budget = 8
+
+        class StubGenerator:
+            def __init__(self) -> None:
+                self.prompt_config = StubConfig()
+
+            def render_prompt_tokens(self, messages, _system_message=None):
+                return list(range(len(messages) * 4))
+
+        generator = StubGenerator()
+        conversation = [
+            {"role": "user", "content": "oldest"},
+            {"role": "assistant", "content": "reply"},
+            {"role": "user", "content": "newest"},
+        ]
+        trimmed, prompt_tokens = truncate_conversation_for_context(
+            generator=generator,
+            conversation=conversation,
+            system_message=None,
+            max_context_tokens=20,
+        )
+        assert len(trimmed) == 2
+        assert prompt_tokens <= 8
+
     def test_truncate_conversation_preserves_system_and_developer_with_cache(self):
         """Keep system/developer messages while truncating with prompt cache enabled."""
         class StubGenerator:

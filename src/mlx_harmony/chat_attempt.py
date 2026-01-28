@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from unicodefix.transforms import clean_text
 
+from mlx_harmony.chat_history import make_timestamp
 from mlx_harmony.chat_retry import build_retry_plan
 from mlx_harmony.chat_types import GenerationOutcome
 
@@ -20,6 +21,7 @@ def run_generation_attempt(
     raw_prompt: str,
     system_message: str | None,
     hyperparameters: dict[str, float | int | bool | str],
+    base_hyperparameters: dict[str, float | int | bool | str] | None,
     seed: int | None,
     on_text: Callable[[str], None],
     assistant_name: str,
@@ -64,6 +66,8 @@ def run_generation_attempt(
     tokens_per_second = (
         num_generated_tokens / generation_elapsed if generation_elapsed > 0 else 0.0
     )
+    timing_stats = getattr(generator, "last_timing_stats", None) or {}
+    prefill_seconds = timing_stats.get("prefill")
 
     memory_stats = collect_memory_stats()
     max_kv_size = None
@@ -80,10 +84,14 @@ def run_generation_attempt(
     write_debug_metrics(
         debug_path=debug_path,
         metrics={
+            "row_index": _next_metrics_row_index(),
+            **_metrics_timestamp(),
             "prompt_tokens": prompt_token_count,
             "kv_len": kv_len,
+            "completion_tokens": num_generated_tokens,
             "generated_tokens": num_generated_tokens,
             "elapsed_seconds": generation_elapsed,
+            "prefill_seconds": prefill_seconds,
             "tokens_per_second": tokens_per_second,
             "prompt_start_to_prompt_start_seconds": prompt_start_delta,
             "max_context_tokens": max_context_tokens,
@@ -118,25 +126,13 @@ def run_generation_attempt(
         last_finish_reason=finish_reason,
         last_stop_reason=generator.last_stop_reason,
         repetition_detected=repetition_detected,
+        analysis_only=False,
         resume_attempts=resume_attempts,
         max_resume_attempts=max_resume_attempts,
         last_user_text=last_user_text,
         hyperparameters=hyperparameters,
+        base_hyperparameters=base_hyperparameters,
     )
-    write_debug_response(
-        debug_path=debug_path,
-        raw_response=raw_response,
-        cleaned_response=cleaned_response,
-        show_console=debug and not retry_plan.should_retry,
-    )
-    write_debug_token_texts(
-        debug_path=debug_path,
-        token_ids=all_generated_tokens,
-        decode_token=generator.encoding.decode if generator.encoding else generator.tokenizer.decode,
-        label="response",
-        mode=debug_tokens or "off",
-    )
-
     parse_result = adapter.parse(
         generator=generator,
         tokens=tokens,
@@ -150,6 +146,36 @@ def run_generation_attempt(
         display_thinking=display_thinking,
         truncate_text=truncate_text,
         suppress_display=retry_plan.should_retry,
+    )
+    analysis_only = bool(
+        getattr(generator, "use_harmony", False)
+        and not parse_result.assistant_text
+        and parse_result.analysis_parts
+    )
+    if analysis_only and not retry_plan.should_retry:
+        retry_plan = build_retry_plan(
+            last_finish_reason=finish_reason,
+            last_stop_reason=generator.last_stop_reason,
+            repetition_detected=repetition_detected,
+            analysis_only=True,
+            resume_attempts=resume_attempts,
+            max_resume_attempts=max_resume_attempts,
+            last_user_text=last_user_text,
+            hyperparameters=hyperparameters,
+            base_hyperparameters=base_hyperparameters,
+        )
+    write_debug_response(
+        debug_path=debug_path,
+        raw_response=raw_response,
+        cleaned_response=cleaned_response,
+        show_console=debug and not retry_plan.should_retry,
+    )
+    write_debug_token_texts(
+        debug_path=debug_path,
+        token_ids=all_generated_tokens,
+        decode_token=generator.encoding.decode if generator.encoding else generator.tokenizer.decode,
+        label="response",
+        mode=debug_tokens or "off",
     )
 
     _write_attempt_artifacts(
@@ -236,6 +262,21 @@ def _detect_text_repetition(text: str) -> bool:
             if line_counts[line] >= 3 and unique_ratio < 0.7:
                 return True
     return False
+
+
+def _metrics_timestamp() -> dict[str, str | float]:
+    timestamp = make_timestamp()
+    return {
+        "timestamp_iso": timestamp["iso"],
+        "timestamp_unix": timestamp["unix"],
+    }
+
+
+def _next_metrics_row_index() -> int:
+    current = getattr(_next_metrics_row_index, "_row_index", 0)
+    current += 1
+    _next_metrics_row_index._row_index = current
+    return current
 
 
 def _filter_repetition_tokens(token_ids: list[int], generator: Any) -> list[int]:

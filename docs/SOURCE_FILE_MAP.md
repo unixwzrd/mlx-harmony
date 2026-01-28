@@ -1,7 +1,7 @@
 # Source File Map
 
 **Created**: 2026-01-21
-**Updated**: 2026-01-23
+**Updated**: 2026-01-28
 
 This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmony) and describes their current roles.
 
@@ -84,5 +84,19 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 
 - [logging.py](../src/mlx_harmony/logging.py): Logging helpers.
 - [__init__.py](../src/mlx_harmony/__init__.py): Package exports.
+
+## Documentation Notes
+
+- [NOTES.md](./NOTES.md): Working notes for documentation topics to be consolidated into guides.
+
+## Scripts
+
+- [bench_run.sh](../scripts/bench_run.sh): Benchmark harness (dataset run + vm_stat + merge).
+- [filter-vm_stat.py](../scripts/filter-vm_stat.py): vm_stat → TSV/JSON conversion helper.
+- [merge_timing_metrics.py](../scripts/merge_timing_metrics.py): Merge timing and vm_stat TSVs.
+- [profile_chat.py](../scripts/profile_chat.py): Profile interactive chat session.
+- [profile_chat_dataset.sh](../scripts/profile_chat_dataset.sh): Profile dataset-driven chat runs.
+- [profile_startup.py](../scripts/profile_startup.py): Profile startup/model load.
+- [TPSvsWiredMemory.py](../scripts/TPSvsWiredMemory.py): Plot tokens-per-second versus wired memory from merged TSV.
 
 [Back to README](../README.md)

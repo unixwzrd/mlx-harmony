@@ -62,6 +62,8 @@ class TokenGenerator:
         self._prompt_cache_tokens: list[int] | None = None
         self._prompt_cache_max_kv_size: int | None = None
         self._last_prefill_start_offset: int | None = None
+        self._cached_end_token_strings: tuple[str, ...] | None = None
+        self._cached_end_token_ids: list[int] | None = None
 
         # Auto-detect if this is a GPT-OSS model.
         self.is_gpt_oss = self._is_gpt_oss_model(model_path)
@@ -93,6 +95,7 @@ class TokenGenerator:
         self.last_finish_reason: str | None = None
         self.last_stop_token_id: int | None = None
         self.last_stop_reason: str | None = None
+        self.last_timing_stats: dict[str, float] | None = None
 
         # Streamable parser for tool call detection (Harmony only)
         self.streamable_parser: Optional[StreamableParser] = None
@@ -124,6 +127,27 @@ class TokenGenerator:
         # If XTC is disabled, return empty list
         if xtc_probability <= 0.0:
             return []
+
+    def _resolve_end_token_ids(self, cfg: PromptConfig | None) -> list[int]:
+        if not hasattr(self.tokenizer, "vocab"):
+            return []
+        if cfg and cfg.end_token_strings:
+            end_token_strings = tuple(cfg.end_token_strings)
+        else:
+            end_token_strings = ("<|endoftext|>",)
+        if (
+            self._cached_end_token_strings == end_token_strings
+            and self._cached_end_token_ids is not None
+        ):
+            return self._cached_end_token_ids
+        end_token_ids: list[int] = []
+        for token_str in end_token_strings:
+            token_id = self.tokenizer.vocab.get(token_str)
+            if token_id is not None:
+                end_token_ids.append(int(token_id))
+        self._cached_end_token_strings = end_token_strings
+        self._cached_end_token_ids = end_token_ids
+        return end_token_ids
 
         # XTC is enabled but no special tokens specified - auto-detect from tokenizer
         # Similar to mlx-lm's server.py, we exclude EOS and newline tokens
@@ -285,6 +309,8 @@ class TokenGenerator:
         if self.use_harmony and self.encoding:
             harmony_stop_ids = self.encoding.stop_tokens_for_assistant_actions()
             stop_token_ids.extend(harmony_stop_ids)
+            # Stop on end-of-text if it appears in the model output to prevent spillover.
+            stop_token_ids.extend(self._resolve_end_token_ids(cfg))
 
         # Add user-provided stop tokens
         if stop_tokens:
@@ -377,6 +403,8 @@ class TokenGenerator:
 
             # Check if this is a stop response (generation ended)
             if response.finish_reason == "stop":
+                if response.timing_stats is not None:
+                    self.last_timing_stats = response.timing_stats
                 # Stop token was generated, don't yield it
                 self.last_finish_reason = response.finish_reason
                 self.last_stop_reason = response.stop_reason
@@ -387,6 +415,8 @@ class TokenGenerator:
                 break
 
             if response.finish_reason == "length":
+                if response.timing_stats is not None:
+                    self.last_timing_stats = response.timing_stats
                 self.last_finish_reason = response.finish_reason
 
             # Safe to yield - append to tracking list and yield

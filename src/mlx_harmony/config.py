@@ -8,6 +8,14 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mlx_harmony.logging import get_logger
+
+logger = get_logger(__name__)
+
+DEFAULT_DETERMINISTIC_TIME_ISO = "2000-01-01T00:00:00Z"
+DEFAULT_DETERMINISTIC_SEED = 0
+DEFAULT_DETERMINISTIC_RESEED_EACH_TURN = False
+
 
 class PromptConfig(BaseModel):
     """
@@ -30,6 +38,8 @@ class PromptConfig(BaseModel):
 
     # User-defined placeholders for template expansion
     placeholders: Dict[str, str] = Field(default_factory=dict)
+    deterministic_time_enabled: Optional[bool] = None
+    deterministic_time_iso: Optional[str] = None
 
     # Sampling defaults (any model)
     max_tokens: Optional[int] = Field(
@@ -62,6 +72,11 @@ class PromptConfig(BaseModel):
         default=None,
         ge=1,
         description="Performance mode KV window override (applies when performance_mode is true)",
+    )
+    perf_prompt_token_budget: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Performance mode prompt token budget for early truncation (applies when performance_mode is true)",
     )
     temperature: Optional[float] = Field(
         default=None,
@@ -134,6 +149,10 @@ class PromptConfig(BaseModel):
     clear_cache_generation: Optional[bool] = None  # Clear MLX cache during generation loop
     log_memory_stats: Optional[bool] = None  # Log MLX memory stats during generation
     log_timing_stats: Optional[bool] = None  # Log generation timing stats during generation
+    end_token_strings: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of token strings that should stop generation when emitted",
+    )
 
     # Display truncation limits
     truncate_thinking: Optional[int] = Field(
@@ -228,6 +247,23 @@ def apply_placeholders(value: Optional[str], placeholders: Dict[str, str]) -> Op
     return _maybe_render(value, placeholders)
 
 
+def _parse_deterministic_time(value: str) -> tuple[datetime, datetime]:
+    cleaned = value.strip()
+    if cleaned.endswith("Z"):
+        cleaned = f"{cleaned[:-1]}+00:00"
+    try:
+        dt = datetime.fromisoformat(cleaned)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid deterministic_time_iso value '{value}'. Expected ISO UTC timestamp."
+        ) from exc
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt_utc = dt.astimezone(timezone.utc)
+    dt_local = dt_utc.astimezone()
+    return dt_local, dt_utc
+
+
 def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
     """
     Load a PromptConfig from a JSON file.
@@ -240,6 +276,8 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
       "knowledge_cutoff": "2025-01",
       "developer_instructions": "Always answer concisely.",
       "assistant_greeting": "Hello {user}, I'm {assistant}. How can I help you today?",
+      "deterministic_time_enabled": false,
+      "deterministic_time_iso": "2026-01-27T12:00:00Z",
       "example_dialogues": [
         [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
       ],
@@ -286,12 +324,46 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in config file {path}: {e}") from e
 
+    deterministic_time_enabled = bool(data.get("deterministic_time_enabled", False))
+    deterministic_time_iso = data.get("deterministic_time_iso")
+    seed = data.get("seed")
+    reseed_each_turn = data.get("reseed_each_turn")
+    if deterministic_time_enabled and not deterministic_time_iso:
+        deterministic_time_iso = DEFAULT_DETERMINISTIC_TIME_ISO
+        logger.warning(
+            "deterministic_time_enabled is true but deterministic_time_iso is missing; "
+            "defaulting deterministic_time_iso=%s",
+            deterministic_time_iso,
+        )
+    if deterministic_time_enabled:
+        if seed is None or (isinstance(seed, (int, float)) and int(seed) < 0):
+            logger.warning(
+                "deterministic_time_enabled is true but seed is missing or random; "
+                "defaulting seed=%s and reseed_each_turn=%s",
+                DEFAULT_DETERMINISTIC_SEED,
+                DEFAULT_DETERMINISTIC_RESEED_EACH_TURN,
+            )
+            seed = DEFAULT_DETERMINISTIC_SEED
+            if reseed_each_turn is None:
+                reseed_each_turn = DEFAULT_DETERMINISTIC_RESEED_EACH_TURN
+        elif reseed_each_turn is None:
+            logger.warning(
+                "deterministic_time_enabled is true but reseed_each_turn is missing; "
+                "defaulting reseed_each_turn=%s",
+                DEFAULT_DETERMINISTIC_RESEED_EACH_TURN,
+            )
+            reseed_each_turn = DEFAULT_DETERMINISTIC_RESEED_EACH_TURN
+
+    if deterministic_time_enabled:
+        now, now_utc = _parse_deterministic_time(deterministic_time_iso)
+    else:
+        now = datetime.now()
+        now_utc = datetime.now(timezone.utc)
+
     user_placeholders: Dict[str, str] = {
         str(k): str(v) for k, v in (data.get("placeholders", {}) or {}).items()
     }
     placeholder_keys_upper = {key.upper() for key in user_placeholders}
-    now = datetime.now()
-    now_utc = datetime.now(timezone.utc)
     builtin_placeholders = _build_builtin_placeholders(now, now_utc)
     for key, value in builtin_placeholders.items():
         if key.upper() not in placeholder_keys_upper:
@@ -337,8 +409,11 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
         ),
         example_dialogues=example_dialogues,
         placeholders=user_placeholders,
+        deterministic_time_enabled=deterministic_time_enabled,
+        deterministic_time_iso=deterministic_time_iso,
         max_tokens=data.get("max_tokens"),
         max_context_tokens=data.get("max_context_tokens"),
+        perf_prompt_token_budget=data.get("perf_prompt_token_budget"),
         temperature=data.get("temperature"),
         top_p=data.get("top_p"),
         min_p=data.get("min_p"),
@@ -350,6 +425,8 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
         repetition_penalty=data.get("repetition_penalty"),
         repetition_context_size=data.get("repetition_context_size"),
         mlock=data.get("mlock"),
+        seed=seed,
+        reseed_each_turn=reseed_each_turn,
         truncate_thinking=data.get("truncate_thinking"),
         truncate_response=data.get("truncate_response"),
         logs_dir=data.get("logs_dir"),
@@ -474,3 +551,27 @@ def load_profiles(path: str | Path) -> Dict[str, Dict[str, Any]]:
     """
     raw = Path(path)
     return json.loads(raw.read_text(encoding="utf-8"))
+
+
+def apply_performance_overrides(
+    prompt_config: PromptConfig | None,
+    *,
+    performance_mode: bool | None = None,
+    perf_max_tokens: int | None = None,
+    perf_max_context_tokens: int | None = None,
+    perf_max_kv_size: int | None = None,
+) -> PromptConfig | None:
+    updates: Dict[str, Any] = {}
+    if performance_mode is not None:
+        updates["performance_mode"] = performance_mode
+    if perf_max_tokens is not None:
+        updates["perf_max_tokens"] = perf_max_tokens
+    if perf_max_context_tokens is not None:
+        updates["perf_max_context_tokens"] = perf_max_context_tokens
+    if perf_max_kv_size is not None:
+        updates["perf_max_kv_size"] = perf_max_kv_size
+    if not updates:
+        return prompt_config
+    if prompt_config is None:
+        return PromptConfig(**updates)
+    return prompt_config.model_copy(update=updates)

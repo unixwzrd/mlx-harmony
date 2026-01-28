@@ -169,7 +169,7 @@ def resolve_profile_and_prompt_config(
     args: Any,
     load_profiles: Callable[[str], dict[str, dict[str, Any]]],
     load_prompt_config: Callable[[str], Any | None],
-) -> tuple[str, str | None, Any | None, dict[str, Any] | None]:
+) -> tuple[str | None, str | None, Any | None, dict[str, Any] | None]:
     """Resolve model and prompt config paths from CLI args and profiles."""
     profile_model = None
     profile_prompt_cfg = None
@@ -185,7 +185,7 @@ def resolve_profile_and_prompt_config(
         profile_prompt_cfg = profile_data.get("prompt_config")
 
     model_path = args.model or profile_model
-    if not model_path:
+    if not model_path and not getattr(args, "chat", None):
         raise SystemExit("Model must be provided via --model or --profile")
 
     prompt_config_path = args.prompt_config or profile_prompt_cfg

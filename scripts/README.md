@@ -1,7 +1,7 @@
 # Profiling Scripts
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-12
+**Updated**: 2026-01-28
 
 ## Profile Running Chat (Real-World Usage) ⭐ Recommended
 
@@ -182,3 +182,60 @@ PROFILING REPORT (Top 50 functions by cumulative time)
 3. **Lazy Loading**: Consider using `lazy=True` in `TokenGenerator` if you want to defer model loading.
 
 4. **Profile Specific Operations**: Modify the script to profile specific parts of the startup if needed.
+
+---
+
+## Benchmark Harness
+
+Use [bench_run.sh](./bench_run.sh) to run the end-to-end benchmark harness (dataset run + vm_stat capture + metrics merge).
+
+**Typical usage:**
+
+```bash
+bash scripts/bench_run.sh
+```
+
+**Optional modes:**
+
+```bash
+# Preserve TTY formatting while logging
+BENCH_TTY=1 bash scripts/bench_run.sh
+
+# Stream output with tee (no TTY)
+BENCH_TEE=1 bash scripts/bench_run.sh
+```
+
+### Plot TPS vs Wired Memory
+
+Use [TPSvsWiredMemory.py](./TPSvsWiredMemory.py) to plot metrics from a merged TSV. By default it plots
+`tokens_per_second` on the left axis and `wired_bytes` on the right axis (converted to GB).
+
+```bash
+python scripts/TPSvsWiredMemory.py stats/merged-timings-vm_stat.tsv \
+  --out stats/tps_vs_wired.png
+```
+
+To plot additional columns (example: `elapsed_seconds`, `tokens_per_second`,
+`generated_tokens`, `prompt_tokens`) with wired memory on the right axis:
+
+```bash
+python scripts/TPSvsWiredMemory.py stats/merged-timings-vm_stat.tsv \
+  --x-col elapsed_seconds \
+  --left-cols tokens_per_second,generated_tokens,prompt_tokens \
+  --right-cols wired_bytes \
+  --out stats/tps_vs_wired.png
+```
+
+This script expects:
+
+- [filter-vm_stat.py](./filter-vm_stat.py) for vm_stat capture.
+- [merge_timing_metrics.py](./merge_timing_metrics.py) for joining timing + vm_stat TSVs.
+
+---
+
+## Utility Scripts
+
+- [filter-vm_stat.py](./filter-vm_stat.py): Convert `vm_stat` output to JSON or TSV (with optional byte conversion).
+- [merge_timing_metrics.py](./merge_timing_metrics.py): Merge `timings-debug.csv` with `vm_stat` TSV output.
+- [build_prompt_stream.py](./build_prompt_stream.py): Stream dataset prompts into the chat loop.
+- [profile_chat_dataset.sh](./profile_chat_dataset.sh): Run deterministic dataset prompts for profiling.

@@ -10,16 +10,20 @@ def build_retry_plan(
     last_finish_reason: str | None,
     last_stop_reason: str | None,
     repetition_detected: bool,
+    analysis_only: bool,
     resume_attempts: int,
     max_resume_attempts: int,
     last_user_text: str | None,
     hyperparameters: dict[str, float | int | bool | str],
+    base_hyperparameters: dict[str, float | int | bool | str] | None,
 ) -> RetryPlan:
     resume_reason: str | None = None
     if last_finish_reason == "length":
         resume_reason = "length"
     elif last_stop_reason == "loop_detected":
         resume_reason = "loop_detected"
+    elif analysis_only:
+        resume_reason = "analysis_only"
     elif repetition_detected:
         resume_reason = "repetitive_text"
 
@@ -32,7 +36,9 @@ def build_retry_plan(
             resume_hyperparameters=None,
         )
 
-    resume_hyperparameters = hyperparameters.copy()
+    resume_hyperparameters = (
+        base_hyperparameters.copy() if base_hyperparameters is not None else hyperparameters.copy()
+    )
     current_max_tokens_raw = resume_hyperparameters.get("max_tokens")
     current_max_tokens: int | None = None
     if isinstance(current_max_tokens_raw, (int, float)):
@@ -56,7 +62,13 @@ def build_retry_plan(
         bumped_tokens = int(current_max_tokens * 1.25)
         resume_hyperparameters["max_tokens"] = max(current_max_tokens, bumped_tokens)
 
-    if resume_reason == "loop_detected":
+    if resume_reason == "analysis_only":
+        resume_prompt = (
+            "Your previous reply did not include a final answer. "
+            "Please provide the final response now. "
+            "Do not refer to earlier output."
+        )
+    elif resume_reason == "loop_detected":
         resume_prompt = (
             "Your previous reply was repetitive or unreadable. "
             "Please provide the complete answer again from the beginning. "
