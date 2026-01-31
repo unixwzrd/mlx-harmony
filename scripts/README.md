@@ -3,6 +3,28 @@
 **Created**: 2026-01-07
 **Updated**: 2026-01-28
 
+- [Profiling Scripts](#profiling-scripts)
+  - [Profile Running Chat (Real-World Usage) ⭐ Recommended](#profile-running-chat-real-world-usage--recommended)
+    - [Quick Start](#quick-start)
+    - [Deterministic Dataset Runs (No Typing)](#deterministic-dataset-runs-no-typing)
+    - [Server Dataset Runs](#server-dataset-runs)
+    - [Schema Migration Utility](#schema-migration-utility)
+    - [Output Files](#output-files)
+    - [Viewing Results](#viewing-results)
+  - [Profile Startup Performance](#profile-startup-performance)
+    - [Quick Start](#quick-start-1)
+    - [Output Files](#output-files-1)
+    - [Viewing Results](#viewing-results-1)
+    - [Understanding the Output](#understanding-the-output)
+    - [Example Output](#example-output)
+    - [Tips](#tips)
+  - [Benchmark Harness](#benchmark-harness)
+  - [API Server Dataset Profile](#api-server-dataset-profile)
+    - [Metrics Layout](#metrics-layout)
+    - [Logs and Meta Layout](#logs-and-meta-layout)
+    - [Plot TPS vs Wired Memory](#plot-tps-vs-wired-memory)
+  - [Utility Scripts](#utility-scripts)
+
 ## Profile Running Chat (Real-World Usage) ⭐ Recommended
 
 Use `profile_chat.py` to profile the actual `mlx-harmony-chat` command as it runs. This captures **real-world performance** including:
@@ -19,12 +41,12 @@ This is more useful than `profile_startup.py` because it shows performance durin
 
 ```bash
 # Profile chat with one interaction (type 'q' to quit and finish profiling)
-python scripts/profile_chat.py \
+scripts/profile_chat.py \
   --model models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx \
   --prompt-config configs/Mia.json
 
 # Profile with specific chat arguments
-python scripts/profile_chat.py \
+scripts/profile_chat.py \
   --model models/my-model \
   --temperature 0.8 \
   --max-tokens 100 \
@@ -32,7 +54,7 @@ python scripts/profile_chat.py \
   --graph chat_profile.svg
 
 # Text-only report (faster, no graphviz needed)
-python scripts/profile_chat.py \
+scripts/profile_chat.py \
   --model models/my-model \
   --prompt-config configs/Mia.json \
   --text-only
@@ -51,12 +73,21 @@ scripts/profile_chat_dataset.sh path/to/english.json models/your-model 200
 The optional last argument (`LIMIT`) caps the number of prompts. This uses [build_prompt_stream.py](./build_prompt_stream.py)
 to emit `\\` blocks and a final `q` for the chat loop.
 
+### Server Dataset Runs
+
+Use [profile_server_dataset.sh](./profile_server_dataset.sh) to run the same dataset prompts against the API server
+workflow and capture the same metrics under `runs/<run-id>/`.
+
+```bash
+scripts/profile_server_dataset.sh tests/data/english.json models/your-model 20
+```
+
 ### Schema Migration Utility
 
 Use `migrate_chat_schema.py` to convert chat logs to the latest schema:
 
 ```bash
-python scripts/migrate_chat_schema.py logs/profiling-chat.json --in-place
+scripts/migrate_chat_schema.py logs/profiling-chat.json --in-place
 ```
 
 ### Output Files
@@ -81,18 +112,18 @@ Use `profile_startup.py` to identify performance bottlenecks during model loadin
 
 ```bash
 # Profile TokenGenerator initialization (model loading)
-python scripts/profile_startup.py \
+scripts/profile_startup.py \
   --model models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx \
   --prompt-config configs/Mia.json
 
 # Generate both text and graphviz visualization
-python scripts/profile_startup.py \
+scripts/profile_startup.py \
   --model <model_path> \
   --output profile.stats \
   --graph profile.svg
 
 # Text-only report (faster)
-python scripts/profile_startup.py \
+scripts/profile_startup.py \
   --model <model_path> \
   --text-only
 ```
@@ -127,7 +158,7 @@ pip install gprof2dot
 brew install graphviz  # macOS
 
 # Generate SVG
-python scripts/profile_startup.py --model <model_path> --graph stats/profile.svg
+scripts/profile_startup.py --model <model_path> --graph stats/profile.svg
 
 # View on macOS
 open stats/profile.svg
@@ -205,13 +236,84 @@ BENCH_TTY=1 bash scripts/bench_run.sh
 BENCH_TEE=1 bash scripts/bench_run.sh
 ```
 
+You can also add the API server dataset run to the benchmark run:
+
+```bash
+RUN_SERVER=1 bash scripts/bench_run.sh
+```
+
+To profile during the server dataset run (server-side profiling is enabled by default in the bench harness):
+
+```bash
+RUN_SERVER=1 INTEGRATION_PROFILE=1 bash scripts/bench_run.sh
+```
+
+---
+
+## API Server Dataset Profile
+
+Use [profile_server_dataset.sh](./profile_server_dataset.sh) to spin up the API server, verify the health endpoint,
+and send prompts from [tests/data/english.json](../tests/data/english.json) through `/v1/chat/completions`.
+
+```bash
+scripts/profile_server_dataset.sh tests/data/english.json models/your-model 3
+```
+
+Optional overrides (apply to server dataset runs, including the bench harness):
+
+- `INTEGRATION_TURNS`: Number of prompts to send (default: `3`).
+- `INTEGRATION_PROMPTS_FILE`: JSON prompt file (default: `tests/data/english.json`).
+- `INTEGRATION_REPORT_FILE`: JSON report path (default: `runs/<run-id>/meta/server/server-dataset-report.json`).
+- `INTEGRATION_PROFILE`: Set to `1` to capture profile stats/graph for the dataset run.
+- `INTEGRATION_RUN_ID`: Override the run id (default: timestamped `integration-YYYYmmdd-HHMMSS`).
+- `INTEGRATION_RUN_ROOT`: Override the run root directory (default: `runs`).
+- `INTEGRATION_SERVER_PROFILE`: Set to `1` to capture server-side cProfile outputs under `metrics/server/`.
+- `INTEGRATION_REQUEST_TIMEOUT`: Per-request timeout in seconds (default: `300`).
+- `INTEGRATION_HEALTH_RETRIES`: Number of health checks before failing (default: `100`).
+
+Server integration runs also capture timing/vm_stat outputs in the same directory:
+
+- `timings-debug.tsv`
+- `vm_stat-timing.tsv`
+- `merged-timings-vm_stat.tsv`
+- `tps_vs_wired.png` (under `plots/server/`)
+
+Server request/response payloads are logged to:
+
+- `logs/server/server-requests.log`
+
+### Metrics Layout
+
+`bench_run.sh` separates CLI and server metrics under the run directory:
+
+- `runs/<run-id>/metrics/cli/`: CLI benchmark metrics (timings, vm_stat, merged TSVs, profiles).
+- `runs/<run-id>/metrics/server/`: Server-side metrics (integration profiles).
+
+### Logs and Meta Layout
+
+Each run also keeps logs and metadata separated by workflow:
+
+- `runs/<run-id>/logs/cli/`: CLI logs and debug artifacts.
+- `runs/<run-id>/logs/server/`: Server logs.
+- `runs/<run-id>/meta/cli/`: CLI metadata (`run.env`, prompt config copy, vm_stat stderr).
+- `runs/<run-id>/meta/server/`: Server metadata (`run.env`, integration report, vm_stat stderr).
+
+The integration and benchmark scripts call [clean_run_artifacts.sh](./clean_run_artifacts.sh) to clear
+debug/log artifacts that can skew results.
+
+Shared helpers used by the CLI and server dataset runs live in
+[dataset_run_common.sh](./dataset_run_common.sh).
+
+Both CLI and server runs now go through the unified runner:
+[run_dataset_harness.sh](./run_dataset_harness.sh).
+
 ### Plot TPS vs Wired Memory
 
 Use [TPSvsWiredMemory.py](./TPSvsWiredMemory.py) to plot metrics from a merged TSV. By default it plots
 `tokens_per_second` on the left axis and `wired_bytes` on the right axis (converted to GB).
 
 ```bash
-python scripts/TPSvsWiredMemory.py stats/merged-timings-vm_stat.tsv \
+scripts/TPSvsWiredMemory.py stats/merged-timings-vm_stat.tsv \
   --out stats/tps_vs_wired.png
 ```
 
@@ -219,7 +321,7 @@ To plot additional columns (example: `elapsed_seconds`, `tokens_per_second`,
 `generated_tokens`, `prompt_tokens`) with wired memory on the right axis:
 
 ```bash
-python scripts/TPSvsWiredMemory.py stats/merged-timings-vm_stat.tsv \
+scripts/TPSvsWiredMemory.py stats/merged-timings-vm_stat.tsv \
   --x-col elapsed_seconds \
   --left-cols tokens_per_second,generated_tokens,prompt_tokens \
   --right-cols wired_bytes \

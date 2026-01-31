@@ -88,6 +88,8 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 ## Documentation Notes
 
 - [NOTES.md](./NOTES.md): Working notes for documentation topics to be consolidated into guides.
+- [NEXT_SPRINT_CHECKLIST.md](./NEXT_SPRINT_CHECKLIST.md): Cross-area checklist for upcoming sprint work.
+- [SERVER_GUIDE.md](./SERVER_GUIDE.md): Server startup and API overview.
 
 ## Scripts
 
@@ -96,7 +98,12 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [merge_timing_metrics.py](../scripts/merge_timing_metrics.py): Merge timing and vm_stat TSVs.
 - [profile_chat.py](../scripts/profile_chat.py): Profile interactive chat session.
 - [profile_chat_dataset.sh](../scripts/profile_chat_dataset.sh): Profile dataset-driven chat runs.
+- [profile_server_dataset.sh](../scripts/profile_server_dataset.sh): Profile dataset-driven server runs.
 - [profile_startup.py](../scripts/profile_startup.py): Profile startup/model load.
+- [clean_run_artifacts.sh](../scripts/clean_run_artifacts.sh): Cleanup shared log artifacts before scripted runs.
+- [dataset_run_common.sh](../scripts/dataset_run_common.sh): Shared helpers for dataset runs (metrics, vm_stat, plots).
+- [run_dataset_harness.sh](../scripts/run_dataset_harness.sh): Unified dataset runner for CLI/server workflows.
+- [profile_server_dataset.sh](../scripts/profile_server_dataset.sh): Start the API server and run the dataset prompt profile.
 - [TPSvsWiredMemory.py](../scripts/TPSvsWiredMemory.py): Plot tokens-per-second versus wired memory from merged TSV.
 
 [Back to README](../README.md)

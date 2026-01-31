@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import itertools
 from typing import Iterable
 
 import matplotlib.pyplot as plt
@@ -65,16 +66,30 @@ def main() -> None:
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
+    left_colors = itertools.cycle(["tab:blue", "tab:cyan", "tab:green"])
     for col in left_cols:
         series = df.dropna(subset=[col])
-        ax1.plot(series[x_col], series[col], linewidth=1.5, label=col)
+        ax1.plot(
+            series[x_col],
+            series[col],
+            linewidth=1.5,
+            label=col,
+            color=next(left_colors),
+        )
     ax1.set_ylabel(", ".join(left_cols))
     ax1.set_xlabel(x_col)
 
     ax2 = ax1.twinx()
+    right_colors = itertools.cycle(["tab:orange", "tab:red", "tab:purple"])
     for col in right_cols:
         series = df.dropna(subset=[col])
-        ax2.plot(series[x_col], series[col], linewidth=1.5, label=col)
+        ax2.plot(
+            series[x_col],
+            series[col],
+            linewidth=1.5,
+            label=col,
+            color=next(right_colors),
+        )
     ax2.set_ylabel(", ".join(right_cols))
 
     # Optional: nicer tick labels for wired axis (2 decimals)

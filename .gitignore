@@ -613,3 +613,4 @@ docs/archive*
 docs/dependency-updates*
 !src/mlx_harmony/models
 AGENTS.md
+runs/*

@@ -1,7 +1,7 @@
 # TODO Checklist
 
 **Created**: 2026-01-09
-**Updated**: 2026-01-28
+**Updated**: 2026-01-30
 
 Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
 
@@ -14,6 +14,12 @@ Quick reference checklist for **active short-term work items**. For longer-term 
 - [ ] Baseline performance notes for CLI/server output paths
 - [ ] Document any breaking changes or compatibility assumptions
 - [ ] Investigate response richness regression (markdown/plaintext output and response length)
+
+### Sprint Focus (Short List)
+
+- [ ] Run KV windowing acceptance checks across multiple `max_kv_size` configs (TPS + wired stability)
+- [ ] Confirm prompt token cap stays below `max_context_tokens` with margin in long runs
+- [ ] Update documentation scaffolding (User Guide + Developer Guide stubs) and link to [NOTES.md](./NOTES.md)
 
 ---
 
@@ -47,6 +53,28 @@ _These are items actively planned for upcoming releases. For comprehensive long-
 - [x] Added error handling for invalid \ commands
 - [x] Removed prewarm_cache feature
 - [ ] Add readline-based CLI input editing (vi/emacs modes) for manual prompt entry
+
+### API Compatibility (OpenAI Parity)
+
+- [ ] Align OpenAI-style API surface area (dummy endpoints first, wire up iteratively)
+- [ ] Implement placeholder endpoints for missing OpenAI routes (return `501` with clear error):
+  - [ ] `/v1/completions`
+  - [ ] `/v1/embeddings`
+  - [ ] `/v1/audio/*` (transcriptions, translations, speech)
+  - [ ] `/v1/images/*` (generations, edits, variations)
+  - [ ] `/v1/moderations`
+  - [ ] `/v1/files` + `/v1/batches`
+  - [ ] `/v1/responses`
+- [ ] Expand `/v1/chat/completions` parameter coverage:
+  - [ ] `stop` (string or list)
+  - [ ] `n`
+  - [ ] `presence_penalty` / `frequency_penalty`
+  - [ ] `logprobs`
+  - [ ] `response_format` (json_schema stub)
+  - [ ] `tool_choice` / `tools` (schema stub)
+  - [ ] `seed` and `system_fingerprint`
+- [ ] Standardize error shapes + HTTP status codes to match OpenAI API responses
+- [ ] Align streaming chunk format (`chat.completion.chunk`) fields with OpenAI
 
 ### Documentation
 

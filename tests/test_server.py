@@ -278,6 +278,15 @@ class TestServerErrors:
         # FastAPI should validate and return 422 for missing required field
         assert response.status_code in [400, 422]
 
+
+class TestServerHealth:
+    """Test the health endpoint."""
+
+    def test_health_endpoint(self, client: TestClient):
+        response = client.get("/v1/health")
+        assert response.status_code == 200
+        assert response.json() == {"object": "health", "status": "ok"}
+
     def test_chat_completions_missing_messages(self, client: TestClient):
         """Test chat completions with missing messages."""
         request_data = {
