@@ -1,10 +1,11 @@
 # Profiling Scripts
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-28
+**Updated**: 2026-02-02
 
 - [Profiling Scripts](#profiling-scripts)
   - [Profile Running Chat (Real-World Usage) ⭐ Recommended](#profile-running-chat-real-world-usage--recommended)
+  - [Script Call Tree](#script-call-tree)
     - [Quick Start](#quick-start)
     - [Deterministic Dataset Runs (No Typing)](#deterministic-dataset-runs-no-typing)
     - [Server Dataset Runs](#server-dataset-runs)
@@ -24,6 +25,7 @@
     - [Logs and Meta Layout](#logs-and-meta-layout)
     - [Plot TPS vs Wired Memory](#plot-tps-vs-wired-memory)
   - [Utility Scripts](#utility-scripts)
+    - [Module Dependency Graph](#module-dependency-graph)
 
 ## Profile Running Chat (Real-World Usage) ⭐ Recommended
 
@@ -36,6 +38,30 @@ Use `profile_chat.py` to profile the actual `mlx-harmony-chat` command as it run
 - User input handling
 
 This is more useful than `profile_startup.py` because it shows performance during actual usage.
+
+## Script Call Tree
+
+Call tree (bulleted hierarchy with links):
+
+- [Benchmark Harness](#benchmark-harness) → [bench_run.sh](./bench_run.sh)
+  - [Dataset Harness](#api-server-dataset-profile) → [run_dataset_harness.sh](./run_dataset_harness.sh)
+    - Cleanup → [clean_run_artifacts.sh](./clean_run_artifacts.sh)
+    - vm_stat → [filter-vm_stat.py](./filter-vm_stat.py)
+    - Dataset/Profile
+      - CLI → [profile_chat_dataset.sh](./profile_chat_dataset.sh) → [profile_chat.py](./profile_chat.py)
+      - Server → [profile_client.py](./profile_client.py) → API server
+    - Reports/Plots
+      - [process_profile_artifacts.py](./process_profile_artifacts.py)
+      - [generate_reports.py](./generate_reports.py)
+      - [merge_timing_metrics.py](./merge_timing_metrics.py)
+      - [TPSvsWiredMemory.py](./TPSvsWiredMemory.py)
+    - Finalize → runs/<run-id>/...
+    - Repeat if mode=all
+
+Notes:
+
+- `bench_run.sh` is the top-level entry for full benchmark runs.
+- `run_dataset_harness.sh` runs one component at a time (CLI or server), completing the full artifact cycle before the next run.
 
 ### Quick Start
 
@@ -52,6 +78,14 @@ scripts/profile_chat.py \
   --max-tokens 100 \
   --profile-output chat_profile.stats \
   --graph chat_profile.svg
+
+# Include more nodes/edges in the call graph (lower thresholds)
+scripts/profile_chat.py \
+  --model models/my-model \
+  --prompt-config configs/Mia.json \
+  --graph chat_profile.svg \
+  --node-thres 0.001 \
+  --edge-thres 0.001
 
 # Text-only report (faster, no graphviz needed)
 scripts/profile_chat.py \
@@ -248,6 +282,22 @@ To profile during the server dataset run (server-side profiling is enabled by de
 RUN_SERVER=1 INTEGRATION_PROFILE=1 bash scripts/bench_run.sh
 ```
 
+To include more functions in the call tree, lower the gprof2dot thresholds for the harness run:
+
+```bash
+PROFILE_NODE_THRES=0.0001 PROFILE_EDGE_THRES=0.0001 bash scripts/bench_run.sh
+```
+
+To include more functions in Graphviz output, pass thresholds through the report generator:
+
+```bash
+scripts/generate_reports.py \
+  --profile-output runs/<run-id>/metrics/cli/profile.stats \
+  --graph runs/<run-id>/metrics/cli/profile.svg \
+  --node-thres 0.001 \
+  --edge-thres 0.001
+```
+
 ---
 
 ## API Server Dataset Profile
@@ -281,6 +331,26 @@ Server integration runs also capture timing/vm_stat outputs in the same director
 Server request/response payloads are logged to:
 
 - `logs/server/server-requests.log`
+
+To profile the STDIO client against the API server (for CLI parity), run:
+
+```bash
+scripts/profile_client.py \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --model models/your-model
+```
+
+To capture a client-side profile:
+
+```bash
+scripts/profile_client.py \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --model models/your-model \
+  --profile-output runs/<run-id>/metrics/client/profile.stats \
+  --graph runs/<run-id>/metrics/client/profile.svg
+```
 
 ### Metrics Layout
 
@@ -336,6 +406,31 @@ This script expects:
 ---
 
 ## Utility Scripts
+
+### Module Dependency Graph
+
+Generate a module dependency graph to compare CLI versus server code paths.
+
+```bash
+# Full graph (Graphviz DOT)
+scripts/module_dep_graph.py --output stats/module-deps.dot
+
+# CLI-only subgraph
+scripts/module_dep_graph.py --entry src/mlx_harmony/chat.py --output stats/cli-deps.dot
+
+# Server-only subgraph
+scripts/module_dep_graph.py --entry src/mlx_harmony/server.py --output stats/server-deps.dot
+
+# TSV format for analysis
+scripts/module_dep_graph.py --format tsv --output stats/module-deps.tsv
+```
+
+If Graphviz is installed, render the DOT output:
+
+```bash
+dot -Tsvg stats/cli-deps.dot -o stats/cli-deps.svg
+dot -Tsvg stats/server-deps.dot -o stats/server-deps.svg
+```
 
 - [filter-vm_stat.py](./filter-vm_stat.py): Convert `vm_stat` output to JSON or TSV (with optional byte conversion).
 - [merge_timing_metrics.py](./merge_timing_metrics.py): Merge `timings-debug.csv` with `vm_stat` TSV output.

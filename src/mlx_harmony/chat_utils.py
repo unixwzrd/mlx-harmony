@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from mlx_harmony.chat_commands import (
+    build_help_text,
+    normalize_set_command,
+    parse_command,
+    parse_hyperparameter_update,
+    render_hyperparameters,
+    render_models_list,
+)
+from mlx_harmony.config import DEFAULT_CONFIG_DIR, load_profiles, resolve_config_path
 from mlx_harmony.hyperparameters import resolve_param
 from mlx_harmony.logging import get_logger
 
@@ -45,126 +55,6 @@ def truncate_text(text: str, limit: int) -> str:
     return text
 
 
-def build_help_text() -> str:
-    """Return CLI help text for out-of-band chat commands."""
-    return (
-        "\n[INFO] Out-of-band commands:\n"
-        "  q, Control-D           - Quit the chat\n"
-        "  \\help, /help          - Show this help message\n"
-        "  \\list, /list          - List current hyperparameters\n"
-        "  \\show, /show          - List current hyperparameters (alias for \\list)\n"
-        "  \\set <param>=<value>  - Set a hyperparameter\n"
-        "                          Example: \\set temperature=0.7\n"
-        "                          Valid parameters: temperature, top_p, min_p, top_k,\n"
-        "                          max_tokens, min_tokens_to_keep, repetition_penalty,\n"
-        "                          repetition_context_size, xtc_probability, xtc_threshold, seed\n"
-    )
-
-
-def render_hyperparameters(hyperparameters: dict[str, float | int | bool | str]) -> str:
-    """Render hyperparameters to a user-facing string."""
-    if not hyperparameters:
-        return "\n[INFO] Current hyperparameters:\n  (using defaults)\n"
-    lines = ["\n[INFO] Current hyperparameters:"]
-    for param, value in sorted(hyperparameters.items()):
-        lines.append(f"  {param} = {value}")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def normalize_set_command(input_str: str) -> str:
-    """Normalize a \\set command by removing leading slashes and keyword."""
-    stripped = input_str.strip().lstrip("\\/")
-    return stripped.removeprefix("set ").strip()
-
-
-def parse_hyperparameter_update(
-    param_name: str,
-    param_value: str,
-) -> tuple[bool, str, dict[str, float | int]]:
-    """Parse a hyperparameter update into (ok, message, updates)."""
-    try:
-        parsed_value = float(param_value)
-    except ValueError:
-        return (
-            False,
-            f"[ERROR] Invalid value '{param_value}' for parameter '{param_name}'. Must be a number.",
-            {},
-        )
-
-    float_params = [
-        "temperature",
-        "top_p",
-        "min_p",
-        "repetition_penalty",
-        "xtc_probability",
-        "xtc_threshold",
-    ]
-    int_params = [
-        "max_tokens",
-        "top_k",
-        "min_tokens_to_keep",
-        "repetition_context_size",
-        "seed",
-    ]
-
-    if param_name in float_params:
-        return True, f"[INFO] Set {param_name} = {parsed_value}", {param_name: parsed_value}
-    if param_name in int_params:
-        return True, f"[INFO] Set {param_name} = {int(parsed_value)}", {param_name: int(parsed_value)}
-
-    valid_params = ", ".join(float_params + int_params)
-    return (
-        False,
-        f"[ERROR] Unknown parameter '{param_name}'. Valid parameters: {valid_params}",
-        {},
-    )
-
-
-def parse_command(
-    user_input: str,
-    hyperparameters: dict[str, float | int | bool | str],
-) -> tuple[bool, bool, str, dict[str, float | int | bool | str]]:
-    """Parse chat commands and return (handled, should_apply, message, updates)."""
-    user_input_stripped = user_input.strip()
-    user_input_lower = user_input_stripped.lower()
-
-    if user_input_lower in ("\\help", "/help"):
-        return True, False, build_help_text(), {}
-
-    if user_input_lower in ("\\list", "/list", "\\show", "/show"):
-        return True, False, render_hyperparameters(hyperparameters), {}
-
-    if user_input_stripped.startswith("\\set ") or user_input_stripped.startswith("/set "):
-        set_cmd = normalize_set_command(user_input)
-        if "=" in set_cmd:
-            param_name, param_value = set_cmd.split("=", 1)
-            param_name = param_name.strip().lower()
-            param_value = param_value.strip()
-            ok, message, updates = parse_hyperparameter_update(param_name, param_value)
-            return True, ok, message, updates
-
-        valid_params = (
-            "temperature, top_p, min_p, top_k, max_tokens, "
-            "min_tokens_to_keep, repetition_penalty, "
-            "repetition_context_size, xtc_probability, xtc_threshold, seed"
-        )
-        return (
-            True,
-            False,
-            "\n[ERROR] Invalid \\set command format.\n"
-            "[INFO] Usage: \\set <param>=<value>\n"
-            "[INFO] Example: \\set temperature=0.7\n"
-            f"[INFO] Valid parameters: {valid_params}\n",
-            {},
-        )
-
-    if user_input_stripped.startswith("\\") or user_input_stripped.startswith("/"):
-        return True, False, f"\n[ERROR] Unknown out-of-band command.{build_help_text()}", {}
-
-    return False, False, "", {}
-
-
 def resolve_profile_and_prompt_config(
     args: Any,
     load_profiles: Callable[[str], dict[str, dict[str, Any]]],
@@ -174,11 +64,15 @@ def resolve_profile_and_prompt_config(
     profile_model = None
     profile_prompt_cfg = None
     profile_data: dict[str, Any] | None = None
+    config_dir = os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR)
     if args.profile:
-        profiles = load_profiles(args.profiles_file)
+        profiles_file_path = resolve_config_path(args.profiles_file, config_dir)
+        if profiles_file_path is None or not profiles_file_path.exists():
+            raise SystemExit(f"Profiles file not found: {args.profiles_file}")
+        profiles = load_profiles(profiles_file_path)
         if args.profile not in profiles:
             raise SystemExit(
-                f"Profile '{args.profile}' not found in {args.profiles_file}"
+                f"Profile '{args.profile}' not found in {profiles_file_path}"
             )
         profile_data = profiles[args.profile]
         profile_model = profile_data.get("model")
@@ -189,11 +83,12 @@ def resolve_profile_and_prompt_config(
         raise SystemExit("Model must be provided via --model or --profile")
 
     prompt_config_path = args.prompt_config or profile_prompt_cfg
-    prompt_config = load_prompt_config(prompt_config_path) if prompt_config_path else None
-    if prompt_config_path and prompt_config is None:
+    resolved_prompt_path = resolve_config_path(prompt_config_path, config_dir)
+    prompt_config = load_prompt_config(resolved_prompt_path) if resolved_prompt_path else None
+    if prompt_config_path and (resolved_prompt_path is None or prompt_config is None):
         raise SystemExit(f"Prompt config not found: {prompt_config_path}")
 
-    return model_path, prompt_config_path, prompt_config, profile_data
+    return model_path, str(resolved_prompt_path) if resolved_prompt_path else None, prompt_config, profile_data
 
 
 def resolve_max_context_tokens(

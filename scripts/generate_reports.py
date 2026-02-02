@@ -37,7 +37,12 @@ def generate_text_report(stats_file: str, output_file: str = None):
     stats.print_stats(20)
 
 
-def generate_graphviz_report(stats_file: str, output_file: str = None):
+def generate_graphviz_report(
+    stats_file: str,
+    output_file: str = None,
+    node_thres: float | None = None,
+    edge_thres: float | None = None,
+):
     """Generate a Graphviz SVG from profile stats."""
     if output_file is None:
         output_file = stats_file.replace(".stats", ".svg")
@@ -47,8 +52,13 @@ def generate_graphviz_report(stats_file: str, output_file: str = None):
     try:
         # Step 1: Generate DOT file from stats using gprof2dot
         dot_output = str(out_path.with_suffix(".dot"))
+        gprof_cmd = ["gprof2dot", "-f", "pstats", stats_file, "-o", dot_output]
+        if node_thres is not None:
+            gprof_cmd.extend(["--node-thres", str(node_thres)])
+        if edge_thres is not None:
+            gprof_cmd.extend(["--edge-thres", str(edge_thres)])
         subprocess.run(
-            ["gprof2dot", "-f", "pstats", stats_file, "-o", dot_output],
+            gprof_cmd,
             capture_output=True,
             text=True,
             check=True,
@@ -99,6 +109,18 @@ def main():
         help="Output file for SVG visualization (default: <stats_file>.svg)",
     )
     parser.add_argument(
+        "--node-thres",
+        type=float,
+        default=None,
+        help="gprof2dot node threshold (percentage, e.g. 0.1).",
+    )
+    parser.add_argument(
+        "--edge-thres",
+        type=float,
+        default=None,
+        help="gprof2dot edge threshold (percentage, e.g. 0.1).",
+    )
+    parser.add_argument(
         "--text-only",
         action="store_true",
         help="Only generate text report, skip graphviz",
@@ -118,7 +140,12 @@ def main():
 
     # Generate graphviz visualization
     if not args.text_only:
-        generate_graphviz_report(args.stats_file, args.graph_output)
+        generate_graphviz_report(
+            args.stats_file,
+            args.graph_output,
+            node_thres=args.node_thres,
+            edge_thres=args.edge_thres,
+        )
 
     print("\n[REPORT] Done!")
 

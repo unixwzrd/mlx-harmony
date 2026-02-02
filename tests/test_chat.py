@@ -11,7 +11,6 @@ from mlx_harmony.chat import load_conversation, save_conversation
 from mlx_harmony.chat_history import normalize_dir_path
 from mlx_harmony.chat_io import read_user_input
 from mlx_harmony.chat_prompt import truncate_conversation_for_context
-from mlx_harmony.chat_utils import parse_command
 from mlx_harmony.prompt_cache import PromptTokenCache
 
 
@@ -111,15 +110,6 @@ class TestChatHelpers:
         """Normalize logs path to avoid nested logs/log."""
         assert str(normalize_dir_path("logs/log")) == "logs"
         assert str(normalize_dir_path("logs/logs")) == "logs"
-
-    def test_parse_command_set(self):
-        """Ensure parse_command handles \\set updates."""
-        handled, should_apply, _, updates = parse_command(
-            "\\set temperature=0.7", {}
-        )
-        assert handled is True
-        assert should_apply is True
-        assert updates["temperature"] == 0.7
 
     def test_read_user_input_continuation(self, monkeypatch):
         """Allow multi-line input using a trailing backslash."""

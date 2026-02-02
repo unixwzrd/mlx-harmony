@@ -384,6 +384,8 @@ def profile_chat_command(
     text_only: bool = False,
     static_metrics: bool = True,
     top_n: int = 50,
+    node_thres: float | None = None,
+    edge_thres: float | None = None,
 ) -> int:
     print("[PROFILE] Starting profiling of mlx-harmony-chat...")
     print(f"[PROFILE] Model: {model_path}")
@@ -447,8 +449,13 @@ def profile_chat_command(
             graph_path = _normalize_stats_path(graph_output)
             dot_path = graph_path.with_suffix(".dot")
 
+            gprof_cmd = ["gprof2dot", "-f", "pstats", str(profile_path), "-o", str(dot_path)]
+            if node_thres is not None:
+                gprof_cmd.extend(["--node-thres", str(node_thres)])
+            if edge_thres is not None:
+                gprof_cmd.extend(["--edge-thres", str(edge_thres)])
             sp.run(
-                ["gprof2dot", "-f", "pstats", str(profile_path), "-o", str(dot_path)],
+                gprof_cmd,
                 capture_output=True,
                 text=True,
                 check=True,
@@ -490,6 +497,18 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--text-only", action="store_true", help="Only generate text report, skip graphviz")
     parser.add_argument("--no-static", action="store_true", help="Skip AST static metrics (complexity + fan-in/out)")
     parser.add_argument("--top", type=int, default=50, help="Top N functions for the pstats text report (default: 50)")
+    parser.add_argument(
+        "--node-thres",
+        type=float,
+        default=None,
+        help="gprof2dot node threshold (percentage, e.g. 0.1).",
+    )
+    parser.add_argument(
+        "--edge-thres",
+        type=float,
+        default=None,
+        help="gprof2dot edge threshold (percentage, e.g. 0.1).",
+    )
 
     args, passthrough_args = parser.parse_known_args(argv[1:])
     passthrough_args = [a for a in passthrough_args if a != "--"]
@@ -502,6 +521,8 @@ def main(argv: List[str]) -> int:
         text_only=args.text_only,
         static_metrics=not args.no_static,
         top_n=args.top,
+        node_thres=args.node_thres,
+        edge_thres=args.edge_thres,
     )
 
 

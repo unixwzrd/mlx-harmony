@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ logger = get_logger(__name__)
 DEFAULT_DETERMINISTIC_TIME_ISO = "2000-01-01T00:00:00Z"
 DEFAULT_DETERMINISTIC_SEED = 0
 DEFAULT_DETERMINISTIC_RESEED_EACH_TURN = False
+DEFAULT_CONFIG_DIR = "configs"
 
 
 class PromptConfig(BaseModel):
@@ -169,6 +171,7 @@ class PromptConfig(BaseModel):
     # Directory configuration
     logs_dir: Optional[str] = None  # Directory for debug logs (default: "logs")
     chats_dir: Optional[str] = None  # Directory for chat history files (default: "logs")
+    models_dir: Optional[str] = None  # Default directory for model storage (default: "models")
 
 
 _ANGLE_PREFIX = "<|"
@@ -242,6 +245,21 @@ def _maybe_render(value: Optional[str], placeholders: Dict[str, str]) -> Optiona
     return _render_placeholders(value, placeholders)
 
 
+def resolve_config_path(path: str | Path | None, config_dir: str | Path | None = None) -> Path | None:
+    if path is None:
+        return None
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    if candidate.exists():
+        return candidate
+    base_dir = Path(config_dir or os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR))
+    fallback = base_dir / candidate
+    if fallback.exists():
+        return fallback
+    return candidate
+
+
 def apply_placeholders(value: Optional[str], placeholders: Dict[str, str]) -> Optional[str]:
     """Public helper to apply dynamic tokens and user placeholders."""
     return _maybe_render(value, placeholders)
@@ -298,7 +316,8 @@ def load_prompt_config(path: str | Path) -> Optional[PromptConfig]:
       "truncate_thinking": 1000,
       "truncate_response": 1000,
       "logs_dir": "logs",
-      "chats_dir": "logs"
+      "chats_dir": "logs",
+      "models_dir": "models"
     }
 
     Built-in placeholders:

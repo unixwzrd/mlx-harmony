@@ -1,7 +1,7 @@
 # Source File Map
 
 **Created**: 2026-01-21
-**Updated**: 2026-01-28
+**Updated**: 2026-02-02
 
 This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmony) and describes their current roles.
 
@@ -15,6 +15,9 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 ## Chat Core (Root Modules)
 
 - [chat_bootstrap.py](../src/mlx_harmony/chat_bootstrap.py): Chat startup/bootstrap wiring.
+- [chat_frontend.py](../src/mlx_harmony/chat_frontend.py): Shared CLI front-end loop (input, commands, rendering).
+- [chat_backend.py](../src/mlx_harmony/chat_backend.py): Front-end backend adapters (local vs HTTP).
+- [chat_commands.py](../src/mlx_harmony/chat_commands.py): Out-of-band command parsing and help/models rendering.
 - [chat_controller.py](../src/mlx_harmony/chat_controller.py): Facade re-export for chat turn + retry/adapter helpers.
 - [chat_cli.py](../src/mlx_harmony/chat_cli.py): CLI argument parsing for chat.
 - [chat_generation.py](../src/mlx_harmony/chat_generation.py): Streaming generation orchestration (no per-token Harmony parsing).
@@ -30,6 +33,7 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [chat_retry.py](../src/mlx_harmony/chat_retry.py): Retry policy + recovery prompt handling.
 - [chat_turn.py](../src/mlx_harmony/chat_turn.py): Turn orchestration (prompt → generate → parse → retry).
 - [chat_types.py](../src/mlx_harmony/chat_types.py): Shared chat dataclasses for controller stack.
+- [chat_driver.py](../src/mlx_harmony/chat_driver.py): Shared front-end loop for CLI/server clients (command handling + rendering).
 
 ## Generation
 
@@ -43,6 +47,7 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [generation/backends/__init__.py](../src/mlx_harmony/generation/backends/__init__.py): Backend exports.
 - [generation/backends/gpt_oss_backend.py](../src/mlx_harmony/generation/backends/gpt_oss_backend.py): GPT‑OSS prompt backend.
 - [generation/backends/native_backend.py](../src/mlx_harmony/generation/backends/native_backend.py): Native prompt backend.
+- [generation/client.py](../src/mlx_harmony/generation/client.py): GenerationClient interface + Local/Server adapters.
 
 ## Prompt Rendering
 
@@ -83,6 +88,7 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 ## Utilities
 
 - [logging.py](../src/mlx_harmony/logging.py): Logging helpers.
+- [api_client.py](../src/mlx_harmony/api_client.py): HTTP client for `/v1/chat/completions` + request logging.
 - [__init__.py](../src/mlx_harmony/__init__.py): Package exports.
 
 ## Documentation Notes
@@ -103,7 +109,14 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [clean_run_artifacts.sh](../scripts/clean_run_artifacts.sh): Cleanup shared log artifacts before scripted runs.
 - [dataset_run_common.sh](../scripts/dataset_run_common.sh): Shared helpers for dataset runs (metrics, vm_stat, plots).
 - [run_dataset_harness.sh](../scripts/run_dataset_harness.sh): Unified dataset runner for CLI/server workflows.
-- [profile_server_dataset.sh](../scripts/profile_server_dataset.sh): Start the API server and run the dataset prompt profile.
+- [profile_client.py](../scripts/profile_client.py): STDIO client that drives the API server.
+- [module_dep_graph.py](../scripts/module_dep_graph.py): Generate module dependency graphs (DOT/TSV).
 - [TPSvsWiredMemory.py](../scripts/TPSvsWiredMemory.py): Plot tokens-per-second versus wired memory from merged TSV.
+
+## Consolidation Notes
+
+- [chat.py](../src/mlx_harmony/chat.py) and [chat_driver.py](../src/mlx_harmony/chat_driver.py) overlap in front-end loop responsibilities.
+- [api_client.py](../src/mlx_harmony/api_client.py) and [generation/client.py](../src/mlx_harmony/generation/client.py) overlap in HTTP adapter responsibilities.
+- [server.py](../src/mlx_harmony/server.py) uses a simplified generation path compared to the CLI stack; keep converging to shared adapters.
 
 [Back to README](../README.md)

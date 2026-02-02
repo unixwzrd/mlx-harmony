@@ -1,12 +1,44 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-01-27
+**Updated**: 2026-02-02
 
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 2026-02-02 - Unreleased
+
+### Changed
+
+- Begin server/CLI convergence work to reuse shared prompt/retry/inference modules.
+
+## 2026-02-01 - Unreleased
+
+### Changed
+
+- Server and CLI dataset harness now share a unified workflow for artifacts, plots, and metrics.
+- Server debug logging now mirrors CLI (raw prompt/response blocks + timing stats).
+- Server/client benchmark logs now capture STDIO client runs alongside server runs.
+- Server config resolution now mirrors CLI behavior for prompt-config/profile paths.
+- API server can now preload the model at startup via `--preload` / `MLX_HARMONY_PRELOAD`.
+- API server now parses Harmony outputs and returns the final channel content (analysis stripped), matching CLI behavior.
+- API server can optionally include Harmony analysis in responses for CLI-parity clients (`return_analysis`).
+- CLI front-end loop extracted into a shared module to support client/server consolidation.
+- Added front-end backend adapters to swap local pipeline vs HTTP server calls.
+- Server STDIO client now runs through the shared front-end loop.
+- CLI now runs through the shared front-end loop with the local backend adapter.
+- Out-of-band command processing moved into a dedicated `chat_commands` module for reuse and unit testing.
+- `/v1/models` now lists local model directories with profiles fallback.
+- Added prompt-config `models_dir` default for consistent model discovery.
+- Added server request logging and health checks for the STDIO client.
+- Introduced a shared server client module to support reusable HTTP generation logic.
+- Server STDIO client now uses the shared driver and GenerationClient interface for consistent command handling.
+- Shared chat front-end now uses one common per-input processing path for interactive and scripted prompts.
+- `/v1/health` now reports server model-load metadata (`model_loaded`, `model_path`, `prompt_config_path`, `loaded_at_unix`).
+- Server non-stream chat completions now run through `run_chat_turn` for prompt/parse/retry parity with CLI.
+- Renamed the HTTP client module to `api_client` and the profiling harness to `profile_client.py`.
 
 ## 2026-01-28 - Unreleased
 

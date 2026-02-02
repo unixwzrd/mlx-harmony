@@ -3,13 +3,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
-import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from time import sleep
+from types import SimpleNamespace
 from typing import Iterator, Optional
+
+from mlx_harmony.api_client import ApiClient, ApiClientConfig
+from mlx_harmony.chat_backend import ServerBackend
+from mlx_harmony.chat_frontend import run_cli_frontend, run_prompt_frontend
+from mlx_harmony.chat_utils import get_assistant_name, get_truncate_limits
+from mlx_harmony.config import load_prompt_config
+from mlx_harmony.generation.client import GenerationClient, ServerGenerationClient
 
 
 @dataclass
@@ -25,6 +31,11 @@ class RequestConfig:
     health_sleep: float
     report_file: Optional[Path]
     requests_log: Optional[Path]
+    profile_output: Optional[Path]
+    graph_output: Optional[Path]
+    node_thres: Optional[float]
+    edge_thres: Optional[float]
+    text_only: bool
 
 
 def iter_prompt_blocks() -> Iterator[str]:
@@ -46,40 +57,87 @@ def iter_prompt_blocks() -> Iterator[str]:
             buffer.append(line)
 
 
-def append_request_log(path: Path, prompt: str, response: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).isoformat()
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write("=" * 80 + "\n")
-        handle.write(f"[{timestamp}] Prompt\n")
-        handle.write("-" * 80 + "\n")
-        handle.write(prompt)
-        handle.write("\n" + "-" * 80 + "\n")
-        handle.write(f"[{timestamp}] Response (raw JSON)\n")
-        handle.write("-" * 80 + "\n")
-        handle.write(json.dumps(response, ensure_ascii=False, indent=2))
-        handle.write("\n")
+def build_api_client(cfg: RequestConfig) -> ApiClient:
+    client_cfg = ApiClientConfig(
+        host=cfg.host,
+        port=cfg.port,
+        model=cfg.model,
+        profile=cfg.profile,
+        prompt_config=cfg.prompt_config,
+        max_tokens=cfg.max_tokens,
+        timeout=cfg.timeout,
+        return_analysis=True,
+        requests_log=cfg.requests_log,
+    )
+    return ApiClient(client_cfg)
+
+def build_generation_client(cfg: RequestConfig) -> GenerationClient:
+    return ServerGenerationClient(
+        host=cfg.host,
+        port=cfg.port,
+        model=cfg.model,
+        profile=cfg.profile,
+        prompt_config=cfg.prompt_config,
+        max_tokens=cfg.max_tokens,
+        timeout=cfg.timeout,
+        requests_log=None if cfg.requests_log is None else str(cfg.requests_log),
+        return_analysis=True,
+    )
 
 
-def send_prompt(cfg: RequestConfig, prompt: str) -> dict:
-    url = f"http://{cfg.host}:{cfg.port}/v1/chat/completions"
-    payload: dict = {
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": cfg.max_tokens,
-    }
-    if cfg.model:
-        payload["model"] = cfg.model
-    if cfg.profile:
-        payload["profile"] = cfg.profile
-    if cfg.prompt_config:
-        payload["prompt_config"] = cfg.prompt_config
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=cfg.timeout) as response:
-        body = json.loads(response.read().decode("utf-8"))
-    if cfg.requests_log:
-        append_request_log(cfg.requests_log, prompt, body)
-    return body
+def build_frontend_context(cfg: RequestConfig) -> SimpleNamespace:
+    prompt_config = load_prompt_config(cfg.prompt_config) if cfg.prompt_config else None
+    assistant_name = get_assistant_name(prompt_config)
+    thinking_limit, response_limit = get_truncate_limits(prompt_config)
+    return SimpleNamespace(
+        generator=None,
+        tools=[],
+        prompt_config=prompt_config,
+        profile_data=None,
+        chats_dir="logs",
+        logs_dir="logs",
+        chat_file_path=None,
+        chat_input_path=None,
+        debug_path="logs/server-debug.log",
+        assistant_name=assistant_name,
+        thinking_limit=thinking_limit,
+        response_limit=response_limit,
+        render_markdown=True,
+    )
+
+
+def build_frontend_args(cfg: RequestConfig) -> SimpleNamespace:
+    return SimpleNamespace(
+        debug=False,
+        debug_file=None,
+        debug_tokens=None,
+        no_markdown=False,
+        performance_mode=None,
+        perf_max_tokens=None,
+        perf_max_context_tokens=None,
+        perf_max_kv_size=None,
+        browser=False,
+        use_python=False,
+        apply_patch=False,
+        mlock=None,
+        lazy=None,
+        seed=None,
+        reseed_each_turn=None,
+        max_context_tokens=None,
+        max_tokens=cfg.max_tokens,
+        temperature=None,
+        top_p=None,
+        min_p=None,
+        top_k=None,
+        repetition_penalty=None,
+        repetition_context_size=None,
+        loop_detection=None,
+        profile=None,
+        profiles_file="configs/profiles.example.json",
+        prompt_config=cfg.prompt_config,
+        model=cfg.model,
+        chat=None,
+    )
 
 
 def main() -> int:
@@ -95,6 +153,11 @@ def main() -> int:
     parser.add_argument("--health-sleep", type=float, default=0.2)
     parser.add_argument("--report-file", default="")
     parser.add_argument("--requests-log", default="")
+    parser.add_argument("--profile-output", default="")
+    parser.add_argument("--graph", dest="graph_output", default="")
+    parser.add_argument("--node-thres", type=float, default=None)
+    parser.add_argument("--edge-thres", type=float, default=None)
+    parser.add_argument("--text-only", action="store_true")
     args = parser.parse_args()
 
     cfg = RequestConfig(
@@ -109,21 +172,25 @@ def main() -> int:
         health_sleep=args.health_sleep,
         report_file=Path(args.report_file) if args.report_file else None,
         requests_log=Path(args.requests_log) if args.requests_log else None,
+        profile_output=Path(args.profile_output) if args.profile_output else None,
+        graph_output=Path(args.graph_output) if args.graph_output else None,
+        node_thres=args.node_thres,
+        edge_thres=args.edge_thres,
+        text_only=args.text_only,
     )
 
+    profiler = None
+    if cfg.profile_output is not None:
+        import cProfile
+
+        cfg.profile_output.parent.mkdir(parents=True, exist_ok=True)
+        profiler = cProfile.Profile()
+        profiler.enable()
+
     results = {"status": "ok", "tests": []}
-    health_url = f"http://{cfg.host}:{cfg.port}/v1/health"
-    health_ok = False
-    for _ in range(cfg.health_retries):
-        try:
-            with urllib.request.urlopen(health_url, timeout=cfg.timeout) as response:
-                if response.status == 200:
-                    health_ok = True
-                    break
-        except Exception:
-            sleep(cfg.health_sleep)
-    if not health_ok:
-        msg = f"Server health check failed: {health_url}"
+    health_client = build_api_client(cfg)
+    if not health_client.health_check(cfg.health_retries, cfg.health_sleep):
+        msg = f"Server health check failed: http://{cfg.host}:{cfg.port}/v1/health"
         results["status"] = "fail"
         results["tests"].append({"name": "health_check", "status": "fail", "details": msg})
         if cfg.report_file:
@@ -131,28 +198,78 @@ def main() -> int:
             cfg.report_file.write_text(json.dumps(results), encoding="utf-8")
         print(msg, file=sys.stderr)
         return 1
-    idx = 0
-    for prompt in iter_prompt_blocks():
-        idx += 1
-        try:
-            body = send_prompt(cfg, prompt)
-        except Exception as exc:  # noqa: BLE001
+
+    generation_client = build_generation_client(cfg)
+    backend = ServerBackend(generation_client)
+    frontend_context = build_frontend_context(cfg)
+    frontend_args = build_frontend_args(cfg)
+
+    try:
+        if sys.stdin.isatty():
+            run_cli_frontend(
+                args=frontend_args,
+                context=frontend_context,
+                conversation=[],
+                model_path=cfg.model or cfg.profile or "server",
+                prompt_config_path=cfg.prompt_config,
+                loaded_hyperparameters={},
+                loaded_max_context_tokens=None,
+                loaded_model_path=None,
+                loaded_chat_id=None,
+                backend=backend,
+            )
+        else:
+            prompts = list(iter_prompt_blocks())
+            run_prompt_frontend(
+                prompts=prompts,
+                args=frontend_args,
+                context=frontend_context,
+                conversation=[],
+                model_path=cfg.model or cfg.profile or "server",
+                prompt_config_path=cfg.prompt_config,
+                loaded_hyperparameters={},
+                loaded_max_context_tokens=None,
+                loaded_model_path=None,
+                loaded_chat_id=None,
+                backend=backend,
+            )
+            for idx, _ in enumerate(prompts, start=1):
+                results["tests"].append(
+                    {"name": f"chat_completions_{idx}", "status": "pass"}
+                )
+    except Exception as exc:  # noqa: BLE001
+        if results["status"] != "fail":
             results["status"] = "fail"
             results["tests"].append(
-                {"name": f"chat_completions_{idx}", "status": "fail", "details": str(exc)}
+                {"name": "chat_completions", "status": "fail", "details": str(exc)}
             )
-            break
-        if "choices" not in body:
-            results["status"] = "fail"
-            results["tests"].append(
-                {"name": f"chat_completions_{idx}", "status": "fail", "details": "missing choices"}
-            )
-            break
-        results["tests"].append({"name": f"chat_completions_{idx}", "status": "pass"})
+            print(f"[ERROR] Request failed: {exc}", file=sys.stderr)
 
     if cfg.report_file:
         cfg.report_file.parent.mkdir(parents=True, exist_ok=True)
         cfg.report_file.write_text(json.dumps(results), encoding="utf-8")
+
+    if profiler is not None:
+        profiler.disable()
+        profiler.dump_stats(str(cfg.profile_output))
+        args_list = [
+            sys.executable,
+            "scripts/generate_reports.py",
+            str(cfg.profile_output),
+        ]
+        if cfg.graph_output is not None:
+            args_list.extend(["--graph-output", str(cfg.graph_output)])
+        if cfg.node_thres is not None:
+            args_list.extend(["--node-thres", str(cfg.node_thres)])
+        if cfg.edge_thres is not None:
+            args_list.extend(["--edge-thres", str(cfg.edge_thres)])
+        if cfg.text_only:
+            args_list.append("--text-only")
+        else:
+            args_list.extend(
+                ["--text-output", f"{cfg.profile_output}.txt"]
+            )
+        subprocess.run(args_list, check=False)
 
     return 0 if results["status"] == "ok" else 1
 

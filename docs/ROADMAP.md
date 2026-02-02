@@ -1,7 +1,7 @@
 # MLX-Harmony Roadmap
 
 **Created**: 2026-01-07
-**Updated**: 2026-01-28
+**Updated**: 2026-02-02
 
 **Project Status**: ✅ v0.2.0 - Standalone Implementation with Markdown Rendering
 
@@ -151,7 +151,7 @@ The tool infrastructure is in place, but executors need real implementations.
 - [ ] **Examples Directory**
   - [ ] `examples/chat_with_tools.py`
   - [ ] `examples/custom_tool.py`
-  - [ ] `examples/server_client.py`
+  - [ ] `examples/api_client.py`
   - [ ] `examples/profile_setup.py`
 
 ---

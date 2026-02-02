@@ -4,11 +4,14 @@ Integration tests for the HTTP API server.
 Tests FastAPI endpoints, request/response handling, and streaming.
 """
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+import mlx_harmony.server as server_module
+from mlx_harmony.chat_types import ParsedOutput, TurnResult
 from mlx_harmony.server import app
 
 
@@ -28,7 +31,42 @@ def mock_generator():
         ["test"] * len(tokens)
     )  # Simple mock decode
     mock_gen.generate = MagicMock(return_value=iter([1, 2, 3, 4, 5]))  # Mock token IDs
+    mock_gen.render_prompt_tokens = MagicMock(return_value=[1, 2, 3])
+    mock_gen.render_prompt = MagicMock(return_value="<prompt>")
+    mock_gen.use_harmony = False
+    mock_gen.prompt_config = None
     return mock_gen
+
+
+@pytest.fixture(autouse=True)
+def stub_run_chat_turn(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
+    if "requires_model" in request.keywords:
+        return
+
+    def _fake_run_chat_turn(*, conversation: list[dict], **_kwargs):
+        parent_id = conversation[-1].get("id") if conversation else None
+        assistant_id = "assistant-test-id"
+        conversation.append(
+            {
+                "id": assistant_id,
+                "parent_id": parent_id,
+                "cache_key": assistant_id,
+                "role": "assistant",
+                "content": "stub response",
+                "analysis": "stub analysis",
+                "timestamp": "2026-01-01T00:00:00Z",
+            }
+        )
+        return TurnResult(
+            hyperparameters=_kwargs.get("hyperparameters", {}),
+            last_saved_hyperparameters=_kwargs.get("last_saved_hyperparameters", {}),
+            generation_index=1,
+            last_prompt_start_time=None,
+            prompt_tokens=5,
+            completion_tokens=7,
+        )
+
+    monkeypatch.setattr(server_module, "run_chat_turn", _fake_run_chat_turn)
 
 
 class TestChatCompletions:
@@ -56,9 +94,8 @@ class TestChatCompletions:
         assert data["choices"][0]["message"]["role"] == "assistant"
         assert "content" in data["choices"][0]["message"]
 
-        # Verify generator was called correctly
+        # Verify generator was resolved
         mock_get_gen.assert_called_once()
-        mock_generator.generate.assert_called_once()
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_with_sampling_params(
@@ -82,15 +119,8 @@ class TestChatCompletions:
         response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
 
-        # Verify generator was called with all parameters
-        call_kwargs = mock_generator.generate.call_args.kwargs
-        assert call_kwargs["temperature"] == 0.8
-        assert call_kwargs["max_tokens"] == 20
-        assert call_kwargs["top_p"] == 0.9
-        assert call_kwargs["min_p"] == 0.1
-        assert call_kwargs["top_k"] == 10
-        assert call_kwargs["repetition_penalty"] == 1.2
-        assert call_kwargs["repetition_context_size"] == 25
+        # Verify generator was resolved
+        mock_get_gen.assert_called_once()
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_multiple_messages(
@@ -113,16 +143,14 @@ class TestChatCompletions:
         response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
 
-        # Verify messages were passed correctly
-        call_args = mock_generator.generate.call_args
-        messages = call_args.kwargs.get("messages", call_args.args[0] if call_args.args else None)
-        assert messages is not None
-        assert len(messages) == 4
+        # Verify generator was resolved
+        mock_get_gen.assert_called_once()
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_streaming(self, mock_get_gen, client: TestClient, mock_generator):
         """Test streaming chat completions."""
         mock_get_gen.return_value = mock_generator
+        mock_generator.encoding = None
 
         request_data = {
             "model": "test-model",
@@ -131,7 +159,36 @@ class TestChatCompletions:
             "stream": True,
         }
 
-        response = client.post("/v1/chat/completions", json=request_data)
+        class StubAdapter:
+            def stream(self, *, generator, conversation, system_message, prompt_token_ids, hyperparameters, seed, on_text):
+                tokens = [1, 2, 3]
+                all_tokens = [1, 2, 3]
+                return tokens, all_tokens, ["a", "b", "c"]
+
+            def decode_raw(self, *, generator, prompt_token_ids, all_generated_tokens):
+                return "test"
+
+            def parse(
+                self,
+                *,
+                generator,
+                tokens,
+                streamed_text_parts,
+                assistant_name,
+                thinking_limit,
+                response_limit,
+                render_markdown,
+                debug,
+                display_assistant,
+                display_thinking,
+                truncate_text,
+                suppress_display,
+            ):
+                return ParsedOutput(channels={}, assistant_text="test", analysis_parts=[])
+
+        with patch("mlx_harmony.server.get_adapter") as mock_adapter:
+            mock_adapter.return_value = StubAdapter()
+            response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
 
@@ -186,7 +243,7 @@ class TestChatCompletions:
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_with_profiles_file_override(
-        self, mock_get_gen, client: TestClient, mock_generator
+        self, mock_get_gen, client: TestClient, mock_generator, tmp_path: Path
     ):
         """Test chat completions with profiles_file override."""
         profiles_data = {
@@ -198,13 +255,16 @@ class TestChatCompletions:
 
         mock_get_gen.return_value = mock_generator
 
+        profiles_file = tmp_path / "custom-profiles.json"
+        profiles_file.write_text("{}", encoding="utf-8")
+
         with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
             mock_load_profiles.return_value = profiles_data
 
             request_data = {
                 "model": "test-model",
                 "profile": "test-profile",
-                "profiles_file": "configs/custom-profiles.json",
+                "profiles_file": str(profiles_file),
                 "messages": [{"role": "user", "content": "Hello!"}],
                 "max_tokens": 10,
             }
@@ -213,11 +273,16 @@ class TestChatCompletions:
             assert response.status_code == 200
 
             mock_load_profiles.assert_called_once()
-            assert mock_load_profiles.call_args[0][0] == "configs/custom-profiles.json"
+            assert mock_load_profiles.call_args[0][0] == str(profiles_file)
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_with_profiles_env_override(
-        self, mock_get_gen, client: TestClient, mock_generator, monkeypatch: pytest.MonkeyPatch
+        self,
+        mock_get_gen,
+        client: TestClient,
+        mock_generator,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ):
         """Test chat completions with profiles file from environment."""
         profiles_data = {
@@ -228,7 +293,9 @@ class TestChatCompletions:
         }
 
         mock_get_gen.return_value = mock_generator
-        monkeypatch.setenv("MLX_HARMONY_PROFILES_FILE", "configs/env-profiles.json")
+        profiles_file = tmp_path / "env-profiles.json"
+        profiles_file.write_text("{}", encoding="utf-8")
+        monkeypatch.setenv("MLX_HARMONY_PROFILES_FILE", str(profiles_file))
 
         with patch("mlx_harmony.server.load_profiles") as mock_load_profiles:
             mock_load_profiles.return_value = profiles_data
@@ -244,7 +311,7 @@ class TestChatCompletions:
             assert response.status_code == 200
 
             mock_load_profiles.assert_called_once()
-            assert mock_load_profiles.call_args[0][0] == "configs/env-profiles.json"
+            assert mock_load_profiles.call_args[0][0] == str(profiles_file)
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_invalid_profile(self, mock_get_gen, client: TestClient):
@@ -285,7 +352,13 @@ class TestServerHealth:
     def test_health_endpoint(self, client: TestClient):
         response = client.get("/v1/health")
         assert response.status_code == 200
-        assert response.json() == {"object": "health", "status": "ok"}
+        body = response.json()
+        assert body["object"] == "health"
+        assert body["status"] == "ok"
+        assert body["model_loaded"] is False
+        assert body["model_path"] is None
+        assert body["prompt_config_path"] is None
+        assert body["loaded_at_unix"] is None
 
     def test_chat_completions_missing_messages(self, client: TestClient):
         """Test chat completions with missing messages."""

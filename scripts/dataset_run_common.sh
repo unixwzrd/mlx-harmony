@@ -4,6 +4,23 @@ set -euo pipefail
 VM_PGID=""
 VM_KILL_MODE="pid"
 
+abs_path() {
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$1"
+    return
+  fi
+  if command -v readlink >/dev/null 2>&1; then
+    if readlink -f "$1" >/dev/null 2>&1; then
+      readlink -f "$1"
+      return
+    fi
+  fi
+  local target="$1"
+  local dir
+  dir="$(cd "$(dirname "$target")" && pwd -P)"
+  echo "${dir}/$(basename "$target")"
+}
+
 write_run_env() {
   local meta_dir="$1"
   shift

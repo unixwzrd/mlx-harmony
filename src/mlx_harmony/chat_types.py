@@ -64,3 +64,5 @@ class TurnResult:
     last_saved_hyperparameters: dict[str, float | int | bool | str]
     generation_index: int
     last_prompt_start_time: float | None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None

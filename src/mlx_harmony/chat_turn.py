@@ -236,4 +236,6 @@ def run_chat_turn(
         last_saved_hyperparameters=last_saved_hyperparameters,
         generation_index=generation_index,
         last_prompt_start_time=last_prompt_start_time,
+        prompt_tokens=prompt_token_count,
+        completion_tokens=outcome.num_generated_tokens,
     )
