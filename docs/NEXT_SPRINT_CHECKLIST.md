@@ -14,15 +14,9 @@ Track the next-sprint work items across major areas (engineering, performance, t
 - [x] Done
 - [!] Blocked
 
-## Benchmarking & Acceptance (ON-GOING)
+## Current Sprint (1–2 Days)
 
-- [ ] Run KV windowing acceptance checks across multiple `max_kv_size` configs.
-- [ ] Confirm long-run TPS stops degrading past the window.
-- [ ] Verify wired memory plateaus (no large oscillations).
-- [ ] Confirm `prompt_tokens` stays below `max_context_tokens` with safety margin in long runs.
-- [ ] Record benchmark notes (prefill time, TPS, CPU%, GPU%).
-
-## CLI/Server Convergence (Priority)
+### CLI/Server Convergence (Priority)
 
 - [x] Define a backend adapter contract (`GenerationClient`) for shared front-end usage.
 - [x] Implement Local adapter (`LocalGenerationClient`) wrapping existing local generation path.
@@ -51,6 +45,27 @@ Track the next-sprint work items across major areas (engineering, performance, t
 - [ ] Startup/model lifecycle parity:
   - [ ] Add explicit server preload/warmup behavior at startup.
   - [x] Expose model load state in health metadata.
+
+### Benchmarking & Acceptance (ON-GOING)
+
+- [ ] Run KV windowing acceptance checks across multiple `max_kv_size` configs.
+- [ ] Confirm long-run TPS stops degrading past the window.
+- [ ] Verify wired memory plateaus (no large oscillations).
+- [ ] Confirm `prompt_tokens` stays below `max_context_tokens` with safety margin in long runs.
+- [ ] Record benchmark notes (prefill time, TPS, CPU%, GPU%).
+
+## Next Sprint (Soon, but Not This 1–2 Day Block)
+
+### Endpoint-to-Function Mapping (Plan)
+
+- [ ] Define the shared backend functions and map them to server endpoints:
+  - [ ] `POST /v1/chat/completions` → `chat_backend.generate` (shared prompt/parse/retry path).
+  - [ ] `GET /v1/models` → `model_registry.list_models` (from profiles/config/models_dir).
+  - [ ] `GET /v1/health` → `server_status.health` (model load status + metadata).
+  - [ ] `POST /v1/config` (internal) → `config_registry.set_runtime_params` (safe runtime params only).
+- [ ] Ensure CLI calls the same backend functions directly (no HTTP), with identical inputs.
+
+## Later (Requires More Design / Depends on Prior Work)
 
 ## Tool Calling Integration
 
@@ -87,20 +102,22 @@ Track the next-sprint work items across major areas (engineering, performance, t
   - [ ] `/v1/models` listing from configured model source.
   - [ ] clear policy for runtime-selectable vs startup-only model/config changes.
 
-## Documentation
+## Documentation (Ongoing, update as modules change)
 
 - [ ] Add User Guide stub (usage + tuning, including perf-mode).
 - [ ] Add Developer Guide stub (architecture + extension points).
 - [ ] Consolidate references to [NOTES.md](./NOTES.md) to avoid duplication.
+- [ ] Generate API reference via `pydoc-markdown` into `docs/API_REFERENCE.md`.
 - [ ] Document CLI vs server-backed client architecture:
   - [ ] shared front-end loop
   - [ ] adapter boundary (local/python vs HTTP)
   - [ ] artifact/log parity contract
 
-## Performance Investigations
+## Performance Investigations (Ongoing)
 
 - [ ] Investigate unbuffered model-weight loading (IO impact + MLX compatibility).
 - [ ] Review `generate_standalone.py` hot loop for micro-optimizations after latest profiling.
+- [ ] Add full call-tree Graphviz output option (node/edge thresholds set to `0`).
 - [ ] Update dependency graphs after convergence/module reduction and record diffs.
 
 ## Tests (Refactor Guardrails)

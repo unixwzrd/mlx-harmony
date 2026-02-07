@@ -1,7 +1,7 @@
 # Profiling Scripts
 
 **Created**: 2026-01-07
-**Updated**: 2026-02-02
+**Updated**: 2026-02-04
 
 - [Profiling Scripts](#profiling-scripts)
   - [Profile Running Chat (Real-World Usage) ⭐ Recommended](#profile-running-chat-real-world-usage--recommended)
@@ -26,10 +26,11 @@
     - [Plot TPS vs Wired Memory](#plot-tps-vs-wired-memory)
   - [Utility Scripts](#utility-scripts)
     - [Module Dependency Graph](#module-dependency-graph)
+    - [API Docs (pydoc-markdown)](#api-docs-pydoc-markdown)
 
 ## Profile Running Chat (Real-World Usage) ⭐ Recommended
 
-Use `profile_chat.py` to profile the actual `mlx-harmony-chat` command as it runs. This captures **real-world performance** including:
+Use `profile_module.py` to profile the actual `mlx-harmony-chat` command as it runs. This captures **real-world performance** including:
 
 - Model loading
 - Token generation
@@ -37,7 +38,7 @@ Use `profile_chat.py` to profile the actual `mlx-harmony-chat` command as it run
 - Full chat loop interactions
 - User input handling
 
-This is more useful than `profile_startup.py` because it shows performance during actual usage.
+This is more useful than startup-only profiling because it shows performance during actual usage.
 
 ## Script Call Tree
 
@@ -45,16 +46,17 @@ Call tree (bulleted hierarchy with links):
 
 - [Benchmark Harness](#benchmark-harness) → [bench_run.sh](./bench_run.sh)
   - [Dataset Harness](#api-server-dataset-profile) → [run_dataset_harness.sh](./run_dataset_harness.sh)
-    - Cleanup → [clean_run_artifacts.sh](./clean_run_artifacts.sh)
+    - Cleanup → [clean_logs.sh](./clean_logs.sh)
     - vm_stat → [filter-vm_stat.py](./filter-vm_stat.py)
-    - Dataset/Profile
-      - CLI → [profile_chat_dataset.sh](./profile_chat_dataset.sh) → [profile_chat.py](./profile_chat.py)
-      - Server → [profile_client.py](./profile_client.py) → API server
+    - Dataset/Profile → [run_profile.sh](./run_profile.sh)
+      - CLI → [profile_module.py](./profile_module.py) → `mlx_harmony.chat.main`
+      - Server + Client → [profile_module.py](./profile_module.py) → `mlx_harmony.server.main`
     - Reports/Plots
+      - [process_stats.sh](./process_stats.sh)
       - [process_profile_artifacts.py](./process_profile_artifacts.py)
-      - [generate_reports.py](./generate_reports.py)
       - [merge_timing_metrics.py](./merge_timing_metrics.py)
       - [TPSvsWiredMemory.py](./TPSvsWiredMemory.py)
+    - Logs → [preserve_logs.sh](./preserve_logs.sh) → runs/<run-id>/logs/<mode>/
     - Finalize → runs/<run-id>/...
     - Repeat if mode=all
 
@@ -62,17 +64,18 @@ Notes:
 
 - `bench_run.sh` is the top-level entry for full benchmark runs.
 - `run_dataset_harness.sh` runs one component at a time (CLI or server), completing the full artifact cycle before the next run.
+ - Set `DOT_FILTER_SUBSTRING=mlx_harmony` (default) to limit graph nodes to project code. Set `DOT_FILTER=0` to disable filtering.
 
 ### Quick Start
 
 ```bash
 # Profile chat with one interaction (type 'q' to quit and finish profiling)
-scripts/profile_chat.py \
+scripts/profile_module.py cli -- \
   --model models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx \
   --prompt-config configs/Mia.json
 
 # Profile with specific chat arguments
-scripts/profile_chat.py \
+scripts/profile_module.py cli -- \
   --model models/my-model \
   --temperature 0.8 \
   --max-tokens 100 \
@@ -80,7 +83,7 @@ scripts/profile_chat.py \
   --graph chat_profile.svg
 
 # Include more nodes/edges in the call graph (lower thresholds)
-scripts/profile_chat.py \
+scripts/profile_module.py cli -- \
   --model models/my-model \
   --prompt-config configs/Mia.json \
   --graph chat_profile.svg \
@@ -88,7 +91,7 @@ scripts/profile_chat.py \
   --edge-thres 0.001
 
 # Text-only report (faster, no graphviz needed)
-scripts/profile_chat.py \
+scripts/profile_module.py cli -- \
   --model models/my-model \
   --prompt-config configs/Mia.json \
   --text-only
@@ -101,7 +104,10 @@ scripts/profile_chat.py \
 If you have a JSON file with an `instruction` field (array of objects), you can stream it to the profiler:
 
 ```bash
-scripts/profile_chat_dataset.sh path/to/english.json models/your-model 200
+scripts/build_prompt_stream.py path/to/english.json 200 | \
+  scripts/profile_module.py cli -- \
+    --model models/your-model \
+    --prompt-config configs/prompt-config.deterministic.json
 ```
 
 The optional last argument (`LIMIT`) caps the number of prompts. This uses [build_prompt_stream.py](./build_prompt_stream.py)
@@ -109,11 +115,15 @@ to emit `\\` blocks and a final `q` for the chat loop.
 
 ### Server Dataset Runs
 
-Use [profile_server_dataset.sh](./profile_server_dataset.sh) to run the same dataset prompts against the API server
-workflow and capture the same metrics under `runs/<run-id>/`.
+Use `profile_module.py` to run the same dataset prompts against the API server workflow and capture
+the same metrics under `runs/<run-id>/`.
 
 ```bash
-scripts/profile_server_dataset.sh tests/data/english.json models/your-model 20
+scripts/build_prompt_stream.py tests/data/english.json 20 | \
+  scripts/profile_module.py client -- \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --model models/your-model
 ```
 
 ### Schema Migration Utility
@@ -134,30 +144,30 @@ All profiling output files are saved to the `stats/` directory by default:
 
 ### Viewing Results
 
-Same as `profile_startup.py` - see the "Viewing Results" section below.
+Same as `profile_module.py startup` - see the "Viewing Results" section below.
 
 ---
 
 ## Profile Startup Performance
 
-Use `profile_startup.py` to identify performance bottlenecks during model loading and initialization only (doesn't run the full chat loop).
+Use `profile_module.py startup` to identify performance bottlenecks during model loading and initialization only (doesn't run the full chat loop).
 
 ### Quick Start
 
 ```bash
 # Profile TokenGenerator initialization (model loading)
-scripts/profile_startup.py \
+scripts/profile_module.py startup -- \
   --model models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx \
   --prompt-config configs/Mia.json
 
 # Generate both text and graphviz visualization
-scripts/profile_startup.py \
+scripts/profile_module.py startup -- \
   --model <model_path> \
   --output profile.stats \
   --graph profile.svg
 
 # Text-only report (faster)
-scripts/profile_startup.py \
+scripts/profile_module.py startup -- \
   --model <model_path> \
   --text-only
 ```
@@ -192,7 +202,7 @@ pip install gprof2dot
 brew install graphviz  # macOS
 
 # Generate SVG
-scripts/profile_startup.py --model <model_path> --graph stats/profile.svg
+scripts/profile_module.py startup -- --model <model_path> --graph stats/profile.svg
 
 # View on macOS
 open stats/profile.svg
@@ -288,12 +298,28 @@ To include more functions in the call tree, lower the gprof2dot thresholds for t
 PROFILE_NODE_THRES=0.0001 PROFILE_EDGE_THRES=0.0001 bash scripts/bench_run.sh
 ```
 
+To include the full call tree (no threshold filtering), set `PROFILE_FULL=1`:
+
+```bash
+PROFILE_FULL=1 bash scripts/bench_run.sh
+```
+
+For server + client profiling, you can also force a full client call tree:
+
+```bash
+RUN_SERVER=1 CLIENT_PROFILE_FULL=1 bash scripts/bench_run.sh
+```
+
 To include more functions in Graphviz output, pass thresholds through the report generator:
 
 ```bash
-scripts/generate_reports.py \
+scripts/process_profile_artifacts.py \
   --profile-output runs/<run-id>/metrics/cli/profile.stats \
-  --graph runs/<run-id>/metrics/cli/profile.svg \
+  --profile-text runs/<run-id>/metrics/cli/profile.stats.txt \
+  --profile-metrics-json runs/<run-id>/metrics/cli/profile.metrics.json \
+  --profile-static-txt runs/<run-id>/metrics/cli/profile.static.txt \
+  --profile-dot runs/<run-id>/metrics/cli/profile.dot \
+  --profile-svg runs/<run-id>/metrics/cli/profile.svg \
   --node-thres 0.001 \
   --edge-thres 0.001
 ```
@@ -302,11 +328,14 @@ scripts/generate_reports.py \
 
 ## API Server Dataset Profile
 
-Use [profile_server_dataset.sh](./profile_server_dataset.sh) to spin up the API server, verify the health endpoint,
-and send prompts from [tests/data/english.json](../tests/data/english.json) through `/v1/chat/completions`.
+Use `profile_module.py` to profile the client while the server runs the dataset prompts.
 
 ```bash
-scripts/profile_server_dataset.sh tests/data/english.json models/your-model 3
+scripts/build_prompt_stream.py tests/data/english.json 3 | \
+  scripts/profile_module.py client -- \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --model models/your-model
 ```
 
 Optional overrides (apply to server dataset runs, including the bench harness):
@@ -315,9 +344,6 @@ Optional overrides (apply to server dataset runs, including the bench harness):
 - `INTEGRATION_PROMPTS_FILE`: JSON prompt file (default: `tests/data/english.json`).
 - `INTEGRATION_REPORT_FILE`: JSON report path (default: `runs/<run-id>/meta/server/server-dataset-report.json`).
 - `INTEGRATION_PROFILE`: Set to `1` to capture profile stats/graph for the dataset run.
-- `INTEGRATION_RUN_ID`: Override the run id (default: timestamped `integration-YYYYmmdd-HHMMSS`).
-- `INTEGRATION_RUN_ROOT`: Override the run root directory (default: `runs`).
-- `INTEGRATION_SERVER_PROFILE`: Set to `1` to capture server-side cProfile outputs under `metrics/server/`.
 - `INTEGRATION_REQUEST_TIMEOUT`: Per-request timeout in seconds (default: `300`).
 - `INTEGRATION_HEALTH_RETRIES`: Number of health checks before failing (default: `100`).
 
@@ -332,10 +358,22 @@ Server request/response payloads are logged to:
 
 - `logs/server/server-requests.log`
 
+Graphviz filtering is enabled by default to keep only `mlx_harmony` nodes in the SVG output:
+
+- `profile.dot` remains the raw `gprof2dot` output.
+- `profile.filtered.dot` is the filtered graph (used for the SVG).
+
+You can override the filter substring or disable filtering:
+
+```bash
+DOT_FILTER=0 RUN_SERVER=1 bash scripts/bench_run.sh
+DOT_FILTER_SUBSTRING=my_package RUN_SERVER=1 bash scripts/bench_run.sh
+```
+
 To profile the STDIO client against the API server (for CLI parity), run:
 
 ```bash
-scripts/profile_client.py \
+scripts/profile_module.py client -- \
   --host 127.0.0.1 \
   --port 8000 \
   --model models/your-model
@@ -344,12 +382,12 @@ scripts/profile_client.py \
 To capture a client-side profile:
 
 ```bash
-scripts/profile_client.py \
+scripts/profile_module.py client -- \
   --host 127.0.0.1 \
   --port 8000 \
   --model models/your-model \
-  --profile-output runs/<run-id>/metrics/client/profile.stats \
-  --graph runs/<run-id>/metrics/client/profile.svg
+  --profile-output runs/<run-id>/metrics/server/client-profile.stats \
+  --graph runs/<run-id>/metrics/server/client-profile.svg
 ```
 
 ### Metrics Layout
@@ -357,7 +395,7 @@ scripts/profile_client.py \
 `bench_run.sh` separates CLI and server metrics under the run directory:
 
 - `runs/<run-id>/metrics/cli/`: CLI benchmark metrics (timings, vm_stat, merged TSVs, profiles).
-- `runs/<run-id>/metrics/server/`: Server-side metrics (integration profiles).
+- `runs/<run-id>/metrics/server/`: Server-side metrics and client profiles.
 
 ### Logs and Meta Layout
 
@@ -432,7 +470,21 @@ dot -Tsvg stats/cli-deps.dot -o stats/cli-deps.svg
 dot -Tsvg stats/server-deps.dot -o stats/server-deps.svg
 ```
 
+### API Docs (pydoc-markdown)
+
+Generate Markdown API docs from code using `pydoc-markdown`.
+
+```bash
+pip install pydoc-markdown
+pydoc-markdown -I src -m mlx_harmony > docs/API_REFERENCE.md
+```
+
+Notes:
+
+- This is optional and external; the repo does not bundle a custom doc generator.
+- Regenerate after refactors that move or rename modules.
+
 - [filter-vm_stat.py](./filter-vm_stat.py): Convert `vm_stat` output to JSON or TSV (with optional byte conversion).
 - [merge_timing_metrics.py](./merge_timing_metrics.py): Merge `timings-debug.csv` with `vm_stat` TSV output.
 - [build_prompt_stream.py](./build_prompt_stream.py): Stream dataset prompts into the chat loop.
-- [profile_chat_dataset.sh](./profile_chat_dataset.sh): Run deterministic dataset prompts for profiling.
+- [profile_module.py](./profile_module.py): Profile CLI/server/client via a single entry point.

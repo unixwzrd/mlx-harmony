@@ -119,10 +119,10 @@ pytest -m "not integration"
 
 ## Profiling
 
-For performance profiling with deterministic inputs (no typing delays), use the stdin harness described in [scripts/README.md](../scripts/README.md):
+For performance profiling with deterministic inputs (no typing delays), use the STDIN harness described in [scripts/README.md](../scripts/README.md):
 
 ```bash
-scripts/profile_chat_stdin.sh models/your-model
+scripts/profile_module.py cli -- --model models/your-model
 ```
 
 ## Test Coverage

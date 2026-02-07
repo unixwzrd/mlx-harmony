@@ -22,10 +22,9 @@ from mlx_harmony.config import (
     load_profiles,
     load_prompt_config,
 )
-from mlx_harmony.generator import TokenGenerator
 from mlx_harmony.logging import configure_debug_file_logging, get_logger
-from mlx_harmony.prompt_cache import PromptTokenCache
 from mlx_harmony.runtime.context import RunContext
+from mlx_harmony.runtime.model_init import initialize_generator
 from mlx_harmony.tools import get_tools_for_model
 
 logger = get_logger(__name__)
@@ -107,14 +106,13 @@ def bootstrap_chat() -> BootstrapResult:
         mlock = prompt_config.mlock
     lazy = args.lazy if args.lazy is not None else False
 
-    generator = TokenGenerator(
-        model_path,
+    generator = initialize_generator(
+        model_path=model_path,
         prompt_config=prompt_config,
+        prompt_config_path=prompt_config_path,
         lazy=lazy,
         mlock=mlock or False,
     )
-    if generator.use_harmony and generator.encoding:
-        generator.prompt_token_cache = PromptTokenCache()
 
     tools = []
     if generator.is_gpt_oss:

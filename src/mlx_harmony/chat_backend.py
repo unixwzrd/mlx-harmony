@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Backend adapters for local and server-backed chat execution."""
+
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -54,6 +56,7 @@ class FrontendBackend(Protocol):
         collect_memory_stats: Any,
         write_debug_metrics: Any,
         write_debug_response: Any,
+        write_debug_info: Any,
         write_debug_token_texts: Any,
         write_debug_tokens: Any,
     ) -> BackendResult:
@@ -91,9 +94,47 @@ class LocalBackend:
         collect_memory_stats: Any,
         write_debug_metrics: Any,
         write_debug_response: Any,
+        write_debug_info: Any,
         write_debug_token_texts: Any,
         write_debug_tokens: Any,
     ) -> BackendResult:
+        """Run a local chat turn using the shared turn pipeline.
+
+        Args:
+            conversation: Mutable conversation list.
+            hyperparameters: Merged hyperparameters dict.
+            last_saved_hyperparameters: Last saved hyperparameters state.
+            last_user_text: Last user message for retry context.
+            max_context_tokens: Max context length for truncation.
+            last_prompt_start_time: Prior prompt timestamp for metrics.
+            generation_index: Generation counter for seeding.
+            max_tool_iterations: Max tool call iterations per turn.
+            max_resume_attempts: Max retry attempts when resuming.
+            generator: TokenGenerator instance.
+            tools: Tool configs available to the model.
+            assistant_name: Assistant display name.
+            thinking_limit: Max thinking tokens to render.
+            response_limit: Max response tokens to render.
+            render_markdown: Whether to render markdown output.
+            debug: Whether to emit debug output to console.
+            debug_path: Debug file path for artifacts.
+            debug_tokens: Debug token mode.
+            enable_artifacts: Whether to emit prompt/response artifacts.
+            make_message_id: Callable to generate message IDs.
+            make_timestamp: Callable to generate timestamps.
+            display_assistant: Callable to render assistant output.
+            display_thinking: Callable to render analysis output.
+            truncate_text: Callable to truncate displayed text.
+            collect_memory_stats: Callable to collect memory metrics.
+            write_debug_metrics: Callable to write debug metrics.
+            write_debug_response: Callable to write debug responses.
+            write_debug_info: Callable to write debug info.
+            write_debug_token_texts: Callable to write decoded tokens.
+            write_debug_tokens: Callable to write token ids.
+
+        Returns:
+            BackendResult containing updated hyperparameters and token counts.
+        """
         result = run_chat_turn(
             generator=generator,
             conversation=conversation,
@@ -120,6 +161,7 @@ class LocalBackend:
             collect_memory_stats=collect_memory_stats,
             write_debug_metrics=write_debug_metrics,
             write_debug_response=write_debug_response,
+            write_debug_info=write_debug_info,
             write_debug_token_texts=write_debug_token_texts,
             write_debug_tokens=write_debug_tokens,
             last_prompt_start_time=last_prompt_start_time,
@@ -172,9 +214,47 @@ class ServerBackend:
         collect_memory_stats: Any,
         write_debug_metrics: Any,
         write_debug_response: Any,
+        write_debug_info: Any,
         write_debug_token_texts: Any,
         write_debug_tokens: Any,
     ) -> BackendResult:
+        """Run a chat turn by forwarding to a remote server.
+
+        Args:
+            conversation: Mutable conversation list.
+            hyperparameters: Merged hyperparameters dict.
+            last_saved_hyperparameters: Last saved hyperparameters state.
+            last_user_text: Last user message for retry context.
+            max_context_tokens: Max context length for truncation.
+            last_prompt_start_time: Prior prompt timestamp for metrics.
+            generation_index: Generation counter for seeding.
+            max_tool_iterations: Max tool call iterations per turn.
+            max_resume_attempts: Max retry attempts when resuming.
+            generator: TokenGenerator instance (unused for server calls).
+            tools: Tool configs available to the model (unused for server calls).
+            assistant_name: Assistant display name (unused for server calls).
+            thinking_limit: Max thinking tokens to render (unused for server calls).
+            response_limit: Max response tokens to render (unused for server calls).
+            render_markdown: Whether to render markdown output (unused for server calls).
+            debug: Whether to emit debug output to console (unused for server calls).
+            debug_path: Debug file path for artifacts (unused for server calls).
+            debug_tokens: Debug token mode (unused for server calls).
+            enable_artifacts: Whether to emit artifacts (unused for server calls).
+            make_message_id: Callable to generate message IDs (unused for server calls).
+            make_timestamp: Callable to generate timestamps (unused for server calls).
+            display_assistant: Callable to render assistant output (unused for server calls).
+            display_thinking: Callable to render analysis output (unused for server calls).
+            truncate_text: Callable to truncate displayed text (unused for server calls).
+            collect_memory_stats: Callable to collect memory metrics (unused for server calls).
+            write_debug_metrics: Callable to write debug metrics (unused for server calls).
+            write_debug_response: Callable to write debug responses (unused for server calls).
+            write_debug_info: Callable to write debug info (unused for server calls).
+            write_debug_token_texts: Callable to write decoded tokens (unused for server calls).
+            write_debug_tokens: Callable to write token ids (unused for server calls).
+
+        Returns:
+            BackendResult containing assistant text and token counts.
+        """
         messages = []
         for message in conversation:
             role = message.get("role")

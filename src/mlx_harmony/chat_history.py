@@ -298,6 +298,16 @@ def write_debug_response(
     _write_debug_block(debug_path, "[DEBUG] Raw response from LLM:", raw_response)
 
 
+def write_debug_info(
+    *,
+    debug_path: Path,
+    label: str,
+    message: str,
+) -> None:
+    """Write a labeled info block to the debug log."""
+    _write_debug_block(debug_path, f"[DEBUG] {label}:", message)
+
+
 def write_debug_token_texts(
     *,
     debug_path: Path,

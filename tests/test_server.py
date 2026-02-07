@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import mlx_harmony.server as server_module
-from mlx_harmony.chat_types import ParsedOutput, TurnResult
+from mlx_harmony.backend_api import BackendChatResult
 from mlx_harmony.server import app
 
 
@@ -39,11 +39,11 @@ def mock_generator():
 
 
 @pytest.fixture(autouse=True)
-def stub_run_chat_turn(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
+def stub_run_backend_chat(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest):
     if "requires_model" in request.keywords:
         return
 
-    def _fake_run_chat_turn(*, conversation: list[dict], **_kwargs):
+    def _fake_run_backend_chat(*, conversation: list[dict], **_kwargs):
         parent_id = conversation[-1].get("id") if conversation else None
         assistant_id = "assistant-test-id"
         conversation.append(
@@ -57,16 +57,16 @@ def stub_run_chat_turn(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureR
                 "timestamp": "2026-01-01T00:00:00Z",
             }
         )
-        return TurnResult(
-            hyperparameters=_kwargs.get("hyperparameters", {}),
-            last_saved_hyperparameters=_kwargs.get("last_saved_hyperparameters", {}),
-            generation_index=1,
-            last_prompt_start_time=None,
+        return BackendChatResult(
+            assistant_text="stub response",
+            analysis_text="stub analysis",
             prompt_tokens=5,
             completion_tokens=7,
+            finish_reason="stop",
+            last_prompt_start_time=None,
         )
 
-    monkeypatch.setattr(server_module, "run_chat_turn", _fake_run_chat_turn)
+    monkeypatch.setattr(server_module, "run_backend_chat", _fake_run_backend_chat)
 
 
 class TestChatCompletions:
@@ -159,35 +159,17 @@ class TestChatCompletions:
             "stream": True,
         }
 
-        class StubAdapter:
-            def stream(self, *, generator, conversation, system_message, prompt_token_ids, hyperparameters, seed, on_text):
-                tokens = [1, 2, 3]
-                all_tokens = [1, 2, 3]
-                return tokens, all_tokens, ["a", "b", "c"]
+        backend_result = BackendChatResult(
+            assistant_text="test",
+            analysis_text=None,
+            prompt_tokens=4,
+            completion_tokens=2,
+            finish_reason="stop",
+            last_prompt_start_time=1.0,
+        )
 
-            def decode_raw(self, *, generator, prompt_token_ids, all_generated_tokens):
-                return "test"
-
-            def parse(
-                self,
-                *,
-                generator,
-                tokens,
-                streamed_text_parts,
-                assistant_name,
-                thinking_limit,
-                response_limit,
-                render_markdown,
-                debug,
-                display_assistant,
-                display_thinking,
-                truncate_text,
-                suppress_display,
-            ):
-                return ParsedOutput(channels={}, assistant_text="test", analysis_parts=[])
-
-        with patch("mlx_harmony.server.get_adapter") as mock_adapter:
-            mock_adapter.return_value = StubAdapter()
+        with patch("mlx_harmony.server.run_backend_chat") as mock_backend:
+            mock_backend.return_value = backend_result
             response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"

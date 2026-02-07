@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, Callable
 
@@ -41,6 +42,7 @@ def run_chat_turn(
     collect_memory_stats: Callable[[], dict[str, Any]],
     write_debug_metrics: Callable[..., None],
     write_debug_response: Callable[..., None],
+    write_debug_info: Callable[..., None],
     write_debug_token_texts: Callable[..., None],
     write_debug_tokens: Callable[..., None],
     last_prompt_start_time: float | None,
@@ -51,6 +53,17 @@ def run_chat_turn(
     resume_base_hyperparameters: dict[str, float | int | bool | str] | None = None
     pending_resume_prompt: str | None = None
     base_hyperparameters = hyperparameters.copy()
+    parity_payload = {
+        "model_path": getattr(generator, "model_path", None),
+        "prompt_config_path": getattr(generator, "prompt_config_path", None),
+        "max_context_tokens": max_context_tokens,
+        "hyperparameters": hyperparameters,
+    }
+    write_debug_info(
+        debug_path=debug_path,
+        label="Parity config",
+        message=json.dumps(parity_payload, sort_keys=True),
+    )
 
     while tool_iteration < max_tool_iterations:
         prompt_start_time = time.perf_counter()

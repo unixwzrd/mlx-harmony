@@ -354,6 +354,7 @@ def _write_attempt_artifacts(
         return
     logs_dir.mkdir(parents=True, exist_ok=True)
     stem = f"turn{turn_index:03d}.attempt{attempt_index}"
+    turn_stem = f"turn{turn_index:03d}"
 
     prompt_full_path = logs_dir / f"prompt.full.{stem}.txt"
     prompt_tokens_path = logs_dir / f"prompt.tokens.{stem}.json"
@@ -363,7 +364,17 @@ def _write_attempt_artifacts(
     parse_channels_path = logs_dir / f"parse.channels.{stem}.json"
     retry_path = logs_dir / f"retry.decision.{stem}.json"
 
+    prompt_full_turn_path = logs_dir / f"prompt.full.{turn_stem}.txt"
+    prompt_tokens_turn_path = logs_dir / f"prompt.tokens.{turn_stem}.json"
+    completion_tokens_turn_path = logs_dir / f"completion.tokens.{turn_stem}.json"
+    completion_raw_turn_path = logs_dir / f"completion.raw.{turn_stem}.txt"
+    completion_clean_turn_path = logs_dir / f"completion.cleaned.{turn_stem}.txt"
+    parse_channels_turn_path = logs_dir / f"parse.channels.{turn_stem}.json"
+    retry_turn_path = logs_dir / f"retry.decision.{turn_stem}.json"
+
     with open(prompt_full_path, "w", encoding="utf-8") as handle:
+        handle.write(raw_prompt)
+    with open(prompt_full_turn_path, "w", encoding="utf-8") as handle:
         handle.write(raw_prompt)
 
     prompt_meta = {
@@ -374,8 +385,17 @@ def _write_attempt_artifacts(
     }
     with open(prompt_tokens_path, "w", encoding="utf-8") as handle:
         json.dump(prompt_meta, handle, ensure_ascii=False, indent=2)
+    with open(prompt_tokens_turn_path, "w", encoding="utf-8") as handle:
+        json.dump(prompt_meta, handle, ensure_ascii=False, indent=2)
 
     with open(completion_tokens_path, "w", encoding="utf-8") as handle:
+        json.dump(
+            {"completion_token_ids": all_generated_tokens},
+            handle,
+            ensure_ascii=False,
+            indent=2,
+        )
+    with open(completion_tokens_turn_path, "w", encoding="utf-8") as handle:
         json.dump(
             {"completion_token_ids": all_generated_tokens},
             handle,
@@ -385,11 +405,17 @@ def _write_attempt_artifacts(
 
     with open(completion_raw_path, "w", encoding="utf-8") as handle:
         handle.write(raw_response)
+    with open(completion_raw_turn_path, "w", encoding="utf-8") as handle:
+        handle.write(raw_response)
 
     with open(completion_clean_path, "w", encoding="utf-8") as handle:
         handle.write(cleaned_response)
+    with open(completion_clean_turn_path, "w", encoding="utf-8") as handle:
+        handle.write(cleaned_response)
 
     with open(parse_channels_path, "w", encoding="utf-8") as handle:
+        json.dump(channels, handle, ensure_ascii=False, indent=2)
+    with open(parse_channels_turn_path, "w", encoding="utf-8") as handle:
         json.dump(channels, handle, ensure_ascii=False, indent=2)
 
     retry_payload = {
@@ -400,4 +426,6 @@ def _write_attempt_artifacts(
         "hyperparameters": hyperparameters,
     }
     with open(retry_path, "w", encoding="utf-8") as handle:
+        json.dump(retry_payload, handle, ensure_ascii=False, indent=2)
+    with open(retry_turn_path, "w", encoding="utf-8") as handle:
         json.dump(retry_payload, handle, ensure_ascii=False, indent=2)

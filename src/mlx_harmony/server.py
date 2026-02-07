@@ -1,3 +1,4 @@
+"""FastAPI server endpoints and shared runtime plumbing for MLX Harmony."""
 from __future__ import annotations
 
 import argparse
@@ -6,6 +7,7 @@ import os
 import time
 from pathlib import Path
 from threading import Lock
+from types import SimpleNamespace
 from typing import List, Optional
 
 import uvicorn
@@ -13,36 +15,32 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from mlx_harmony.chat_adapters import get_adapter
+from mlx_harmony.backend_api import build_conversation_from_messages, run_backend_chat
 from mlx_harmony.chat_history import (
     make_message_id,
     make_timestamp,
+    write_debug_info,
     write_debug_metrics,
     write_debug_response,
     write_debug_token_texts,
     write_debug_tokens,
 )
-from mlx_harmony.chat_prompt import (
-    build_prompt_token_ids,
-    prepare_prompt,
-    truncate_conversation_for_context,
-)
-from mlx_harmony.chat_turn import run_chat_turn
 from mlx_harmony.chat_utils import (
-    build_hyperparameters,
+    build_hyperparameters_from_request,
     get_assistant_name,
     get_truncate_limits,
     resolve_max_context_tokens,
 )
 from mlx_harmony.config import (
     DEFAULT_CONFIG_DIR,
-    apply_placeholders,
+    PromptConfig,
     load_profiles,
     load_prompt_config,
     resolve_config_path,
 )
 from mlx_harmony.generator import TokenGenerator
 from mlx_harmony.logging import get_logger
+from mlx_harmony.runtime.model_init import initialize_generator
 
 app = FastAPI(title="MLX Harmony API")
 logger = get_logger(__name__)
@@ -58,13 +56,13 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
     model: str
     messages: List[ChatMessage]
-    temperature: float = 1.0
-    max_tokens: int = 512
-    top_p: float = 0.0
-    min_p: float = 0.0
-    top_k: int = 0
-    repetition_penalty: float = 0.0
-    repetition_context_size: int = 20
+    temperature: Optional[float] = None
+    max_tokens: Optional[int] = None
+    top_p: Optional[float] = None
+    min_p: Optional[float] = None
+    top_k: Optional[int] = None
+    repetition_penalty: Optional[float] = None
+    repetition_context_size: Optional[int] = None
     profile: Optional[str] = None
     prompt_config: Optional[str] = None
     profiles_file: Optional[str] = None
@@ -81,16 +79,23 @@ _generator_prompt_config_path: Optional[str] = None
 _generator_lock = Lock()
 _loaded_model_path: Optional[str] = None
 _loaded_at_unix: Optional[int] = None
-_server_metrics_row_index = 0
 _last_prompt_start_time: float | None = None
 
 DEFAULT_PROFILES_FILE = "configs/profiles.example.json"
 DEFAULT_SERVER_DEBUG_LOG = "logs/server-debug.log"
-DEFAULT_SERVER_LOG_PROMPTS = "1"
 DEFAULT_MODELS_DIR = "models"
 
 
 def _get_generator(model: str, prompt_config_path: Optional[str]) -> TokenGenerator:
+    """Load or reuse a cached generator using the shared CLI init path.
+
+    Args:
+        model: Model path to load.
+        prompt_config_path: Prompt config file path, if any.
+
+    Returns:
+        Loaded TokenGenerator instance.
+    """
     global _generator
     global _generator_prompt_config_path
     global _loaded_model_path
@@ -102,12 +107,21 @@ def _get_generator(model: str, prompt_config_path: Optional[str]) -> TokenGenera
             or _generator_prompt_config_path != prompt_config_path
         ):
             prompt_cfg = load_prompt_config(prompt_config_path) if prompt_config_path else None
+            if prompt_cfg is not None and not isinstance(prompt_cfg, PromptConfig):
+                prompt_cfg = PromptConfig.model_validate(prompt_cfg)
+            mlock = bool(getattr(prompt_cfg, "mlock", False)) if prompt_cfg else False
             logger.info(
                 "Loading model: %s (prompt_config=%s)",
                 model,
                 prompt_config_path or "none",
             )
-            _generator = TokenGenerator(model, prompt_config=prompt_cfg)
+            _generator = initialize_generator(
+                model_path=model,
+                prompt_config=prompt_cfg,
+                prompt_config_path=prompt_config_path,
+                lazy=False,
+                mlock=mlock,
+            )
             _generator_prompt_config_path = prompt_config_path
             _loaded_model_path = model
             _loaded_at_unix = int(time.time())
@@ -117,6 +131,14 @@ def _get_generator(model: str, prompt_config_path: Optional[str]) -> TokenGenera
 def _resolve_profile(
     request: ChatRequest,
 ) -> tuple[str, Optional[str], dict[str, object] | None]:
+    """Resolve model/prompt config paths from request or profiles.
+
+    Args:
+        request: Parsed chat request payload.
+
+    Returns:
+        Tuple of (model_path, prompt_config_path, profile_data).
+    """
     model_path = request.model
     prompt_config_path = request.prompt_config
     profile_data: dict[str, object] | None = None
@@ -195,29 +217,6 @@ def _resolve_profile_from_args(
     return model_path, prompt_config_path
 
 
-def _decode_tokens(generator: TokenGenerator, token_ids: list[int]) -> str:
-    if hasattr(generator, "tokenizer") and hasattr(generator.tokenizer, "decode"):
-        return generator.tokenizer.decode(token_ids)
-    backend = getattr(generator, "backend", None)
-    if backend is not None and hasattr(backend, "decode"):
-        return backend.decode(token_ids)
-    return ""
-
-
-def _next_server_metrics_row_index() -> int:
-    global _server_metrics_row_index
-    _server_metrics_row_index += 1
-    return _server_metrics_row_index
-
-
-def _metrics_timestamp() -> dict[str, str | float]:
-    timestamp = make_timestamp()
-    return {
-        "timestamp_iso": timestamp["iso"],
-        "timestamp_unix": timestamp["unix"],
-    }
-
-
 def _collect_memory_stats() -> dict[str, float | int | str]:
     if os.getenv("MLX_HARMONY_SERVER_COLLECT_MEMORY", "0") != "1":
         return {}
@@ -240,98 +239,6 @@ def _collect_memory_stats() -> dict[str, float | int | str]:
     return stats
 
 
-def _write_server_metrics(
-    *,
-    generator: TokenGenerator,
-    prompt_tokens: int,
-    completion_tokens: int,
-    elapsed_seconds: float,
-    prompt_start_delta: float | None,
-    prefill_seconds: float | None,
-    debug_path: Path,
-) -> None:
-    timing_stats = getattr(generator, "last_timing_stats", None) or {}
-    max_kv_size = None
-    if getattr(generator, "prompt_config", None) is not None:
-        max_kv_size = getattr(generator.prompt_config, "max_kv_size", None)
-    kv_len = prompt_tokens
-    if max_kv_size is not None:
-        try:
-            kv_len = min(prompt_tokens, int(max_kv_size))
-        except (TypeError, ValueError):
-            kv_len = prompt_tokens
-    tokens_per_second = completion_tokens / elapsed_seconds if elapsed_seconds > 0 else 0.0
-    write_debug_metrics(
-        debug_path=debug_path,
-        metrics={
-            "row_index": _next_server_metrics_row_index(),
-            **_metrics_timestamp(),
-            "prompt_tokens": prompt_tokens,
-            "kv_len": kv_len,
-            "completion_tokens": completion_tokens,
-            "generated_tokens": completion_tokens,
-            "prefill_seconds": prefill_seconds or timing_stats.get("prefill"),
-            "elapsed_seconds": elapsed_seconds,
-            "tokens_per_second": tokens_per_second,
-            "prompt_start_to_prompt_start_seconds": prompt_start_delta,
-            "max_context_tokens": getattr(generator.prompt_config, "max_context_tokens", None)
-            if getattr(generator, "prompt_config", None) is not None
-            else None,
-            "max_kv_size": max_kv_size,
-            "repetition_window": None,
-            "loop_detection_mode": None,
-            "prefill_start_offset": getattr(generator, "_last_prefill_start_offset", None),
-            **_collect_memory_stats(),
-        },
-    )
-
-
-def _should_log_prompt_response() -> bool:
-    return os.getenv("MLX_HARMONY_SERVER_LOG_PROMPTS", DEFAULT_SERVER_LOG_PROMPTS) == "1"
-
-
-def _build_server_conversation(
-    *,
-    request: ChatRequest,
-    prompt_config: object | None,
-) -> list[dict[str, object]]:
-    messages: list[dict[str, object]] = []
-    for msg in request.messages:
-        content = msg.content
-        if prompt_config and msg.role == "user":
-            content = apply_placeholders(content, getattr(prompt_config, "placeholders", {}))
-        messages.append({"role": msg.role, "content": content})
-
-    has_assistant_message = any(msg.get("role") == "assistant" for msg in messages)
-    if (
-        prompt_config
-        and getattr(prompt_config, "assistant_greeting", None)
-        and not has_assistant_message
-    ):
-        greeting_text = apply_placeholders(
-            getattr(prompt_config, "assistant_greeting", ""),
-            getattr(prompt_config, "placeholders", {}),
-        )
-        messages.insert(0, {"role": "assistant", "content": greeting_text})
-
-    conversation: list[dict[str, object]] = []
-    parent_id: str | None = None
-    for msg in messages:
-        message_id = make_message_id()
-        conversation.append(
-            {
-                "id": message_id,
-                "parent_id": parent_id,
-                "cache_key": message_id,
-                "role": msg.get("role"),
-                "content": msg.get("content"),
-                "timestamp": make_timestamp(),
-            }
-        )
-        parent_id = message_id
-    return conversation
-
-
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatRequest):
     """
@@ -350,74 +257,65 @@ async def chat_completions(request: ChatRequest):
 
         def generate_stream():
             prompt_config = getattr(generator, "prompt_config", None)
-            conversation = _build_server_conversation(
+            conversation = build_conversation_from_messages(
+                messages=raw_messages,
+                prompt_config=prompt_config,
+                make_message_id=make_message_id,
+                make_timestamp=make_timestamp,
+            )
+            global _last_prompt_start_time
+            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
+            stream_hyperparameters = build_hyperparameters_from_request(
                 request=request,
                 prompt_config=prompt_config,
+                is_harmony=bool(
+                    getattr(generator, "is_gpt_oss", False)
+                    and getattr(generator, "use_harmony", False)
+                ),
             )
-            system_message = None
-            prompt_conversation, prompt_token_count = truncate_conversation_for_context(
+            max_context_tokens = resolve_max_context_tokens(
+                args=SimpleNamespace(max_context_tokens=None),
+                loaded_max_context_tokens=None,
+                loaded_model_path=None,
+                prompt_config=prompt_config,
+                profile_data=profile_data,
+                model_path=model_path,
+            )
+            last_user_text = None
+            for msg in reversed(conversation):
+                if msg.get("role") == "user":
+                    last_user_text = str(msg.get("content") or "")
+                    break
+            backend_result = run_backend_chat(
                 generator=generator,
                 conversation=conversation,
-                system_message=system_message,
-                max_context_tokens=resolve_max_context_tokens(
-                    args=argparse.Namespace(max_context_tokens=None),
-                    loaded_max_context_tokens=None,
-                    loaded_model_path=None,
-                    prompt_config=prompt_config,
-                    profile_data=profile_data,
-                    model_path=model_path,
-                ),
-                max_context_tokens_margin=getattr(prompt_config, "max_context_tokens_margin", None)
-                if prompt_config
-                else None,
-            )
-            prompt_token_ids = build_prompt_token_ids(
-                generator=generator,
-                conversation=prompt_conversation,
-                system_message=system_message,
-            )
-            _ = prepare_prompt(
-                generator=generator,
-                conversation=prompt_conversation,
-                system_message=system_message,
+                hyperparameters=stream_hyperparameters,
+                assistant_name=get_assistant_name(prompt_config),
+                thinking_limit=get_truncate_limits(prompt_config)[0],
+                response_limit=get_truncate_limits(prompt_config)[1],
+                render_markdown=False,
                 debug_path=debug_path,
-                debug=False,
                 debug_tokens=None,
-                prompt_token_ids=prompt_token_ids,
+                enable_artifacts=True,
+                max_context_tokens=max_context_tokens,
+                max_tool_iterations=10,
+                max_resume_attempts=2,
+                tools=[],
+                last_user_text=last_user_text,
+                make_message_id=make_message_id,
+                make_timestamp=make_timestamp,
+                collect_memory_stats=_collect_memory_stats,
+                write_debug_metrics=write_debug_metrics,
+                write_debug_response=write_debug_response,
+                write_debug_info=write_debug_info,
+                write_debug_token_texts=write_debug_token_texts,
+                write_debug_tokens=write_debug_tokens,
+                last_prompt_start_time=_last_prompt_start_time,
+                generation_index=0,
             )
-            prompt_start = time.perf_counter()
-            global _last_prompt_start_time
-            prompt_start_delta = None
-            if _last_prompt_start_time is not None:
-                prompt_start_delta = prompt_start - _last_prompt_start_time
-            _last_prompt_start_time = prompt_start
-            generation_start = time.perf_counter()
-            completion_tokens = 0
-            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
-            collected_chunks: list[str] = []
-            adapter = get_adapter(generator)
-            tokens, all_generated_tokens, streamed_text_parts = adapter.stream(
-                generator=generator,
-                conversation=prompt_conversation,
-                system_message=system_message,
-                prompt_token_ids=prompt_token_ids,
-                hyperparameters={
-                    "temperature": request.temperature,
-                    "max_tokens": request.max_tokens,
-                    "top_p": request.top_p,
-                    "min_p": request.min_p,
-                    "top_k": request.top_k,
-                    "repetition_penalty": request.repetition_penalty,
-                    "repetition_context_size": request.repetition_context_size,
-                },
-                seed=None,
-                on_text=lambda _text: None,
-            )
-            for token_id in tokens:
-                completion_tokens += 1
-                text = _decode_tokens(generator, [int(token_id)])
-                if _should_log_prompt_response():
-                    collected_chunks.append(text)
+            _last_prompt_start_time = backend_result.last_prompt_start_time
+            text = backend_result.assistant_text or ""
+            if text:
                 chunk = {
                     "id": response_id,
                     "object": "chat.completion.chunk",
@@ -429,67 +327,10 @@ async def chat_completions(request: ChatRequest):
                             "delta": {"content": text},
                             "finish_reason": None,
                         }
-                    ]
+                    ],
                 }
                 yield f"data: {json.dumps(chunk)}\n\n"
-            generation_end = time.perf_counter()
-            elapsed = generation_end - generation_start
-            _write_server_metrics(
-                generator=generator,
-                prompt_tokens=prompt_token_count,
-                completion_tokens=completion_tokens,
-                elapsed_seconds=elapsed,
-                prompt_start_delta=prompt_start_delta,
-                prefill_seconds=None,
-                debug_path=Path(debug_path),
-            )
-            write_debug_tokens(
-                debug_path=Path(debug_path),
-                token_ids=all_generated_tokens,
-                decode_tokens=generator.encoding.decode if generator.encoding else None,
-                label="response",
-                mode="off",
-            )
-            raw_response = adapter.decode_raw(
-                generator=generator,
-                prompt_token_ids=prompt_token_ids,
-                all_generated_tokens=all_generated_tokens,
-            )
-            parsed = adapter.parse(
-                generator=generator,
-                tokens=tokens,
-                streamed_text_parts=streamed_text_parts,
-                assistant_name=get_assistant_name(prompt_config),
-                thinking_limit=get_truncate_limits(prompt_config)[0],
-                response_limit=get_truncate_limits(prompt_config)[1],
-                render_markdown=False,
-                debug=False,
-                display_assistant=lambda *_args, **_kwargs: None,
-                display_thinking=lambda *_args, **_kwargs: None,
-                truncate_text=lambda text, _limit: text,
-                suppress_display=True,
-            )
-            if _should_log_prompt_response():
-                try:
-                    write_debug_response(
-                        debug_path=Path(debug_path),
-                        raw_response=raw_response,
-                        cleaned_response=parsed.assistant_text or raw_response,
-                        show_console=False,
-                    )
-                except Exception as exc:
-                    logger.warning("Failed to write server debug response: %s", exc)
-            write_debug_token_texts(
-                debug_path=Path(debug_path),
-                token_ids=all_generated_tokens,
-                decode_token=generator.encoding.decode if generator.encoding else generator.tokenizer.decode,
-                label="response",
-                mode="off",
-            )
-            finish_reason = generator.last_finish_reason
-            if not isinstance(finish_reason, str) or not finish_reason:
-                finish_reason = "stop"
-            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
+            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': backend_result.finish_reason}]})}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(generate_stream(), media_type="text/event-stream")
@@ -500,34 +341,23 @@ async def chat_completions(request: ChatRequest):
     render_markdown = False
     tools: list[object] = []
 
-    conversation = _build_server_conversation(
-        request=request,
+    conversation = build_conversation_from_messages(
+        messages=raw_messages,
         prompt_config=prompt_config,
+        make_message_id=make_message_id,
+        make_timestamp=make_timestamp,
     )
     messages = [{"role": msg.get("role"), "content": msg.get("content")} for msg in conversation]
 
-    args = argparse.Namespace(
-        max_tokens=request.max_tokens,
-        temperature=request.temperature,
-        top_p=request.top_p,
-        min_p=request.min_p,
-        top_k=request.top_k,
-        repetition_penalty=request.repetition_penalty,
-        repetition_context_size=request.repetition_context_size,
-        loop_detection=None,
-        max_context_tokens=None,
-        seed=None,
-        reseed_each_turn=None,
-    )
-    hyperparameters = build_hyperparameters(
-        args,
-        loaded_hyperparameters={},
+    hyperparameters = build_hyperparameters_from_request(
+        request=request,
         prompt_config=prompt_config,
-        is_harmony=bool(getattr(generator, "is_gpt_oss", False) and getattr(generator, "use_harmony", False)),
+        is_harmony=bool(
+            getattr(generator, "is_gpt_oss", False) and getattr(generator, "use_harmony", False)
+        ),
     )
-    last_saved_hyperparameters: dict[str, float | int | bool | str] = {}
     max_context_tokens = resolve_max_context_tokens(
-        args=args,
+        args=SimpleNamespace(max_context_tokens=None),
         loaded_max_context_tokens=None,
         loaded_model_path=None,
         prompt_config=prompt_config,
@@ -541,16 +371,14 @@ async def chat_completions(request: ChatRequest):
             last_user_text = str(msg.get("content") or "")
             break
 
-    result = run_chat_turn(
+    backend_result = run_backend_chat(
         generator=generator,
         conversation=conversation,
         hyperparameters=hyperparameters,
-        last_saved_hyperparameters=last_saved_hyperparameters,
         assistant_name=assistant_name,
         thinking_limit=thinking_limit,
         response_limit=response_limit,
         render_markdown=render_markdown,
-        debug=False,
         debug_path=debug_path,
         debug_tokens=None,
         enable_artifacts=True,
@@ -561,34 +389,26 @@ async def chat_completions(request: ChatRequest):
         last_user_text=last_user_text,
         make_message_id=make_message_id,
         make_timestamp=make_timestamp,
-        display_assistant=lambda *_args, **_kwargs: None,
-        display_thinking=lambda *_args, **_kwargs: None,
-        truncate_text=lambda text, _limit: text,
         collect_memory_stats=_collect_memory_stats,
         write_debug_metrics=write_debug_metrics,
         write_debug_response=write_debug_response,
+        write_debug_info=write_debug_info,
         write_debug_token_texts=write_debug_token_texts,
         write_debug_tokens=write_debug_tokens,
         last_prompt_start_time=_last_prompt_start_time,
         generation_index=0,
     )
-    _last_prompt_start_time = result.last_prompt_start_time
+    _last_prompt_start_time = backend_result.last_prompt_start_time
 
-    assistant_text = ""
+    assistant_text = backend_result.assistant_text
     analysis_text: str | None = None
-    for msg in reversed(conversation):
-        if msg.get("role") == "assistant":
-            assistant_text = str(msg.get("content") or "")
-            if request.return_analysis and msg.get("analysis"):
-                analysis_text = str(msg.get("analysis"))
-            break
+    if request.return_analysis:
+        analysis_text = backend_result.analysis_text
 
-    prompt_tokens = result.prompt_tokens or 0
-    completion_tokens = result.completion_tokens or 0
+    prompt_tokens = backend_result.prompt_tokens
+    completion_tokens = backend_result.completion_tokens
     total_tokens = prompt_tokens + completion_tokens
-    finish_reason = generator.last_finish_reason
-    if not isinstance(finish_reason, str) or not finish_reason:
-        finish_reason = "stop"
+    finish_reason = backend_result.finish_reason
     return {
         "id": response_id,
         "object": "chat.completion",
@@ -615,6 +435,11 @@ async def chat_completions(request: ChatRequest):
 
 @app.get("/v1/models")
 async def list_models():
+    """List available local models using the configured models/profiles.
+
+    Returns:
+        OpenAI-compatible list response for local models.
+    """
     models_dir = os.getenv("MLX_HARMONY_MODELS_DIR", DEFAULT_MODELS_DIR)
     data = []
     base = Path(models_dir)
@@ -652,6 +477,11 @@ async def list_models():
 
 @app.get("/v1/health")
 async def health_check() -> dict[str, str | bool | int | None]:
+    """Report server liveness and model load state.
+
+    Returns:
+        Health metadata including model load state and paths.
+    """
     model_loaded = _generator is not None
     return {
         "object": "health",

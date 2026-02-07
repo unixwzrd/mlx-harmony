@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+"""Shared helpers for chat configuration, prompt defaults, and CLI utilities.
+
+This module centralizes configuration resolution and parameter merging so both
+CLI and server paths use the same defaults and precedence rules.
+"""
+
 import json
 import os
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from mlx_harmony.chat_commands import (
@@ -22,18 +29,27 @@ logger = get_logger(__name__)
 
 
 def get_assistant_name(prompt_config: Any | None) -> str:
-    """Get assistant name from prompt config, defaulting to 'Assistant'."""
+    """Get assistant name from prompt config, defaulting to "Assistant".
+
+    Args:
+        prompt_config: Prompt config object or None.
+
+    Returns:
+        Assistant display name.
+    """
     if prompt_config and getattr(prompt_config, "placeholders", None):
         return prompt_config.placeholders.get("assistant", "Assistant")
     return "Assistant"
 
 
 def get_truncate_limits(prompt_config: Any | None) -> tuple[int, int]:
-    """
-    Get truncate limits from prompt config.
+    """Get truncate limits from prompt config.
+
+    Args:
+        prompt_config: Prompt config object or None.
 
     Returns:
-        (thinking_limit, response_limit) tuple with defaults (1000, 1000)
+        (thinking_limit, response_limit) tuple with defaults (1000, 1000).
     """
     thinking_limit = (
         prompt_config.truncate_thinking
@@ -49,7 +65,15 @@ def get_truncate_limits(prompt_config: Any | None) -> tuple[int, int]:
 
 
 def truncate_text(text: str, limit: int) -> str:
-    """Truncate text to limit, appending '... [truncated]' if needed."""
+    """Truncate text to limit, appending a marker when needed.
+
+    Args:
+        text: Input text to truncate.
+        limit: Maximum length to keep.
+
+    Returns:
+        Truncated string (with suffix) when longer than limit.
+    """
     if len(text) > limit:
         return text[:limit] + "... [truncated]"
     return text
@@ -60,7 +84,19 @@ def resolve_profile_and_prompt_config(
     load_profiles: Callable[[str], dict[str, dict[str, Any]]],
     load_prompt_config: Callable[[str], Any | None],
 ) -> tuple[str | None, str | None, Any | None, dict[str, Any] | None]:
-    """Resolve model and prompt config paths from CLI args and profiles."""
+    """Resolve model and prompt config paths from CLI args and profiles.
+
+    Args:
+        args: Parsed CLI args containing model/profile/prompt_config fields.
+        load_profiles: Callable that loads profile data.
+        load_prompt_config: Callable that loads prompt config data.
+
+    Returns:
+        Tuple of (model_path, prompt_config_path, prompt_config, profile_data).
+
+    Raises:
+        SystemExit: If required model/profile or prompt config is missing.
+    """
     profile_model = None
     profile_prompt_cfg = None
     profile_data: dict[str, Any] | None = None
@@ -101,7 +137,20 @@ def resolve_max_context_tokens(
     model_path: str,
     default_value: int = 4096,
 ) -> int:
-    """Resolve max_context_tokens with CLI > metadata > config > profile > model > default."""
+    """Resolve max_context_tokens with CLI > metadata > config > profile > model > default.
+
+    Args:
+        args: Parsed CLI args with max_context_tokens overrides.
+        loaded_max_context_tokens: Value loaded from chat history (if any).
+        loaded_model_path: Model path associated with loaded chat metadata.
+        prompt_config: Prompt config object or None.
+        profile_data: Profile metadata if loaded from profiles file.
+        model_path: Active model path.
+        default_value: Fallback value when nothing else resolves.
+
+    Returns:
+        Resolved max_context_tokens value.
+    """
     if args.max_context_tokens is not None:
         return args.max_context_tokens
     if loaded_max_context_tokens is not None and loaded_model_path == model_path:
@@ -125,7 +174,14 @@ def resolve_max_context_tokens(
 
 
 def detect_model_max_context_tokens(model_path: str) -> int | None:
-    """Return model_max_length from tokenizer_config.json when available."""
+    """Return model_max_length from tokenizer_config.json when available.
+
+    Args:
+        model_path: Model directory containing tokenizer_config.json.
+
+    Returns:
+        Detected model_max_length when present, otherwise None.
+    """
     path = Path(model_path).expanduser()
     if not path.exists():
         return None
@@ -155,7 +211,17 @@ def build_hyperparameters(
     prompt_config: Any | None,
     is_harmony: bool,
 ) -> dict[str, float | int | bool | str]:
-    """Merge CLI, loaded, and config hyperparameters into a single dict."""
+    """Merge CLI, loaded, and config hyperparameters into a single dict.
+
+    Args:
+        args: Parsed CLI args or an args-like object.
+        loaded_hyperparameters: Persisted hyperparameters from chat history.
+        prompt_config: Prompt config object or None.
+        is_harmony: Whether Harmony defaults should be applied.
+
+    Returns:
+        Hyperparameters dict with None values removed.
+    """
     default_max_tokens = 1024 if is_harmony else 512
     cfg = prompt_config
     hyperparameters = {
@@ -248,3 +314,41 @@ def build_hyperparameters(
         ),
     }
     return {k: v for k, v in hyperparameters.items() if v is not None}
+
+
+def build_hyperparameters_from_request(
+    *,
+    request: Any,
+    prompt_config: Any | None,
+    is_harmony: bool,
+) -> dict[str, float | int | bool | str]:
+    """Build hyperparameters from a server request payload.
+
+    Args:
+        request: Server request with sampling fields (temperature, max_tokens, etc).
+        prompt_config: Prompt config used for default values and fallbacks.
+        is_harmony: Whether Harmony formatting is enabled (affects defaults).
+
+    Returns:
+        Hyperparameters dict aligned with CLI merge semantics.
+        Only non-None values are included.
+    """
+    args = SimpleNamespace(
+        max_tokens=getattr(request, "max_tokens", None),
+        temperature=getattr(request, "temperature", None),
+        top_p=getattr(request, "top_p", None),
+        min_p=getattr(request, "min_p", None),
+        top_k=getattr(request, "top_k", None),
+        repetition_penalty=getattr(request, "repetition_penalty", None),
+        repetition_context_size=getattr(request, "repetition_context_size", None),
+        loop_detection=None,
+        max_context_tokens=None,
+        seed=None,
+        reseed_each_turn=None,
+    )
+    return build_hyperparameters(
+        args,
+        loaded_hyperparameters={},
+        prompt_config=prompt_config,
+        is_harmony=is_harmony,
+    )

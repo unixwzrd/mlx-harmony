@@ -102,14 +102,10 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [bench_run.sh](../scripts/bench_run.sh): Benchmark harness (dataset run + vm_stat + merge).
 - [filter-vm_stat.py](../scripts/filter-vm_stat.py): vm_stat → TSV/JSON conversion helper.
 - [merge_timing_metrics.py](../scripts/merge_timing_metrics.py): Merge timing and vm_stat TSVs.
-- [profile_chat.py](../scripts/profile_chat.py): Profile interactive chat session.
-- [profile_chat_dataset.sh](../scripts/profile_chat_dataset.sh): Profile dataset-driven chat runs.
-- [profile_server_dataset.sh](../scripts/profile_server_dataset.sh): Profile dataset-driven server runs.
-- [profile_startup.py](../scripts/profile_startup.py): Profile startup/model load.
+- [profile_module.py](../scripts/profile_module.py): Unified entry for CLI, client, server, and startup profiling.
 - [clean_run_artifacts.sh](../scripts/clean_run_artifacts.sh): Cleanup shared log artifacts before scripted runs.
 - [dataset_run_common.sh](../scripts/dataset_run_common.sh): Shared helpers for dataset runs (metrics, vm_stat, plots).
 - [run_dataset_harness.sh](../scripts/run_dataset_harness.sh): Unified dataset runner for CLI/server workflows.
-- [profile_client.py](../scripts/profile_client.py): STDIO client that drives the API server.
 - [module_dep_graph.py](../scripts/module_dep_graph.py): Generate module dependency graphs (DOT/TSV).
 - [TPSvsWiredMemory.py](../scripts/TPSvsWiredMemory.py): Plot tokens-per-second versus wired memory from merged TSV.
 

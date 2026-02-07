@@ -4,6 +4,24 @@ set -euo pipefail
 VM_PGID=""
 VM_KILL_MODE="pid"
 
+cleanup_vmstat_processes() {
+  local out_tsv="$1"
+  [[ -z "$out_tsv" ]] && return
+  local pids=""
+  pids="$(pgrep -f "filter-vm_stat.py -d ${out_tsv}" || true)"
+  if [[ -z "$pids" ]]; then
+    return
+  fi
+  for pid in $pids; do
+    local ppid=""
+    ppid="$(ps -o ppid= -p "$pid" | tr -d ' ' || true)"
+    if [[ -n "$ppid" ]]; then
+      kill -TERM "$ppid" >/dev/null 2>&1 || true
+    fi
+    kill -TERM "$pid" >/dev/null 2>&1 || true
+  done
+}
+
 abs_path() {
   if command -v realpath >/dev/null 2>&1; then
     realpath "$1"
@@ -32,6 +50,31 @@ write_run_env() {
   } > "${meta_dir}/run.env"
 }
 
+collect_log_artifacts() {
+  local source_dir="$1"
+  local dest_dir="$2"
+
+  mkdir -p "$dest_dir"
+  if [[ ! -d "$source_dir" ]]; then
+    echo "[WARNING] Logs source directory missing: $source_dir" >&2
+    return 0
+  fi
+
+  local moved=0
+  while IFS= read -r -d '' file; do
+    mv -f "$file" "$dest_dir/" || true
+    moved=$((moved + 1))
+  done < <(find "$source_dir" -maxdepth 1 -type f \( \
+      -name 'completion.*' -o -name 'parse.*' -o -name 'prompt.*' -o -name 'retry.*' -o \
+      -name 'profiling-chat.json' -o -name 'debug.log' \
+    \) -print0)
+
+  if [[ "$moved" -eq 0 ]]; then
+    echo "[WARNING] No log artifacts moved from ${source_dir} to ${dest_dir}" >&2
+    ls -la "$source_dir" 2>/dev/null || true
+  fi
+}
+
 start_vmstat() {
   local interval="$1"
   local filter_script="$2"
@@ -40,6 +83,7 @@ start_vmstat() {
   shift 4
   local filter_args=("$@")
 
+  cleanup_vmstat_processes "$out_tsv"
   : >"$stderr_path"
   if command -v setsid >/dev/null 2>&1; then
     setsid bash -c "

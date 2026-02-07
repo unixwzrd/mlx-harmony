@@ -9,6 +9,7 @@ from mlx_harmony.chat_history import (
     find_last_hyperparameters,
     make_message_id,
     make_timestamp,
+    write_debug_info,
     write_debug_metrics,
     write_debug_response,
     write_debug_token_texts,
@@ -153,6 +154,7 @@ def _process_user_input(
         collect_memory_stats=_collect_memory_stats,
         write_debug_metrics=write_debug_metrics,
         write_debug_response=write_debug_response,
+        write_debug_info=write_debug_info,
         write_debug_token_texts=write_debug_token_texts,
         write_debug_tokens=write_debug_tokens,
     )
