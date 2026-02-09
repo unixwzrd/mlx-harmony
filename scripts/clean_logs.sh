@@ -23,13 +23,16 @@ files=(
 rm -f "${files[@]}"
 
 if [[ "$STRICT" == "--strict" ]]; then
-  remaining=(
-    completion.* parse.* prompt.* retry.*
-    profiling-chat.json debug.log server-run.log server-requests.log
-  )
-  if (( ${#remaining[@]} > 0 )); then
+  if compgen -G "completion.*" >/dev/null 2>&1 \
+    || compgen -G "parse.*" >/dev/null 2>&1 \
+    || compgen -G "prompt.*" >/dev/null 2>&1 \
+    || compgen -G "retry.*" >/dev/null 2>&1 \
+    || [[ -e "profiling-chat.json" ]] \
+    || [[ -e "debug.log" ]] \
+    || [[ -e "server-run.log" ]] \
+    || [[ -e "server-requests.log" ]]; then
     echo "[ERROR] Cleanup failed; remaining artifacts in $LOGS_DIR:" >&2
-    printf '%s\n' "${remaining[@]}" >&2
+    ls -1 completion.* parse.* prompt.* retry.* profiling-chat.json debug.log server-run.log server-requests.log 2>/dev/null >&2 || true
     exit 1
   fi
 fi

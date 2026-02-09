@@ -190,6 +190,47 @@ class TestChatCompletions:
         assert any("data: [DONE]" in line for line in lines)
 
     @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_stream_nonstream_use_shared_backend_executor(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Ensure stream and non-stream paths both use shared backend helpers."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "max_tokens": 10,
+        }
+        backend_inputs = {"conversation": [], "hyperparameters": {}}
+        backend_result = BackendChatResult(
+            assistant_text="shared response",
+            analysis_text=None,
+            prompt_tokens=4,
+            completion_tokens=2,
+            finish_reason="stop",
+            last_prompt_start_time=1.0,
+        )
+        with (
+            patch("mlx_harmony.server._prepare_backend_inputs") as mock_prepare,
+            patch("mlx_harmony.server._execute_backend_turn") as mock_execute,
+        ):
+            mock_prepare.return_value = backend_inputs
+            mock_execute.return_value = backend_result
+
+            non_stream_response = client.post("/v1/chat/completions", json=request_data)
+            assert non_stream_response.status_code == 200
+
+            stream_request_data = dict(request_data)
+            stream_request_data["stream"] = True
+            stream_response = client.post("/v1/chat/completions", json=stream_request_data)
+            assert stream_response.status_code == 200
+            assert "data: [DONE]" in stream_response.text
+
+        assert mock_prepare.call_count == 2
+        assert mock_execute.call_count == 2
+        for call in mock_execute.call_args_list:
+            assert call.kwargs["backend_inputs"] is backend_inputs
+
+    @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_with_profile(
         self, mock_get_gen, client: TestClient, mock_generator
     ):
@@ -313,6 +354,161 @@ class TestChatCompletions:
             assert response.status_code == 400
             assert "not found" in response.json()["detail"].lower()
 
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_with_seed(self, mock_get_gen, client: TestClient, mock_generator):
+        """Test chat completions accepts deterministic seed parameter."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "seed": 42,
+            "max_tokens": 10,
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 200
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_rejects_n_greater_than_one(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Reject unsupported n>1 until multi-choice output is implemented."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "n": 2,
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 400
+        assert "limited to 1" in response.json()["detail"]
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_applies_stop_string_non_stream(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Truncate assistant content at stop sequence for non-stream calls."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "stop": " response",
+            "return_analysis": True,
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 200
+        message = response.json()["choices"][0]["message"]
+        assert message["content"] == "stub"
+        assert message["analysis"] == "stub analysis"
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_applies_stop_list_stream(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Truncate stream chunk content at the first matching stop sequence."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "stop": [" analysis", " response"],
+            "stream": True,
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 200
+        data_lines = [
+            line[6:]
+            for line in response.text.split("\n")
+            if line.startswith("data: ") and line not in {"data: [DONE]", "data: "}
+        ]
+        payloads = [json.loads(line) for line in data_lines]
+        content_chunks = [
+            chunk["choices"][0]["delta"].get("content", "")
+            for chunk in payloads
+            if chunk["choices"][0]["delta"].get("content") is not None
+        ]
+        assert "stub" in content_chunks
+        final_chunk = payloads[-1]
+        assert final_chunk["choices"][0]["finish_reason"] == "stop"
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_rejects_invalid_stop_payload(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Reject invalid stop types/values explicitly."""
+        mock_get_gen.return_value = mock_generator
+        invalid_payloads = [
+            {"stop": ""},
+            {"stop": []},
+            {"stop": ["ok", ""]},
+        ]
+        for payload in invalid_payloads:
+            request_data = {
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "Hello!"}],
+                **payload,
+            }
+            response = client.post("/v1/chat/completions", json=request_data)
+            assert response.status_code == 400
+            assert "stop" in response.json()["detail"]
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_rejects_unsupported_presence_penalty(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Reject unsupported non-zero presence_penalty."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "presence_penalty": 0.5,
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 400
+        assert "presence_penalty" in response.json()["detail"]
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_rejects_unsupported_tools(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Reject unsupported tools parameter explicitly."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "tools": [{"type": "function", "function": {"name": "x", "parameters": {}}}],
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 400
+        assert "tools" in response.json()["detail"]
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_accepts_response_format_json_object(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Accept response_format json_object for OpenAI compatibility."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "response_format": {"type": "json_object"},
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 200
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_rejects_unsupported_response_format_type(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Reject unsupported response_format types explicitly."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "response_format": {"type": "json_schema"},
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 400
+        assert "response_format" in response.json()["detail"]
+
 
 class TestServerErrors:
     """Test error handling in server."""
@@ -361,6 +557,19 @@ class TestServerHealth:
 
         response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code in [400, 422]
+
+    def test_models_endpoint_reads_models_dir(self, client: TestClient, tmp_path: Path) -> None:
+        """Return OpenAI-compatible model list from models directory."""
+        (tmp_path / "model-a").mkdir()
+        (tmp_path / "model-b").mkdir()
+        with patch.dict("os.environ", {"MLX_HARMONY_MODELS_DIR": str(tmp_path)}):
+            response = client.get("/v1/models")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["object"] == "list"
+        model_ids = [entry["id"] for entry in body["data"]]
+        assert str(tmp_path / "model-a") in model_ids
+        assert str(tmp_path / "model-b") in model_ids
 
 
 @pytest.mark.requires_model

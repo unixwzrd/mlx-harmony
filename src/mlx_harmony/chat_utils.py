@@ -127,6 +127,118 @@ def resolve_profile_and_prompt_config(
     return model_path, str(resolved_prompt_path) if resolved_prompt_path else None, prompt_config, profile_data
 
 
+def resolve_api_profile_paths(
+    *,
+    model: str | None,
+    prompt_config: str | None,
+    profile: str | None,
+    profiles_file: str | None,
+    default_profiles_file: str,
+    loaded_model_path: str | None,
+    loaded_prompt_config_path: str | None,
+    load_profiles_fn: Callable[[str], dict[str, dict[str, Any]]] = load_profiles,
+) -> tuple[str, str | None, dict[str, Any] | None]:
+    """Resolve API model/prompt-config paths from request and profile settings.
+
+    Args:
+        model: Requested model path.
+        prompt_config: Requested prompt config path.
+        profile: Optional profile name.
+        profiles_file: Optional profiles file override.
+        default_profiles_file: Default profiles file path.
+        loaded_model_path: Already-loaded server model path.
+        loaded_prompt_config_path: Already-loaded server prompt config path.
+        load_profiles_fn: Callable used to load profile data.
+
+    Returns:
+        Tuple of (model_path, prompt_config_path, profile_data).
+
+    Raises:
+        ValueError: If profiles/prompt config cannot be resolved.
+    """
+    model_path = model
+    prompt_config_path = prompt_config
+    profile_data: dict[str, Any] | None = None
+    config_dir = os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR)
+
+    if profile:
+        selected_profiles_path = profiles_file or os.getenv(
+            "MLX_HARMONY_PROFILES_FILE",
+            default_profiles_file,
+        )
+        resolved_profiles_path = resolve_config_path(selected_profiles_path, config_dir)
+        if resolved_profiles_path is None or not resolved_profiles_path.exists():
+            raise ValueError(f"Profiles file not found: {selected_profiles_path}")
+        profiles = load_profiles_fn(str(resolved_profiles_path))
+        if profile not in profiles:
+            raise ValueError(f"Profile '{profile}' not found in {resolved_profiles_path}")
+        profile_data = profiles[profile]
+        model_path = profile_data.get("model", model_path)
+        prompt_config_path = prompt_config_path or profile_data.get("prompt_config")
+
+    if prompt_config_path:
+        resolved_prompt_path = resolve_config_path(prompt_config_path, config_dir)
+        if resolved_prompt_path is None or not resolved_prompt_path.exists():
+            raise ValueError(f"Prompt config not found: {prompt_config_path}")
+        prompt_config_path = str(resolved_prompt_path)
+
+    if model_path is None:
+        model_path = loaded_model_path
+    if prompt_config_path is None:
+        prompt_config_path = loaded_prompt_config_path
+    if not model_path:
+        raise ValueError("No model provided and no server default model is loaded.")
+
+    return model_path, prompt_config_path, profile_data
+
+
+def resolve_startup_profile_paths(
+    *,
+    model: str | None,
+    profile: str | None,
+    prompt_config: str | None,
+    profiles_file: str,
+    load_profiles_fn: Callable[[str], dict[str, dict[str, Any]]] = load_profiles,
+) -> tuple[str | None, str | None]:
+    """Resolve preload model/prompt-config paths from startup arguments.
+
+    Args:
+        model: Startup model path argument.
+        profile: Optional startup profile name.
+        prompt_config: Optional startup prompt config path.
+        profiles_file: Profiles file path argument.
+        load_profiles_fn: Callable used to load profile data.
+
+    Returns:
+        Tuple of (model_path, prompt_config_path).
+
+    Raises:
+        ValueError: If profiles/prompt config cannot be resolved.
+    """
+    model_path = model
+    prompt_config_path = prompt_config
+    config_dir = os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR)
+
+    if profile:
+        resolved_profiles_path = resolve_config_path(profiles_file, config_dir)
+        if resolved_profiles_path is None or not resolved_profiles_path.exists():
+            raise ValueError(f"Profiles file not found: {profiles_file}")
+        profiles = load_profiles_fn(str(resolved_profiles_path))
+        if profile not in profiles:
+            raise ValueError(f"Profile '{profile}' not found in {resolved_profiles_path}")
+        profile_data = profiles[profile]
+        model_path = profile_data.get("model", model_path)
+        prompt_config_path = prompt_config_path or profile_data.get("prompt_config")
+
+    if prompt_config_path:
+        resolved_prompt_path = resolve_config_path(prompt_config_path, config_dir)
+        if resolved_prompt_path is None or not resolved_prompt_path.exists():
+            raise ValueError(f"Prompt config not found: {prompt_config_path}")
+        prompt_config_path = str(resolved_prompt_path)
+
+    return model_path, prompt_config_path
+
+
 def resolve_max_context_tokens(
     *,
     args: Any,
@@ -343,7 +455,7 @@ def build_hyperparameters_from_request(
         repetition_context_size=getattr(request, "repetition_context_size", None),
         loop_detection=None,
         max_context_tokens=None,
-        seed=None,
+        seed=getattr(request, "seed", None),
         reseed_each_turn=None,
     )
     return build_hyperparameters(

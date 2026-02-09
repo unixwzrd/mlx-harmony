@@ -23,6 +23,25 @@ Track the next-sprint work items across major areas (engineering, performance, t
 
 ## Current Sprint (1–2 Days)
 
+### Immediate Focus Order (Execution Sequence)
+
+- [ ] Phase 1: close CLI vs server core-path gap first.
+  - [x] Unify stream and non-stream server request preparation so both paths use identical backend inputs.
+  - [x] Remove remaining duplicated server-side prompt/parse/retry logic.
+  - [ ] Route server turn execution through the same shared turn pipeline used by CLI.
+  - [x] Validate deterministic retry pattern parity (`logs/cli` vs `logs/server`).
+- [ ] Phase 2: lock backend boundary and adapter responsibilities.
+  - [ ] Define one backend service contract used by both local (CLI) and HTTP paths.
+  - [ ] Keep transport adapters thin (local call adapter vs HTTP adapter only).
+  - [ ] Keep frontend behavior shared and transport-agnostic.
+- [ ] Phase 3: add regression guardrails before further refactors.
+  - [x] Adapter parity tests (local vs HTTP).
+  - [x] Server stream/non-stream parity test uses shared backend execution helpers.
+  - [x] Artifact parity tests (`prompt.*`, `completion.*`, `parse.*`, `retry.*`).
+  - [x] Channel/render parity tests (`analysis` + `final`, cleanup/render behavior).
+- [~] Phase 4: proceed with API enhancement.
+  - [x] Start with `/v1/models` and chat-completions parameter parity.
+
 ### CLI/Server Convergence (Priority)
 
 - [x] Define a backend adapter contract (`GenerationClient`) for shared front-end usage.
@@ -134,5 +153,5 @@ Track the next-sprint work items across major areas (engineering, performance, t
 
 - [x] Unit tests for command module (`chat_commands.py`).
 - [x] Unit tests for multiline input modes (`\` continuation and `\\ ... \\` block).
-- [ ] Add adapter parity tests (local vs server client contract behavior).
-- [ ] Add server-backed client output-equivalence tests against CLI baseline.
+- [x] Add adapter parity tests (local vs server client contract behavior).
+- [x] Add server-backed client output-equivalence tests against CLI baseline.

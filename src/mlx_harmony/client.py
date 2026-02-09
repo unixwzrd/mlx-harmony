@@ -71,8 +71,9 @@ def _print_response(body: dict) -> str:
     if analysis:
         print(f"[THINKING - {analysis}]")
         print()
-    print(f"Assistant: {content}")
-    print()
+    if content:
+        print(f"Assistant: {content}")
+        print()
     return content
 
 

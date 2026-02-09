@@ -8,13 +8,18 @@ import time
 from pathlib import Path
 from threading import Lock
 from types import SimpleNamespace
-from typing import List, Optional
+from typing import Any, Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict
 
+from mlx_harmony.api_contract import (
+    ChatRequest,
+    RequestValidationError,
+    apply_stop_sequences,
+    validate_chat_request_supported,
+)
 from mlx_harmony.backend_api import build_conversation_from_messages, run_backend_chat
 from mlx_harmony.chat_history import (
     make_message_id,
@@ -29,14 +34,14 @@ from mlx_harmony.chat_utils import (
     build_hyperparameters_from_request,
     get_assistant_name,
     get_truncate_limits,
+    resolve_api_profile_paths,
     resolve_max_context_tokens,
+    resolve_startup_profile_paths,
 )
 from mlx_harmony.config import (
-    DEFAULT_CONFIG_DIR,
     PromptConfig,
     load_profiles,
     load_prompt_config,
-    resolve_config_path,
 )
 from mlx_harmony.generator import TokenGenerator
 from mlx_harmony.logging import get_logger
@@ -44,35 +49,6 @@ from mlx_harmony.runtime.model_init import initialize_generator
 
 app = FastAPI(title="MLX Harmony API")
 logger = get_logger(__name__)
-
-
-class ChatMessage(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    role: str
-    content: str
-
-
-class ChatRequest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    model: Optional[str] = None
-    messages: List[ChatMessage]
-    temperature: Optional[float] = None
-    max_tokens: Optional[int] = None
-    top_p: Optional[float] = None
-    min_p: Optional[float] = None
-    top_k: Optional[int] = None
-    repetition_penalty: Optional[float] = None
-    repetition_context_size: Optional[int] = None
-    profile: Optional[str] = None
-    prompt_config: Optional[str] = None
-    profiles_file: Optional[str] = None
-    stream: bool = False
-    return_analysis: bool = False
-
-
-ChatMessage.model_rebuild()
-ChatRequest.model_rebuild()
-
 
 _generator: Optional[TokenGenerator] = None
 _generator_prompt_config_path: Optional[str] = None
@@ -140,58 +116,19 @@ def _resolve_profile(
     Returns:
         Tuple of (model_path, prompt_config_path, profile_data).
     """
-    model_path = request.model
-    prompt_config_path = request.prompt_config
-    profile_data: dict[str, object] | None = None
-    if request.profile:
-        config_dir = os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR)
-        profiles_path = request.profiles_file or os.getenv(
-            "MLX_HARMONY_PROFILES_FILE", DEFAULT_PROFILES_FILE
+    try:
+        return resolve_api_profile_paths(
+            model=request.model,
+            prompt_config=request.prompt_config,
+            profile=request.profile,
+            profiles_file=request.profiles_file,
+            default_profiles_file=DEFAULT_PROFILES_FILE,
+            loaded_model_path=_loaded_model_path,
+            loaded_prompt_config_path=_generator_prompt_config_path,
+            load_profiles_fn=load_profiles,
         )
-        resolved_profiles_path = resolve_config_path(profiles_path, config_dir)
-        if resolved_profiles_path is None or not resolved_profiles_path.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Profiles file not found: {profiles_path}",
-            )
-        profiles = load_profiles(str(resolved_profiles_path))
-        if request.profile not in profiles:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Profile '{request.profile}' not found in {resolved_profiles_path}",
-            )
-        profile = profiles[request.profile]
-        profile_data = profile
-        model_path = profile.get("model", model_path)
-        prompt_config_path = prompt_config_path or profile.get("prompt_config")
-        if prompt_config_path:
-            resolved_prompt_path = resolve_config_path(prompt_config_path, config_dir)
-            if resolved_prompt_path is None or not resolved_prompt_path.exists():
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Prompt config not found: {prompt_config_path}",
-                )
-            prompt_config_path = str(resolved_prompt_path)
-    elif prompt_config_path:
-        config_dir = os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR)
-        resolved_prompt_path = resolve_config_path(prompt_config_path, config_dir)
-        if resolved_prompt_path is None or not resolved_prompt_path.exists():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Prompt config not found: {prompt_config_path}",
-            )
-        prompt_config_path = str(resolved_prompt_path)
-    # If request omits model/prompt-config, reuse currently loaded defaults.
-    if model_path is None:
-        model_path = _loaded_model_path
-    if prompt_config_path is None:
-        prompt_config_path = _generator_prompt_config_path
-    if not model_path:
-        raise HTTPException(
-            status_code=400,
-            detail="No model provided and no server default model is loaded.",
-        )
-    return model_path, prompt_config_path, profile_data
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _resolve_profile_from_args(
@@ -201,31 +138,16 @@ def _resolve_profile_from_args(
     prompt_config: Optional[str],
     profiles_file: str,
 ) -> tuple[Optional[str], Optional[str]]:
-    model_path = model
-    prompt_config_path = prompt_config
-    if profile:
-        config_dir = os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR)
-        resolved_profiles_path = resolve_config_path(profiles_file, config_dir)
-        if resolved_profiles_path is None or not resolved_profiles_path.exists():
-            raise RuntimeError(f"Profiles file not found: {profiles_file}")
-        profiles = load_profiles(str(resolved_profiles_path))
-        if profile not in profiles:
-            raise RuntimeError(f"Profile '{profile}' not found in {resolved_profiles_path}")
-        profile_data = profiles[profile]
-        model_path = profile_data.get("model", model_path)
-        prompt_config_path = prompt_config_path or profile_data.get("prompt_config")
-        if prompt_config_path:
-            resolved_prompt_path = resolve_config_path(prompt_config_path, config_dir)
-            if resolved_prompt_path is None or not resolved_prompt_path.exists():
-                raise RuntimeError(f"Prompt config not found: {prompt_config_path}")
-            prompt_config_path = str(resolved_prompt_path)
-    elif prompt_config_path:
-        config_dir = os.getenv("MLX_HARMONY_CONFIG_DIR", DEFAULT_CONFIG_DIR)
-        resolved_prompt_path = resolve_config_path(prompt_config_path, config_dir)
-        if resolved_prompt_path is None or not resolved_prompt_path.exists():
-            raise RuntimeError(f"Prompt config not found: {prompt_config_path}")
-        prompt_config_path = str(resolved_prompt_path)
-    return model_path, prompt_config_path
+    try:
+        return resolve_startup_profile_paths(
+            model=model,
+            profile=profile,
+            prompt_config=prompt_config,
+            profiles_file=profiles_file,
+            load_profiles_fn=load_profiles,
+        )
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 def _collect_memory_stats() -> dict[str, float | int | str]:
@@ -250,119 +172,32 @@ def _collect_memory_stats() -> dict[str, float | int | str]:
     return stats
 
 
-@app.post("/v1/chat/completions")
-async def chat_completions(request: ChatRequest):
+def _prepare_backend_inputs(
+    *,
+    request: ChatRequest,
+    generator: TokenGenerator,
+    model_path: str,
+    profile_data: dict[str, object] | None,
+) -> dict[str, Any]:
+    """Build shared backend inputs for both stream and non-stream paths.
+
+    Args:
+        request: Parsed chat request payload.
+        generator: Loaded generator instance.
+        model_path: Resolved model path for this request.
+        profile_data: Optional profile payload used for config resolution.
+
+    Returns:
+        Dict containing conversation, hyperparameters, context limits, and
+        display/tool settings used by `run_backend_chat`.
     """
-    OpenAI-compatible chat completions endpoint.
-    """
-    global _last_prompt_start_time
-    global _generation_index
-    model_path, prompt_config_path, profile_data = _resolve_profile(request)
-
-    generator = _get_generator(model_path, prompt_config_path)
-    raw_messages = [{"role": m.role, "content": m.content} for m in request.messages]
-    created = int(time.time())
-    response_id = f"chatcmpl-{created}"
-    debug_path = Path(os.getenv("MLX_HARMONY_SERVER_DEBUG_LOG", DEFAULT_SERVER_DEBUG_LOG))
-
-    if request.stream:
-
-        def generate_stream():
-            global _generation_index
-            prompt_config = getattr(generator, "prompt_config", None)
-            conversation = build_conversation_from_messages(
-                messages=raw_messages,
-                prompt_config=prompt_config,
-                make_message_id=make_message_id,
-                make_timestamp=make_timestamp,
-            )
-            global _last_prompt_start_time
-            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
-            stream_hyperparameters = build_hyperparameters_from_request(
-                request=request,
-                prompt_config=prompt_config,
-                is_harmony=bool(
-                    getattr(generator, "is_gpt_oss", False)
-                    and getattr(generator, "use_harmony", False)
-                ),
-            )
-            max_context_tokens = resolve_max_context_tokens(
-                args=SimpleNamespace(max_context_tokens=None),
-                loaded_max_context_tokens=None,
-                loaded_model_path=None,
-                prompt_config=prompt_config,
-                profile_data=profile_data,
-                model_path=model_path,
-            )
-            last_user_text = None
-            for msg in reversed(conversation):
-                if msg.get("role") == "user":
-                    last_user_text = str(msg.get("content") or "")
-                    break
-            backend_result = run_backend_chat(
-                generator=generator,
-                conversation=conversation,
-                hyperparameters=stream_hyperparameters,
-                assistant_name=get_assistant_name(prompt_config),
-                thinking_limit=get_truncate_limits(prompt_config)[0],
-                response_limit=get_truncate_limits(prompt_config)[1],
-                render_markdown=False,
-                debug_path=debug_path,
-                debug_tokens=None,
-                enable_artifacts=True,
-                max_context_tokens=max_context_tokens,
-                max_tool_iterations=10,
-                max_resume_attempts=2,
-                tools=[],
-                last_user_text=last_user_text,
-                make_message_id=make_message_id,
-                make_timestamp=make_timestamp,
-                collect_memory_stats=_collect_memory_stats,
-                write_debug_metrics=write_debug_metrics,
-                write_debug_response=write_debug_response,
-                write_debug_info=write_debug_info,
-                write_debug_token_texts=write_debug_token_texts,
-                write_debug_tokens=write_debug_tokens,
-                last_prompt_start_time=_last_prompt_start_time,
-                generation_index=_generation_index,
-            )
-            _last_prompt_start_time = backend_result.last_prompt_start_time
-            _generation_index = backend_result.generation_index
-            text = backend_result.assistant_text or ""
-            if text:
-                chunk = {
-                    "id": response_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": model_path,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"content": text},
-                            "finish_reason": None,
-                        }
-                    ],
-                }
-                yield f"data: {json.dumps(chunk)}\n\n"
-            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': backend_result.finish_reason}]})}\n\n"
-            yield "data: [DONE]\n\n"
-
-        return StreamingResponse(generate_stream(), media_type="text/event-stream")
-
     prompt_config = getattr(generator, "prompt_config", None)
-    assistant_name = get_assistant_name(prompt_config)
-    thinking_limit, response_limit = get_truncate_limits(prompt_config)
-    render_markdown = False
-    tools: list[object] = []
-
     conversation = build_conversation_from_messages(
-        messages=raw_messages,
+        messages=[{"role": m.role, "content": m.content} for m in request.messages],
         prompt_config=prompt_config,
         make_message_id=make_message_id,
         make_timestamp=make_timestamp,
     )
-    messages = [{"role": msg.get("role"), "content": msg.get("content")} for msg in conversation]
-
     hyperparameters = build_hyperparameters_from_request(
         request=request,
         prompt_config=prompt_config,
@@ -378,29 +213,59 @@ async def chat_completions(request: ChatRequest):
         profile_data=profile_data,
         model_path=model_path,
     )
-
     last_user_text = None
-    for msg in reversed(messages):
+    for msg in reversed(conversation):
         if msg.get("role") == "user":
             last_user_text = str(msg.get("content") or "")
             break
+    thinking_limit, response_limit = get_truncate_limits(prompt_config)
+    return {
+        "conversation": conversation,
+        "hyperparameters": hyperparameters,
+        "max_context_tokens": max_context_tokens,
+        "last_user_text": last_user_text,
+        "assistant_name": get_assistant_name(prompt_config),
+        "thinking_limit": thinking_limit,
+        "response_limit": response_limit,
+        "tools": [],
+        "render_markdown": False,
+    }
 
-    backend_result = run_backend_chat(
+
+def _execute_backend_turn(
+    *,
+    generator: TokenGenerator,
+    backend_inputs: dict[str, Any],
+    debug_path: Path,
+) -> Any:
+    """Execute one backend turn using shared server-side settings.
+
+    Args:
+        generator: Loaded token generator.
+        backend_inputs: Dict produced by `_prepare_backend_inputs`.
+        debug_path: Server debug log path.
+
+    Returns:
+        Backend result object from `run_backend_chat`.
+    """
+    global _last_prompt_start_time
+    global _generation_index
+    result = run_backend_chat(
         generator=generator,
-        conversation=conversation,
-        hyperparameters=hyperparameters,
-        assistant_name=assistant_name,
-        thinking_limit=thinking_limit,
-        response_limit=response_limit,
-        render_markdown=render_markdown,
+        conversation=backend_inputs["conversation"],
+        hyperparameters=backend_inputs["hyperparameters"],
+        assistant_name=backend_inputs["assistant_name"],
+        thinking_limit=backend_inputs["thinking_limit"],
+        response_limit=backend_inputs["response_limit"],
+        render_markdown=backend_inputs["render_markdown"],
         debug_path=debug_path,
         debug_tokens=None,
         enable_artifacts=True,
-        max_context_tokens=max_context_tokens,
+        max_context_tokens=backend_inputs["max_context_tokens"],
         max_tool_iterations=10,
         max_resume_attempts=2,
-        tools=tools,
-        last_user_text=last_user_text,
+        tools=backend_inputs["tools"],
+        last_user_text=backend_inputs["last_user_text"],
         make_message_id=make_message_id,
         make_timestamp=make_timestamp,
         collect_memory_stats=_collect_memory_stats,
@@ -412,10 +277,75 @@ async def chat_completions(request: ChatRequest):
         last_prompt_start_time=_last_prompt_start_time,
         generation_index=_generation_index,
     )
-    _last_prompt_start_time = backend_result.last_prompt_start_time
-    _generation_index = backend_result.generation_index
+    _last_prompt_start_time = result.last_prompt_start_time
+    _generation_index = result.generation_index
+    return result
 
-    assistant_text = backend_result.assistant_text
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatRequest):
+    """
+    OpenAI-compatible chat completions endpoint.
+    """
+    global _last_prompt_start_time
+    global _generation_index
+    try:
+        validate_chat_request_supported(request)
+    except RequestValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    model_path, prompt_config_path, profile_data = _resolve_profile(request)
+
+    generator = _get_generator(model_path, prompt_config_path)
+    created = int(time.time())
+    response_id = f"chatcmpl-{created}"
+    debug_path = Path(os.getenv("MLX_HARMONY_SERVER_DEBUG_LOG", DEFAULT_SERVER_DEBUG_LOG))
+    backend_inputs = _prepare_backend_inputs(
+        request=request,
+        generator=generator,
+        model_path=model_path,
+        profile_data=profile_data,
+    )
+
+    if request.stream:
+
+        def generate_stream():
+            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
+            backend_result = _execute_backend_turn(
+                generator=generator,
+                backend_inputs=backend_inputs,
+                debug_path=debug_path,
+            )
+            text = backend_result.assistant_text or ""
+            text, was_truncated = apply_stop_sequences(text, request.stop)
+            if text:
+                chunk = {
+                    "id": response_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model_path,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": text},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+            finish_reason = "stop" if was_truncated else backend_result.finish_reason
+            yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': finish_reason}]})}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+    backend_result = _execute_backend_turn(
+        generator=generator,
+        backend_inputs=backend_inputs,
+        debug_path=debug_path,
+    )
+
+    assistant_text = backend_result.assistant_text or ""
+    assistant_text, was_truncated = apply_stop_sequences(assistant_text, request.stop)
     analysis_text: str | None = None
     if request.return_analysis:
         analysis_text = backend_result.analysis_text
@@ -423,7 +353,7 @@ async def chat_completions(request: ChatRequest):
     prompt_tokens = backend_result.prompt_tokens
     completion_tokens = backend_result.completion_tokens
     total_tokens = prompt_tokens + completion_tokens
-    finish_reason = backend_result.finish_reason
+    finish_reason = "stop" if was_truncated else backend_result.finish_reason
     return {
         "id": response_id,
         "object": "chat.completion",

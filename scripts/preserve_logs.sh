@@ -33,8 +33,8 @@ for file in "${files[@]}"; do
   if [[ -e "$file" ]]; then
     # Recreate destination defensively in case another step removed it.
     mkdir -p "$DEST_DIR"
-    if ! mv -f -- "$file" "$DEST_DIR/"; then
-      echo "[WARNING] Failed to move log artifact: $file -> $DEST_DIR" >&2
+    if ! mv -f -- "$file" "$DEST_DIR/" 2>/dev/null; then
+      echo "[WARNING] Failed to move log artifact: ${SOURCE_DIR}/${file} -> ${DEST_DIR}" >&2
       continue
     fi
     moved=$((moved + 1))
