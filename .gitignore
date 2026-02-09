@@ -612,5 +612,6 @@ configs/*
 docs/archive*
 docs/dependency-updates*
 !src/mlx_harmony/models
+!src/mlx_harmony/config
 AGENTS.md
 runs/*

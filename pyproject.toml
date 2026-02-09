@@ -37,6 +37,7 @@ packages = ["mlx_harmony"]
 
 [project.scripts]
 mlx-harmony-chat = "mlx_harmony.chat:main"
+mlx-harmony-client = "mlx_harmony.client:main"
 mlx-harmony-server = "mlx_harmony.server:main"
 mlx-harmony-generate = "mlx_harmony.generate:main"
 mlx-harmony-convert-dialogue = "mlx_harmony.convert_dialogue:main"

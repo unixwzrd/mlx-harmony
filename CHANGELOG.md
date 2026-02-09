@@ -1,18 +1,24 @@
 # Changelog
 
 **Created**: 2026-01-11
-**Updated**: 2026-02-02
+**Updated**: 2026-02-09
 
 All notable changes to mlx-harmony will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 2026-02-02 - Unreleased
+## 2026-02-09 - Unreleased
 
 ### Changed
 
-- Begin server/CLI convergence work to reuse shared prompt/retry/inference modules.
+- Reworked benchmark script documentation to match the current harness flow (`bench_run.sh` → `run_dataset_harness.sh` → profile + artifact processing scripts).
+- Hardened benchmark harness path handling to use absolute run/log roots in component runs, preventing artifact moves from failing due to cwd drift.
+- Standardized benchmark component profiling through dedicated runners:
+  - `scripts/profile_cli.sh`
+  - `scripts/profile_server.sh`
+  - `scripts/profile_module.py` as generic wrapper.
+- Updated sprint checklist and source file map to reflect the active profiling/benchmark script structure.
 
 ## 2026-02-01 - Unreleased
 

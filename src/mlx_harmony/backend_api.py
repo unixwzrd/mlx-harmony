@@ -17,6 +17,7 @@ class BackendChatResult:
     completion_tokens: int
     finish_reason: str
     last_prompt_start_time: float | None
+    generation_index: int = 0
 
 
 def build_conversation_from_messages(
@@ -194,4 +195,5 @@ def run_backend_chat(
         completion_tokens=completion_tokens,
         finish_reason=finish_reason,
         last_prompt_start_time=result.last_prompt_start_time,
+        generation_index=result.generation_index,
     )

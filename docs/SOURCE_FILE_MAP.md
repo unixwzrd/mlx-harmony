@@ -1,7 +1,7 @@
 # Source File Map
 
 **Created**: 2026-01-21
-**Updated**: 2026-02-02
+**Updated**: 2026-02-08
 
 This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmony) and describes their current roles.
 
@@ -102,8 +102,13 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [bench_run.sh](../scripts/bench_run.sh): Benchmark harness (dataset run + vm_stat + merge).
 - [filter-vm_stat.py](../scripts/filter-vm_stat.py): vm_stat → TSV/JSON conversion helper.
 - [merge_timing_metrics.py](../scripts/merge_timing_metrics.py): Merge timing and vm_stat TSVs.
-- [profile_module.py](../scripts/profile_module.py): Unified entry for CLI, client, server, and startup profiling.
-- [clean_run_artifacts.sh](../scripts/clean_run_artifacts.sh): Cleanup shared log artifacts before scripted runs.
+- [profile_module.py](../scripts/profile_module.py): Generic cProfile wrapper for module/script execution.
+- [profile_cli.sh](../scripts/profile_cli.sh): CLI profiling runner (dataset-driven via STDIN).
+- [profile_server.sh](../scripts/profile_server.sh): Server + client profiling runner for HTTP workflow.
+- [clean_logs.sh](../scripts/clean_logs.sh): Cleans staged log artifacts before component runs.
+- [preserve_logs.sh](../scripts/preserve_logs.sh): Moves staged logs into run bundle component directories.
+- [process_stats.sh](../scripts/process_stats.sh): Shared stats/plot/profile-artifact processor for component runs.
+- [clean_run_artifacts.sh](../scripts/clean_run_artifacts.sh): Manual cleanup utility for shared log artifacts.
 - [dataset_run_common.sh](../scripts/dataset_run_common.sh): Shared helpers for dataset runs (metrics, vm_stat, plots).
 - [run_dataset_harness.sh](../scripts/run_dataset_harness.sh): Unified dataset runner for CLI/server workflows.
 - [module_dep_graph.py](../scripts/module_dep_graph.py): Generate module dependency graphs (DOT/TSV).

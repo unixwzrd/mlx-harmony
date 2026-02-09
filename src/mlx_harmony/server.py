@@ -54,7 +54,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    model: str
+    model: Optional[str] = None
     messages: List[ChatMessage]
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
@@ -80,6 +80,7 @@ _generator_lock = Lock()
 _loaded_model_path: Optional[str] = None
 _loaded_at_unix: Optional[int] = None
 _last_prompt_start_time: float | None = None
+_generation_index: int = 0
 
 DEFAULT_PROFILES_FILE = "configs/profiles.example.json"
 DEFAULT_SERVER_DEBUG_LOG = "logs/server-debug.log"
@@ -180,6 +181,16 @@ def _resolve_profile(
                 detail=f"Prompt config not found: {prompt_config_path}",
             )
         prompt_config_path = str(resolved_prompt_path)
+    # If request omits model/prompt-config, reuse currently loaded defaults.
+    if model_path is None:
+        model_path = _loaded_model_path
+    if prompt_config_path is None:
+        prompt_config_path = _generator_prompt_config_path
+    if not model_path:
+        raise HTTPException(
+            status_code=400,
+            detail="No model provided and no server default model is loaded.",
+        )
     return model_path, prompt_config_path, profile_data
 
 
@@ -245,6 +256,7 @@ async def chat_completions(request: ChatRequest):
     OpenAI-compatible chat completions endpoint.
     """
     global _last_prompt_start_time
+    global _generation_index
     model_path, prompt_config_path, profile_data = _resolve_profile(request)
 
     generator = _get_generator(model_path, prompt_config_path)
@@ -256,6 +268,7 @@ async def chat_completions(request: ChatRequest):
     if request.stream:
 
         def generate_stream():
+            global _generation_index
             prompt_config = getattr(generator, "prompt_config", None)
             conversation = build_conversation_from_messages(
                 messages=raw_messages,
@@ -311,9 +324,10 @@ async def chat_completions(request: ChatRequest):
                 write_debug_token_texts=write_debug_token_texts,
                 write_debug_tokens=write_debug_tokens,
                 last_prompt_start_time=_last_prompt_start_time,
-                generation_index=0,
+                generation_index=_generation_index,
             )
             _last_prompt_start_time = backend_result.last_prompt_start_time
+            _generation_index = backend_result.generation_index
             text = backend_result.assistant_text or ""
             if text:
                 chunk = {
@@ -396,9 +410,10 @@ async def chat_completions(request: ChatRequest):
         write_debug_token_texts=write_debug_token_texts,
         write_debug_tokens=write_debug_tokens,
         last_prompt_start_time=_last_prompt_start_time,
-        generation_index=0,
+        generation_index=_generation_index,
     )
     _last_prompt_start_time = backend_result.last_prompt_start_time
+    _generation_index = backend_result.generation_index
 
     assistant_text = backend_result.assistant_text
     analysis_text: str | None = None

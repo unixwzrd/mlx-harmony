@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+"""HTTP generation client abstractions for server-backed execution.
+
+This module intentionally models request/response transport for API calls.
+Local in-process generation stays in the CLI turn pipeline and does not live
+here.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Protocol
+from typing import Optional, Protocol
 
-if TYPE_CHECKING:
-    from mlx_harmony.generator import TokenGenerator
 from mlx_harmony.api_client import ApiClient, ApiClientConfig
 
 
 @dataclass(frozen=True)
 class GenerationRequest:
+    """Generation request payload sent to the server."""
+
     messages: list[dict[str, str]]
     temperature: float = 1.0
     max_tokens: int = 512
@@ -23,6 +30,8 @@ class GenerationRequest:
 
 @dataclass(frozen=True)
 class GenerationResult:
+    """Normalized generation result from the server."""
+
     text: str
     analysis_text: str | None
     finish_reason: str
@@ -31,46 +40,16 @@ class GenerationResult:
 
 
 class GenerationClient(Protocol):
+    """Protocol for generation transports."""
+
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        """Generate a response for a request."""
         ...
 
 
-class LocalGenerationClient:
-    def __init__(self, generator: "TokenGenerator") -> None:
-        self._generator = generator
-
-    def generate(self, request: GenerationRequest) -> GenerationResult:
-        prompt_tokens = len(self._generator.render_prompt_tokens(request.messages))
-        token_ids = list(
-            self._generator.generate(
-                messages=request.messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                top_p=request.top_p,
-                min_p=request.min_p,
-                top_k=request.top_k,
-                repetition_penalty=request.repetition_penalty,
-                repetition_context_size=request.repetition_context_size,
-            )
-        )
-        completion_tokens = len(token_ids)
-        if hasattr(self._generator, "tokenizer") and hasattr(self._generator.tokenizer, "decode"):
-            text = self._generator.tokenizer.decode([int(t) for t in token_ids])
-        else:
-            text = ""
-        finish_reason = self._generator.last_finish_reason or "stop"
-        if not isinstance(finish_reason, str):
-            finish_reason = "stop"
-        return GenerationResult(
-            text=text,
-            analysis_text=None,
-            finish_reason=finish_reason,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-        )
-
-
 class ServerGenerationClient:
+    """Generation transport backed by the HTTP API server."""
+
     def __init__(
         self,
         *,
@@ -84,6 +63,19 @@ class ServerGenerationClient:
         requests_log: Optional[str],
         return_analysis: bool = True,
     ) -> None:
+        """Create an HTTP generation client.
+
+        Args:
+            host: Server host.
+            port: Server port.
+            model: Optional model identifier.
+            profile: Optional profile name.
+            prompt_config: Optional prompt config name/path.
+            max_tokens: Default max tokens for requests.
+            timeout: HTTP timeout seconds.
+            requests_log: Optional path for raw request/response logs.
+            return_analysis: Whether to request analysis channel text.
+        """
         config = ApiClientConfig(
             host=host,
             port=port,
@@ -98,6 +90,7 @@ class ServerGenerationClient:
         self._client = ApiClient(config)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        """Send a generation request and normalize the response."""
         body = self._client.send_messages(
             request.messages,
             temperature=request.temperature,

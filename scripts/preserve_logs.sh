@@ -14,23 +14,37 @@ if [[ ! -d "$SOURCE_DIR" ]]; then
   exit 0
 fi
 
+SOURCE_DIR="$(cd "$SOURCE_DIR" && pwd -P)"
+if [[ "$DEST_DIR" != /* ]]; then
+  DEST_DIR="${PWD}/${DEST_DIR}"
+fi
 mkdir -p "$DEST_DIR"
+DEST_DIR="$(cd "$DEST_DIR" && pwd -P)"
 
-MOVED=0
-while IFS= read -r -d '' file; do
-  mv -f "$file" "$DEST_DIR/" || true
-  MOVED=$((MOVED + 1))
-done < <(find "$SOURCE_DIR" -maxdepth 1 -type f \( \
-  -name 'completion.*' -o -name 'parse.*' -o -name 'prompt.*' -o -name 'retry.*' -o \
-  -name 'profiling-chat.json' -o -name 'debug.log' \
-\) -print0)
+cd "$SOURCE_DIR"
+shopt -s nullglob
+files=(
+  completion.* parse.* prompt.* retry.*
+  profiling-chat.json debug.log server-run.log server-requests.log
+)
 
-if [[ "$MOVED" -eq 0 ]]; then
-  existing_in_dest="$(find "$DEST_DIR" -maxdepth 1 -type f \( \
-    -name 'completion.*' -o -name 'parse.*' -o -name 'prompt.*' -o -name 'retry.*' -o \
-    -name 'profiling-chat.json' -o -name 'debug.log' \
-  \) -print -quit)"
-  if [[ -z "$existing_in_dest" ]]; then
+moved=0
+for file in "${files[@]}"; do
+  if [[ -e "$file" ]]; then
+    mv -f -- "$file" "$DEST_DIR/"
+    moved=$((moved + 1))
+  fi
+done
+
+if [[ "$moved" -eq 0 ]]; then
+  if ! compgen -G "${DEST_DIR}/completion.*" >/dev/null 2>&1 \
+    && ! compgen -G "${DEST_DIR}/parse.*" >/dev/null 2>&1 \
+    && ! compgen -G "${DEST_DIR}/prompt.*" >/dev/null 2>&1 \
+    && ! compgen -G "${DEST_DIR}/retry.*" >/dev/null 2>&1 \
+    && [[ ! -f "${DEST_DIR}/profiling-chat.json" ]] \
+    && [[ ! -f "${DEST_DIR}/debug.log" ]] \
+    && [[ ! -f "${DEST_DIR}/server-run.log" ]] \
+    && [[ ! -f "${DEST_DIR}/server-requests.log" ]]; then
     echo "[WARNING] No log artifacts moved from ${SOURCE_DIR} to ${DEST_DIR}" >&2
     ls -la "$SOURCE_DIR" 2>/dev/null || true
   fi

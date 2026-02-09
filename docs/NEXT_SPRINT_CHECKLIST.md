@@ -1,7 +1,7 @@
 # Next Sprint Checklist
 
 **Created**: 2026-01-28
-**Updated**: 2026-02-02
+**Updated**: 2026-02-08
 
 ## Purpose
 
@@ -48,6 +48,8 @@ Track the next-sprint work items across major areas (engineering, performance, t
 
 ### Benchmarking & Acceptance (ON-GOING)
 
+- [x] Stabilize benchmark artifact collection paths (absolute path handling in harness/preserve scripts).
+- [x] Split benchmark execution into dedicated profilers (`profile_cli.sh`, `profile_server.sh`) with shared post-processing.
 - [ ] Run KV windowing acceptance checks across multiple `max_kv_size` configs.
 - [ ] Confirm long-run TPS stops degrading past the window.
 - [ ] Verify wired memory plateaus (no large oscillations).

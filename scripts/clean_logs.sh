@@ -14,19 +14,22 @@ if [[ ! -d "$LOGS_DIR" ]]; then
   exit 0
 fi
 
-find "$LOGS_DIR" -maxdepth 1 -type f \( \
-  -name 'completion.*' -o -name 'parse.*' -o -name 'prompt.*' -o -name 'retry.*' -o \
-  -name 'profiling-chat.json' -o -name 'debug.log' \
-\) -exec rm -f {} \;
+cd "$LOGS_DIR"
+shopt -s nullglob
+files=(
+  completion.* parse.* prompt.* retry.*
+  profiling-chat.json debug.log server-run.log server-requests.log
+)
+rm -f "${files[@]}"
 
 if [[ "$STRICT" == "--strict" ]]; then
-  leftovers=$(find "$LOGS_DIR" -maxdepth 1 -type f \( \
-    -name 'completion.*' -o -name 'parse.*' -o -name 'prompt.*' -o -name 'retry.*' -o \
-    -name 'profiling-chat.json' -o -name 'debug.log' \
-  \) -print)
-  if [[ -n "$leftovers" ]]; then
+  remaining=(
+    completion.* parse.* prompt.* retry.*
+    profiling-chat.json debug.log server-run.log server-requests.log
+  )
+  if (( ${#remaining[@]} > 0 )); then
     echo "[ERROR] Cleanup failed; remaining artifacts in $LOGS_DIR:" >&2
-    echo "$leftovers" >&2
+    printf '%s\n' "${remaining[@]}" >&2
     exit 1
   fi
 fi

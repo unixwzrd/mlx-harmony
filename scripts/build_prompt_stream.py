@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -30,16 +32,26 @@ def main() -> int:
     limit = int(sys.argv[2]) if len(sys.argv) > 2 else None
 
     count = 0
-    for instruction in iter_instructions(path):
-        print("\\")
-        print(instruction)
-        print("\\")
-        count += 1
-        if limit is not None and count >= limit:
-            break
-    print("q")
+    try:
+        for instruction in iter_instructions(path):
+            print("\\")
+            print(instruction)
+            print("\\")
+            count += 1
+            if limit is not None and count >= limit:
+                break
+        print("q")
+    except BrokenPipeError:
+        # Downstream consumer closed stdin; treat as normal termination.
+        return 0
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Exit cleanly when the downstream consumer closes the pipe.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    try:
+        raise SystemExit(main())
+    except BrokenPipeError:
+        # Avoid interpreter finalization attempting to flush a broken stdout pipe.
+        os._exit(0)
