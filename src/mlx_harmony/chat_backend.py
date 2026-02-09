@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from mlx_harmony.backend_api import run_backend_chat
 from mlx_harmony.chat_turn import run_chat_turn
 from mlx_harmony.generation.client import GenerationClient, GenerationRequest
 from mlx_harmony.logging import get_logger
@@ -98,7 +99,7 @@ class LocalBackend:
         write_debug_token_texts: Any,
         write_debug_tokens: Any,
     ) -> BackendResult:
-        """Run a local chat turn using the shared turn pipeline.
+        """Run a local chat turn using shared backend execution.
 
         Args:
             conversation: Mutable conversation list.
@@ -135,7 +136,7 @@ class LocalBackend:
         Returns:
             BackendResult containing updated hyperparameters and token counts.
         """
-        result = run_chat_turn(
+        result = run_backend_chat(
             generator=generator,
             conversation=conversation,
             hyperparameters=hyperparameters,
@@ -144,7 +145,6 @@ class LocalBackend:
             thinking_limit=thinking_limit,
             response_limit=response_limit,
             render_markdown=render_markdown,
-            debug=debug,
             debug_path=debug_path,
             debug_tokens=debug_tokens,
             enable_artifacts=enable_artifacts,
@@ -155,9 +155,6 @@ class LocalBackend:
             last_user_text=last_user_text,
             make_message_id=make_message_id,
             make_timestamp=make_timestamp,
-            display_assistant=display_assistant,
-            display_thinking=display_thinking,
-            truncate_text=truncate_text,
             collect_memory_stats=collect_memory_stats,
             write_debug_metrics=write_debug_metrics,
             write_debug_response=write_debug_response,
@@ -171,8 +168,8 @@ class LocalBackend:
             assistant_text=None,
             analysis_text=None,
             handled_conversation=True,
-            hyperparameters=result.hyperparameters,
-            last_saved_hyperparameters=result.last_saved_hyperparameters,
+            hyperparameters=result.hyperparameters or hyperparameters,
+            last_saved_hyperparameters=result.last_saved_hyperparameters or last_saved_hyperparameters,
             generation_index=result.generation_index,
             last_prompt_start_time=result.last_prompt_start_time,
             prompt_tokens=result.prompt_tokens,

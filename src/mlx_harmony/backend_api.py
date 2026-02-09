@@ -19,6 +19,8 @@ class BackendChatResult:
     finish_reason: str
     last_prompt_start_time: float | None
     generation_index: int = 0
+    hyperparameters: dict[str, float | int | bool | str] | None = None
+    last_saved_hyperparameters: dict[str, float | int | bool | str] | None = None
 
 
 def build_conversation_from_messages(
@@ -96,6 +98,7 @@ def run_backend_chat(
     generator: Any,
     conversation: list[dict[str, object]],
     hyperparameters: dict[str, float | int | bool | str],
+    last_saved_hyperparameters: dict[str, float | int | bool | str] | None,
     assistant_name: str,
     thinking_limit: int | None,
     response_limit: int | None,
@@ -125,6 +128,7 @@ def run_backend_chat(
         generator: TokenGenerator instance.
         conversation: Mutable conversation list to append assistant turns.
         hyperparameters: Merged hyperparameters dict.
+        last_saved_hyperparameters: Last saved hyperparameter state.
         assistant_name: Assistant display name.
         thinking_limit: Max thinking tokens to render.
         response_limit: Max response tokens to render.
@@ -155,7 +159,7 @@ def run_backend_chat(
         generator=generator,
         conversation=conversation,
         hyperparameters=hyperparameters,
-        last_saved_hyperparameters={},
+        last_saved_hyperparameters=last_saved_hyperparameters or {},
         assistant_name=assistant_name,
         thinking_limit=thinking_limit,
         response_limit=response_limit,
@@ -207,4 +211,6 @@ def run_backend_chat(
         finish_reason=finish_reason,
         last_prompt_start_time=result.last_prompt_start_time,
         generation_index=result.generation_index,
+        hyperparameters=result.hyperparameters,
+        last_saved_hyperparameters=result.last_saved_hyperparameters,
     )

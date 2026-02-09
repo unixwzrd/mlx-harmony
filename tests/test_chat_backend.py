@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+from mlx_harmony.backend_api import BackendChatResult
 from mlx_harmony.chat_backend import LocalBackend, ServerBackend
 from mlx_harmony.generation.client import GenerationResult
 
@@ -58,18 +58,6 @@ def _backend_kwargs() -> dict[str, Any]:
     }
 
 
-@dataclass(frozen=True)
-class _StubTurnResult:
-    """Simple stand-in for chat turn return values."""
-
-    hyperparameters: dict[str, float | int | bool | str]
-    last_saved_hyperparameters: dict[str, float | int | bool | str]
-    generation_index: int
-    last_prompt_start_time: float | None
-    prompt_tokens: int | None
-    completion_tokens: int | None
-
-
 class _StubGenerationClient:
     """Capture requests and return a configured generation response."""
 
@@ -85,7 +73,10 @@ class _StubGenerationClient:
 def test_local_backend_returns_expected_contract() -> None:
     """Local backend should return turn data via BackendResult."""
     kwargs = _backend_kwargs()
-    stub_result = _StubTurnResult(
+    stub_result = BackendChatResult(
+        assistant_text="",
+        analysis_text=None,
+        finish_reason="stop",
         hyperparameters=kwargs["hyperparameters"],
         last_saved_hyperparameters=kwargs["last_saved_hyperparameters"],
         generation_index=7,
@@ -93,7 +84,7 @@ def test_local_backend_returns_expected_contract() -> None:
         prompt_tokens=101,
         completion_tokens=202,
     )
-    with patch("mlx_harmony.chat_backend.run_chat_turn", return_value=stub_result) as run_mock:
+    with patch("mlx_harmony.chat_backend.run_backend_chat", return_value=stub_result) as run_mock:
         result = LocalBackend().generate(**kwargs)
 
     run_mock.assert_called_once()
@@ -140,4 +131,3 @@ def test_server_backend_maps_request_and_returns_expected_contract() -> None:
     assert result.prompt_tokens == 11
     assert result.completion_tokens == 22
     assert result.generation_index == kwargs["generation_index"] + 1
-

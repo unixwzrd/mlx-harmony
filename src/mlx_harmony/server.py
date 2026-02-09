@@ -7,7 +7,6 @@ import os
 import time
 from pathlib import Path
 from threading import Lock
-from types import SimpleNamespace
 from typing import Any, Optional
 
 import uvicorn
@@ -20,7 +19,13 @@ from mlx_harmony.api_contract import (
     apply_stop_sequences,
     validate_chat_request_supported,
 )
-from mlx_harmony.backend_api import build_conversation_from_messages, run_backend_chat
+from mlx_harmony.backend_api import run_backend_chat
+from mlx_harmony.backend_runtime import (
+    BackendInputs,
+    BackendState,
+    execute_backend_turn,
+    prepare_backend_inputs,
+)
 from mlx_harmony.chat_history import (
     make_message_id,
     make_timestamp,
@@ -31,11 +36,7 @@ from mlx_harmony.chat_history import (
     write_debug_tokens,
 )
 from mlx_harmony.chat_utils import (
-    build_hyperparameters_from_request,
-    get_assistant_name,
-    get_truncate_limits,
     resolve_api_profile_paths,
-    resolve_max_context_tokens,
     resolve_startup_profile_paths,
 )
 from mlx_harmony.config import (
@@ -61,6 +62,99 @@ _generation_index: int = 0
 DEFAULT_PROFILES_FILE = "configs/profiles.example.json"
 DEFAULT_SERVER_DEBUG_LOG = "logs/server-debug.log"
 DEFAULT_MODELS_DIR = "models"
+
+
+def _prepare_backend_inputs(
+    *,
+    request: ChatRequest,
+    generator: TokenGenerator,
+    model_path: str,
+    profile_data: dict[str, object] | None,
+) -> dict[str, Any]:
+    """Compatibility wrapper that prepares shared backend inputs.
+
+    Args:
+        request: Parsed chat request payload.
+        generator: Loaded generator instance.
+        model_path: Resolved model path for this request.
+        profile_data: Optional profile payload used for config resolution.
+
+    Returns:
+        Dict form of shared backend inputs used by server request handling.
+    """
+    inputs = prepare_backend_inputs(
+        request=request,
+        generator=generator,
+        model_path=model_path,
+        profile_data=profile_data,
+        make_message_id=make_message_id,
+        make_timestamp=make_timestamp,
+    )
+    return {
+        "conversation": inputs.conversation,
+        "hyperparameters": inputs.hyperparameters,
+        "max_context_tokens": inputs.max_context_tokens,
+        "last_user_text": inputs.last_user_text,
+        "assistant_name": inputs.assistant_name,
+        "thinking_limit": inputs.thinking_limit,
+        "response_limit": inputs.response_limit,
+        "tools": inputs.tools,
+        "render_markdown": inputs.render_markdown,
+    }
+
+
+def _execute_backend_turn(
+    *,
+    generator: TokenGenerator,
+    backend_inputs: dict[str, Any],
+    debug_path: Path,
+) -> Any:
+    """Compatibility wrapper that executes one shared backend turn.
+
+    Args:
+        generator: Loaded token generator.
+        backend_inputs: Dict produced by `_prepare_backend_inputs`.
+        debug_path: Server debug log path.
+
+    Returns:
+        Backend result object from the shared chat turn path.
+    """
+    global _last_prompt_start_time
+    global _generation_index
+    state = BackendState(
+        last_prompt_start_time=_last_prompt_start_time,
+        generation_index=_generation_index,
+    )
+    inputs = BackendInputs(
+        conversation=backend_inputs["conversation"],
+        hyperparameters=backend_inputs["hyperparameters"],
+        max_context_tokens=backend_inputs["max_context_tokens"],
+        last_user_text=backend_inputs["last_user_text"],
+        assistant_name=backend_inputs["assistant_name"],
+        thinking_limit=backend_inputs["thinking_limit"],
+        response_limit=backend_inputs["response_limit"],
+        tools=backend_inputs["tools"],
+        render_markdown=backend_inputs["render_markdown"],
+    )
+    result, updated_state = execute_backend_turn(
+        generator=generator,
+        inputs=inputs,
+        state=state,
+        last_saved_hyperparameters={},
+        debug_path=debug_path,
+        make_message_id=make_message_id,
+        make_timestamp=make_timestamp,
+        collect_memory_stats=_collect_memory_stats,
+        write_debug_metrics=write_debug_metrics,
+        write_debug_response=write_debug_response,
+        write_debug_info=write_debug_info,
+        write_debug_token_texts=write_debug_token_texts,
+        write_debug_tokens=write_debug_tokens,
+        run_backend_chat_fn=run_backend_chat,
+    )
+    _last_prompt_start_time = updated_state.last_prompt_start_time
+    _generation_index = updated_state.generation_index
+    return result
 
 
 def _get_generator(model: str, prompt_config_path: Optional[str]) -> TokenGenerator:
@@ -172,116 +266,6 @@ def _collect_memory_stats() -> dict[str, float | int | str]:
     return stats
 
 
-def _prepare_backend_inputs(
-    *,
-    request: ChatRequest,
-    generator: TokenGenerator,
-    model_path: str,
-    profile_data: dict[str, object] | None,
-) -> dict[str, Any]:
-    """Build shared backend inputs for both stream and non-stream paths.
-
-    Args:
-        request: Parsed chat request payload.
-        generator: Loaded generator instance.
-        model_path: Resolved model path for this request.
-        profile_data: Optional profile payload used for config resolution.
-
-    Returns:
-        Dict containing conversation, hyperparameters, context limits, and
-        display/tool settings used by `run_backend_chat`.
-    """
-    prompt_config = getattr(generator, "prompt_config", None)
-    conversation = build_conversation_from_messages(
-        messages=[{"role": m.role, "content": m.content} for m in request.messages],
-        prompt_config=prompt_config,
-        make_message_id=make_message_id,
-        make_timestamp=make_timestamp,
-    )
-    hyperparameters = build_hyperparameters_from_request(
-        request=request,
-        prompt_config=prompt_config,
-        is_harmony=bool(
-            getattr(generator, "is_gpt_oss", False) and getattr(generator, "use_harmony", False)
-        ),
-    )
-    max_context_tokens = resolve_max_context_tokens(
-        args=SimpleNamespace(max_context_tokens=None),
-        loaded_max_context_tokens=None,
-        loaded_model_path=None,
-        prompt_config=prompt_config,
-        profile_data=profile_data,
-        model_path=model_path,
-    )
-    last_user_text = None
-    for msg in reversed(conversation):
-        if msg.get("role") == "user":
-            last_user_text = str(msg.get("content") or "")
-            break
-    thinking_limit, response_limit = get_truncate_limits(prompt_config)
-    return {
-        "conversation": conversation,
-        "hyperparameters": hyperparameters,
-        "max_context_tokens": max_context_tokens,
-        "last_user_text": last_user_text,
-        "assistant_name": get_assistant_name(prompt_config),
-        "thinking_limit": thinking_limit,
-        "response_limit": response_limit,
-        "tools": [],
-        "render_markdown": False,
-    }
-
-
-def _execute_backend_turn(
-    *,
-    generator: TokenGenerator,
-    backend_inputs: dict[str, Any],
-    debug_path: Path,
-) -> Any:
-    """Execute one backend turn using shared server-side settings.
-
-    Args:
-        generator: Loaded token generator.
-        backend_inputs: Dict produced by `_prepare_backend_inputs`.
-        debug_path: Server debug log path.
-
-    Returns:
-        Backend result object from `run_backend_chat`.
-    """
-    global _last_prompt_start_time
-    global _generation_index
-    result = run_backend_chat(
-        generator=generator,
-        conversation=backend_inputs["conversation"],
-        hyperparameters=backend_inputs["hyperparameters"],
-        assistant_name=backend_inputs["assistant_name"],
-        thinking_limit=backend_inputs["thinking_limit"],
-        response_limit=backend_inputs["response_limit"],
-        render_markdown=backend_inputs["render_markdown"],
-        debug_path=debug_path,
-        debug_tokens=None,
-        enable_artifacts=True,
-        max_context_tokens=backend_inputs["max_context_tokens"],
-        max_tool_iterations=10,
-        max_resume_attempts=2,
-        tools=backend_inputs["tools"],
-        last_user_text=backend_inputs["last_user_text"],
-        make_message_id=make_message_id,
-        make_timestamp=make_timestamp,
-        collect_memory_stats=_collect_memory_stats,
-        write_debug_metrics=write_debug_metrics,
-        write_debug_response=write_debug_response,
-        write_debug_info=write_debug_info,
-        write_debug_token_texts=write_debug_token_texts,
-        write_debug_tokens=write_debug_tokens,
-        last_prompt_start_time=_last_prompt_start_time,
-        generation_index=_generation_index,
-    )
-    _last_prompt_start_time = result.last_prompt_start_time
-    _generation_index = result.generation_index
-    return result
-
-
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatRequest):
     """
@@ -309,6 +293,8 @@ async def chat_completions(request: ChatRequest):
     if request.stream:
 
         def generate_stream():
+            global _last_prompt_start_time
+            global _generation_index
             yield f"data: {json.dumps({'id': response_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model_path, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
             backend_result = _execute_backend_turn(
                 generator=generator,
