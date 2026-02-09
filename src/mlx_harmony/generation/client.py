@@ -58,7 +58,7 @@ class ServerGenerationClient:
         model: Optional[str],
         profile: Optional[str],
         prompt_config: Optional[str],
-        max_tokens: int,
+        max_tokens: Optional[int],
         timeout: int,
         requests_log: Optional[str],
         return_analysis: bool = True,
@@ -71,7 +71,7 @@ class ServerGenerationClient:
             model: Optional model identifier.
             profile: Optional profile name.
             prompt_config: Optional prompt config name/path.
-            max_tokens: Default max tokens for requests.
+            max_tokens: Optional default max tokens for requests.
             timeout: HTTP timeout seconds.
             requests_log: Optional path for raw request/response logs.
             return_analysis: Whether to request analysis channel text.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Shared backend helpers for server-side chat execution."""
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -50,29 +51,39 @@ def build_conversation_from_messages(
             content = apply_placeholders(content, getattr(prompt_config, "placeholders", {}))
         normalized.append({"role": role, "content": content})
 
-    has_assistant = any(msg.get("role") == "assistant" for msg in normalized)
-    if (
-        prompt_config
-        and getattr(prompt_config, "assistant_greeting", None)
-        and not has_assistant
-    ):
+    greeting_text: str | None = None
+    if prompt_config and getattr(prompt_config, "assistant_greeting", None):
         greeting_text = apply_placeholders(
             getattr(prompt_config, "assistant_greeting", ""),
             getattr(prompt_config, "placeholders", {}),
         )
+    has_assistant_greeting = any(
+        msg.get("role") == "assistant" and str(msg.get("content", "")) == (greeting_text or "")
+        for msg in normalized
+    )
+    if (
+        greeting_text
+        and not has_assistant_greeting
+    ):
         normalized.insert(0, {"role": "assistant", "content": greeting_text})
 
     conversation: list[dict[str, object]] = []
     parent_id: str | None = None
-    for msg in normalized:
-        message_id = make_message_id()
+    for index, msg in enumerate(normalized):
+        role = str(msg.get("role") or "")
+        content = str(msg.get("content") or "")
+        key_material = f"{index}:{role}:{content}".encode("utf-8")
+        message_key = hashlib.sha1(key_material).hexdigest()
+        message_id = message_key or make_message_id()
         conversation.append(
             {
                 "id": message_id,
                 "parent_id": parent_id,
-                "cache_key": message_id,
-                "role": msg.get("role"),
-                "content": msg.get("content"),
+                # Stable cache keys preserve prompt-token cache reuse across
+                # stateless API turns with identical conversation prefixes.
+                "cache_key": message_key,
+                "role": role,
+                "content": content,
                 "timestamp": make_timestamp(),
             }
         )

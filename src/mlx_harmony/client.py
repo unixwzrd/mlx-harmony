@@ -126,7 +126,7 @@ def main() -> int:
     parser.add_argument("--model", default="")
     parser.add_argument("--profile", default="")
     parser.add_argument("--prompt-config", default="")
-    parser.add_argument("--max-tokens", type=int, default=512)
+    parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--health-retries", type=int, default=50)
     parser.add_argument("--health-sleep", type=float, default=0.2)

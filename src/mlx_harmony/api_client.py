@@ -17,7 +17,7 @@ class ApiClientConfig:
     model: Optional[str]
     profile: Optional[str]
     prompt_config: Optional[str]
-    max_tokens: int
+    max_tokens: Optional[int]
     timeout: int
     return_analysis: bool
     requests_log: Optional[Path]
@@ -57,8 +57,10 @@ class ApiClient:
         url = f"http://{self._config.host}:{self._config.port}/v1/chat/completions"
         payload: dict = {
             "messages": messages,
-            "max_tokens": max_tokens if max_tokens is not None else self._config.max_tokens,
         }
+        resolved_max_tokens = max_tokens if max_tokens is not None else self._config.max_tokens
+        if resolved_max_tokens is not None:
+            payload["max_tokens"] = resolved_max_tokens
         if temperature is not None:
             payload["temperature"] = temperature
         if top_p is not None:
@@ -73,8 +75,6 @@ class ApiClient:
             payload["repetition_context_size"] = repetition_context_size
         if self._config.model:
             payload["model"] = self._config.model
-        elif self._config.profile:
-            payload["model"] = self._config.profile
         if self._config.profile:
             payload["profile"] = self._config.profile
         if self._config.prompt_config:

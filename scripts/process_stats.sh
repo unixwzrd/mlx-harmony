@@ -25,6 +25,7 @@ PROFILE_TEXT="${METRICS_DIR}/profile.stats.txt"
 PROFILE_DOT="${METRICS_DIR}/profile.dot"
 PROFILE_METRICS_JSON="${METRICS_DIR}/profile.metrics.json"
 PROFILE_STATIC_TXT="${METRICS_DIR}/profile.static.txt"
+PROFILE_TOP="${PROFILE_TOP:-50}"
 
 mkdir -p "$METRICS_DIR" "$PLOTS_DIR"
 
@@ -44,5 +45,5 @@ if [[ -f "$PROFILE_STATS" ]]; then
     --profile-static-txt "$(abs_path "$PROFILE_STATIC_TXT")" \
     --profile-dot "$PROFILE_DOT" \
     --profile-svg "$PROFILE_SVG" \
-    --top 50 || true
+    --top "${PROFILE_TOP}" || true
 fi

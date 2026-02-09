@@ -1,129 +1,31 @@
 # TODO Checklist
 
 **Created**: 2026-01-09
-**Updated**: 2026-01-30
+**Updated**: 2026-02-09
 
-Quick reference checklist for **active short-term work items**. For longer-term planning and detailed feature roadmaps, see [ROADMAP.md](./ROADMAP.md).
+## Purpose
 
-## 🚀 Current Sprint / Active Work
+Hold untriaged work and quick-capture items only. This file is an inbox, not the active sprint plan.
 
-<!-- Update this section with items you're actively working on -->
+## Document Ownership
 
-- [ ] Testing and validation of mlock implementation
-- [~] Integration test run in progress (full chat flow with model)
-- [ ] Baseline performance notes for CLI/server output paths
-- [ ] Document any breaking changes or compatibility assumptions
-- [ ] Investigate response richness regression (markdown/plaintext output and response length)
+- Active execution tasks: [NEXT_SPRINT_CHECKLIST.md](./NEXT_SPRINT_CHECKLIST.md)
+- Refactor/convergence tasks: [REFACTOR_CHECKLIST.md](./REFACTOR_CHECKLIST.md)
+- Long-horizon planning: [ROADMAP.md](./ROADMAP.md)
 
-### Sprint Focus (Short List)
+## Inbox (Untriaged)
 
-- [ ] Run KV windowing acceptance checks across multiple `max_kv_size` configs (TPS + wired stability)
-- [ ] Confirm prompt token cap stays below `max_context_tokens` with margin in long runs
-- [ ] Update documentation scaffolding (User Guide + Developer Guide stubs) and link to [NOTES.md](./NOTES.md)
+- [ ] Add benchmark summary artifact (`summary.json`) per run for easy historical diffing.
+- [ ] Add a single command/script to regenerate broad/unfiltered graph outputs from existing `*.stats`.
+- [ ] Add docs section for profile graph generation (`compact`, `broad`, `unfiltered`) in [scripts/README.md](../scripts/README.md).
+- [ ] Evaluate pruning obsolete benchmark wrapper scripts after workflow stabilizes.
+- [ ] Add architecture boundary diagram (frontend, adapter, backend-core) in docs.
+- [ ] Add module naming cleanup pass plan (reduce overloaded `chat_*` naming where scope differs).
 
----
+## Promotion Rule
 
-## 🎯 Short-Term Priorities
-
-_These are items actively planned for upcoming releases. For comprehensive long-term planning, see [ROADMAP.md](./ROADMAP.md)._
-
-### Testing
-
-- [ ] End-to-end integration tests (full chat flow with model)
-- [ ] Testing and validation of mlock implementation
-- [ ] Prompt rendering tests for Harmony vs non-Harmony path (stubbed, no model download)
-- [ ] Edge-case tests for empty prompts and mixed roles
-
-### Core Features
-
-- [x] Core TokenGenerator implementation
-- [x] PromptConfig with dynamic placeholders (including time placeholders: TIME, TIMEZ, TIMEA, TIMEU)
-- [x] Profiles system
-- [x] Tool infrastructure (parsing + stubs)
-- [x] CLI tools (chat, generate, server)
-- [x] Conversation logging with timestamps and hyperparameters
-- [x] Conversation resume functionality (load/save JSON)
-- [x] Debug mode with file output (`--debug-file`)
-- [x] Assistant greeting support
-- [x] Memory management infrastructure (mlock)
-- [x] Fixed MLX API compatibility issues (zeros_like, scatter, searchsorted)
-- [x] Fixed sampling implementation to match mlx-lm exactly
-- [x] Fixed newline preservation in chat history
-- [x] Added \help command for out-of-band commands
-- [x] Added error handling for invalid \ commands
-- [x] Removed prewarm_cache feature
-- [ ] Add readline-based CLI input editing (vi/emacs modes) for manual prompt entry
-
-### API Compatibility (OpenAI Parity)
-
-- [ ] Align OpenAI-style API surface area (dummy endpoints first, wire up iteratively)
-- [ ] Implement placeholder endpoints for missing OpenAI routes (return `501` with clear error):
-  - [ ] `/v1/completions`
-  - [ ] `/v1/embeddings`
-  - [ ] `/v1/audio/*` (transcriptions, translations, speech)
-  - [ ] `/v1/images/*` (generations, edits, variations)
-  - [ ] `/v1/moderations`
-  - [ ] `/v1/files` + `/v1/batches`
-  - [ ] `/v1/responses`
-- [ ] Expand `/v1/chat/completions` parameter coverage:
-  - [ ] `stop` (string or list)
-  - [ ] `n`
-  - [ ] `presence_penalty` / `frequency_penalty`
-  - [ ] `logprobs`
-  - [ ] `response_format` (json_schema stub)
-  - [ ] `tool_choice` / `tools` (schema stub)
-  - [ ] `seed` and `system_fingerprint`
-- [ ] Standardize error shapes + HTTP status codes to match OpenAI API responses
-- [ ] Align streaming chunk format (`chat.completion.chunk`) fields with OpenAI
-
-### Documentation
-
-- [x] Basic documentation and examples
-- [x] Comprehensive documentation with navigation links
-- [x] Prompt config reference documentation
-- [x] Memory management guide
-- [x] Beautiful markdown rendering for assistant responses (rich library integration, similar to glow/mdless)
-- [ ] Add a unified User Guide (usage + tuning, including perf-mode) that consolidates scattered config docs
-- [ ] Add a Developer Guide (architecture overview + extension points) for contributors
-- [ ] API documentation setup (Sphinx/MkDocs)
-- [ ] Tool usage tutorial (when tool executors are implemented)
-- [ ] Update [README.md](../README.md) and [FEATURES_FROM_MLX.md](./FEATURES_FROM_MLX.md) if defaults/behavior change
-- [ ] Add architecture overview to [ROADMAP.md](./ROADMAP.md) if module boundaries change
-- [ ] Keep [tests/README.md](../tests/README.md) updated with new markers/requirements
-
----
-
-**Note**: Tool executors (browser, python, apply_patch), model caching, prompt caching, and other major features are tracked in [ROADMAP.md](./ROADMAP.md) under High/Medium priority sections.
-
----
-
-## 📋 Quick Add
-
-_Add quick TODOs here as they come up during development:_
-
-- [ ] Server request/response logging (optional debug mode)
-- [ ] Add unit tests to validate Harmony vs non-Harmony decode paths (stubbed, no model downloads)
-- [ ] Handle stop token sequences that are multi-token in [generate_standalone.py](../src/mlx_harmony/generate_standalone.py)
-- [ ] Add per-turn IDs + parent/child links for chat logs
-- [ ] Add max context window handling from model config (with override)
-- [ ] Add seed support for deterministic chat/profiling runs
-- [ ] Add CLI option to manually retry a truncated answer
-- [ ] Create [ADDITIONAL_UNIT_TESTS.md](./ADDITIONAL_UNIT_TESTS.md) and track new unit-test targets
-- [ ] Persist resolved placeholders in chat metadata to keep time/placeholder values stable across runs
-- [ ] Generate loop micro-optimizations in [generate_standalone.py](../src/mlx_harmony/generate_standalone.py): remove per-token allocations; avoid list growth inside the loop; avoid per-token Python conversions; precompute stop token set/constants
-- [ ] Model-call boundary micro-optimizations: minimize Python overhead per token (avoid extra checks unless needed)
-- [ ] Investigate unbuffered model-weight loading for large models (assess IO impact and MLX compatibility)
-
----
-
-## 📋 Quick Add
-
-_Add quick TODOs here as they come up during development:_
-
-- [ ] Server request/response logging (optional debug mode)
-
----
-
-**Note**: This file focuses on **short-term active work items**. For comprehensive long-term planning, feature requests, and detailed roadmaps, see [ROADMAP.md](./ROADMAP.md).
+- Move an item to [NEXT_SPRINT_CHECKLIST.md](./NEXT_SPRINT_CHECKLIST.md) when it is committed for the next 1-2 day cycle.
+- Move an item to [REFACTOR_CHECKLIST.md](./REFACTOR_CHECKLIST.md) when it is primarily structural/refactor work.
+- Move an item to [ROADMAP.md](./ROADMAP.md) when it is not intended for immediate execution.
 
 [← Back to README](../README.md)

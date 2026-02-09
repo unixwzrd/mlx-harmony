@@ -1,13 +1,21 @@
 # MLX-Harmony Roadmap
 
 **Created**: 2026-01-07
-**Updated**: 2026-02-02
+**Updated**: 2026-02-09
 
 **Project Status**: ✅ v0.2.0 - Standalone Implementation with Markdown Rendering
 
 ## Overview
 
 This roadmap tracks planned enhancements, improvements, and features for `mlx-harmony`. Items are organized by priority and category.
+
+## Document Ownership
+
+- This file is for medium/long-horizon planning and release direction.
+- Do not use this file to track day-to-day execution.
+- Active 1-2 day work is tracked in [NEXT_SPRINT_CHECKLIST.md](./NEXT_SPRINT_CHECKLIST.md).
+- Refactor-specific execution is tracked in [REFACTOR_CHECKLIST.md](./REFACTOR_CHECKLIST.md).
+- Untriaged ideas are captured in [TODO.md](./TODO.md).
 
 ---
 
@@ -122,11 +130,11 @@ The tool infrastructure is in place, but executors need real implementations.
   - [ ] End-to-end chat with tool calls
   - [ ] Error handling edge cases
 
-- [x] **CI/CD Setup**
-  - [x] GitHub Actions workflow (`.github/workflows/ci.yml`)
-  - [x] Test matrix (Python 3.12, 3.13)
-  - [x] Linting (ruff, black)
-  - [x] Coverage reporting (Codecov integration)
+- [ ] **CI/CD Setup**
+  - [ ] GitHub Actions workflow (`.github/workflows/ci.yml`)
+  - [ ] Test matrix (Python 3.12, 3.13)
+  - [ ] Linting (ruff, black)
+  - [ ] Coverage reporting (Codecov integration)
   - [ ] Type checking (mypy or pyright) - optional
 
 **Current Status**: Core unit tests implemented. Uses small test model (`mlx-community/Qwen1.5-0.5B-Chat-4bit`) for inference tests.  

@@ -25,8 +25,9 @@ done
 [[ -n "$MODEL_PATH" && -n "$PROMPT_CONFIG" && -n "$DATASET" && -n "$TURNS" && -n "$PROFILE_OUTPUT" && -n "$BENCH_LOG" ]] \
   || die "Missing required arguments"
 
+set +e
 scripts/build_prompt_stream.py "$DATASET" "$TURNS" | \
-  python3 scripts/profile_module.py \
+  PYTHONFAULTHANDLER=1 python3 scripts/profile_module.py \
     --module mlx_harmony.chat \
     --profile-output "$PROFILE_OUTPUT" \
     -- \
@@ -34,3 +35,19 @@ scripts/build_prompt_stream.py "$DATASET" "$TURNS" | \
     --prompt-config "$PROMPT_CONFIG" \
     --debug-file "debug.log" \
     > "$BENCH_LOG" 2>&1
+rc=$?
+if [[ "$rc" -eq 134 ]]; then
+  echo "[WARNING] CLI profiling aborted with exit 134; retrying once..." >&2
+  scripts/build_prompt_stream.py "$DATASET" "$TURNS" | \
+    PYTHONFAULTHANDLER=1 python3 scripts/profile_module.py \
+      --module mlx_harmony.chat \
+      --profile-output "$PROFILE_OUTPUT" \
+      -- \
+      --model "$MODEL_PATH" \
+      --prompt-config "$PROMPT_CONFIG" \
+      --debug-file "debug.log" \
+      > "$BENCH_LOG" 2>&1
+  rc=$?
+fi
+set -e
+exit "$rc"

@@ -31,7 +31,12 @@ files=(
 moved=0
 for file in "${files[@]}"; do
   if [[ -e "$file" ]]; then
-    mv -f -- "$file" "$DEST_DIR/"
+    # Recreate destination defensively in case another step removed it.
+    mkdir -p "$DEST_DIR"
+    if ! mv -f -- "$file" "$DEST_DIR/"; then
+      echo "[WARNING] Failed to move log artifact: $file -> $DEST_DIR" >&2
+      continue
+    fi
     moved=$((moved + 1))
   fi
 done

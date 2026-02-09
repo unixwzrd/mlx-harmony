@@ -1,11 +1,18 @@
 # Next Sprint Checklist
 
 **Created**: 2026-01-28
-**Updated**: 2026-02-08
+**Updated**: 2026-02-09
 
 ## Purpose
 
 Track the next-sprint work items across major areas (engineering, performance, tooling, and docs).
+
+## Document Ownership
+
+- This is the source of truth for active 1-2 day execution work.
+- Refactor-only tasks live in [REFACTOR_CHECKLIST.md](./REFACTOR_CHECKLIST.md).
+- Long-horizon plans live in [ROADMAP.md](./ROADMAP.md).
+- Untriaged/parking-lot items live in [TODO.md](./TODO.md).
 
 ## Status Legend
 
@@ -24,20 +31,21 @@ Track the next-sprint work items across major areas (engineering, performance, t
 - [x] Switch server STDIO client to the shared front-end/driver loop.
 - [x] Extract command/OOB processing into `chat_commands.py`.
 - [x] Consolidate interactive and prompt-list front-end handling into one shared input-processing path.
+- [x] Remove obsolete `chat_controller.py` and `chat_driver.py` modules after call sites moved.
 - [ ] Complete adapter parity:
   - [x] Route server non-stream chat completions through the shared `run_chat_turn` pipeline.
   - [ ] Move remaining generation/logging behavior behind adapter usage (no duplicated turn pipeline).
   - [ ] Ensure local and server paths use the same prompt/parse/retry flow at the driver boundary.
 - [ ] Complete output parity (CLI vs server-backed client):
-  - [ ] Runtime artifact parity (debug/timing/profile output content and structure).
+  - [x] Runtime artifact parity (debug/timing/profile output content and structure).
   - [ ] User-visible rendering parity (same presented assistant output and formatting).
   - [ ] Match channel handling (`analysis` + `final`) and fallback behavior.
   - [ ] Match Harmony token cleanup/render behavior.
   - [ ] Match markdown rendering behavior.
-- [ ] Complete logging/artifact parity contract:
-  - [ ] Define required artifacts per component (`prompt.*`, `completion.*`, `parse.*`, `retry.*`, debug logs, profile files).
-  - [ ] Enforce same filenames/layout under `runs/.../logs/{cli,server}` and `runs/.../metrics/{cli,server}`.
-  - [ ] Ensure both paths generate the same report/plot/profile outputs.
+- [x] Complete logging/artifact parity contract:
+  - [x] Define required artifacts per component (`prompt.*`, `completion.*`, `parse.*`, `retry.*`, debug logs, profile files).
+  - [x] Enforce same filenames/layout under `runs/.../logs/{cli,server}` and `runs/.../metrics/{cli,server}`.
+  - [x] Ensure both paths generate the same report/plot/profile outputs.
 - [ ] Shared core-path parity:
   - [ ] Use same parameter-setting path for CLI and server-backed client.
   - [ ] Use same model-load/inference path behind adapter boundary where possible.
@@ -61,7 +69,7 @@ Track the next-sprint work items across major areas (engineering, performance, t
 ### Endpoint-to-Function Mapping (Plan)
 
 - [ ] Define the shared backend functions and map them to server endpoints:
-  - [ ] `POST /v1/chat/completions` → `chat_backend.generate` (shared prompt/parse/retry path).
+  - [ ] `POST /v1/chat/completions` → `chat_backend.generate` (shared prompt/parse/retry path)
   - [ ] `GET /v1/models` → `model_registry.list_models` (from profiles/config/models_dir).
   - [ ] `GET /v1/health` → `server_status.health` (model load status + metadata).
   - [ ] `POST /v1/config` (internal) → `config_registry.set_runtime_params` (safe runtime params only).

@@ -67,6 +67,7 @@ finalize_run() {
   fi
   FINALIZED=1
   stop_vmstat || true
+  mkdir -p "$LOGS_DIR" "$METRICS_DIR"
   scripts/preserve_logs.sh "$LOG_SOURCE_DIR" "$LOGS_DIR" || true
   if [[ -f "${LOGS_DIR}/debug.log" ]]; then
     cp -a "${LOGS_DIR}/debug.log" "${METRICS_DIR}/debug.log" || true

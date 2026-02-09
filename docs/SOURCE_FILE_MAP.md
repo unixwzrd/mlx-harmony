@@ -1,7 +1,7 @@
 # Source File Map
 
 **Created**: 2026-01-21
-**Updated**: 2026-02-08
+**Updated**: 2026-02-09
 
 This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmony) and describes their current roles.
 
@@ -18,7 +18,6 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [chat_frontend.py](../src/mlx_harmony/chat_frontend.py): Shared CLI front-end loop (input, commands, rendering).
 - [chat_backend.py](../src/mlx_harmony/chat_backend.py): Front-end backend adapters (local vs HTTP).
 - [chat_commands.py](../src/mlx_harmony/chat_commands.py): Out-of-band command parsing and help/models rendering.
-- [chat_controller.py](../src/mlx_harmony/chat_controller.py): Facade re-export for chat turn + retry/adapter helpers.
 - [chat_cli.py](../src/mlx_harmony/chat_cli.py): CLI argument parsing for chat.
 - [chat_generation.py](../src/mlx_harmony/chat_generation.py): Streaming generation orchestration (no per-token Harmony parsing).
 - [chat_harmony.py](../src/mlx_harmony/chat_harmony.py): Harmony parsing and message extraction.
@@ -33,7 +32,6 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 - [chat_retry.py](../src/mlx_harmony/chat_retry.py): Retry policy + recovery prompt handling.
 - [chat_turn.py](../src/mlx_harmony/chat_turn.py): Turn orchestration (prompt → generate → parse → retry).
 - [chat_types.py](../src/mlx_harmony/chat_types.py): Shared chat dataclasses for controller stack.
-- [chat_driver.py](../src/mlx_harmony/chat_driver.py): Shared front-end loop for CLI/server clients (command handling + rendering).
 
 ## Generation
 
@@ -116,7 +114,6 @@ This document lists the Python modules under [src/mlx_harmony](../src/mlx_harmon
 
 ## Consolidation Notes
 
-- [chat.py](../src/mlx_harmony/chat.py) and [chat_driver.py](../src/mlx_harmony/chat_driver.py) overlap in front-end loop responsibilities.
 - [api_client.py](../src/mlx_harmony/api_client.py) and [generation/client.py](../src/mlx_harmony/generation/client.py) overlap in HTTP adapter responsibilities.
 - [server.py](../src/mlx_harmony/server.py) uses a simplified generation path compared to the CLI stack; keep converging to shared adapters.
 
