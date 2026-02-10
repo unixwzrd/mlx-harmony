@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from mlx_harmony.chat_backend import FrontendBackend, LocalBackend
+from mlx_harmony.backend_contract import BackendGenerationRequest, FrontendBackend
+from mlx_harmony.chat_backend import LocalBackend
 from mlx_harmony.chat_history import (
     display_resume_message,
     find_last_hyperparameters,
@@ -126,7 +127,7 @@ def _process_user_input(
     }
     conversation.append(user_turn)
 
-    backend_result = backend_impl.generate(
+    backend_request = BackendGenerationRequest(
         conversation=conversation,
         hyperparameters=state.hyperparameters,
         last_saved_hyperparameters=state.last_saved_hyperparameters,
@@ -158,6 +159,7 @@ def _process_user_input(
         write_debug_token_texts=write_debug_token_texts,
         write_debug_tokens=write_debug_tokens,
     )
+    backend_result = backend_impl.generate(request=backend_request)
     state.hyperparameters = backend_result.hyperparameters
     state.last_saved_hyperparameters = backend_result.last_saved_hyperparameters
     state.generation_index = backend_result.generation_index

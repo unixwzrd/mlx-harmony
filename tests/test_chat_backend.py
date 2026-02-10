@@ -7,7 +7,12 @@ from typing import Any
 from unittest.mock import patch
 
 from mlx_harmony.backend_api import BackendChatResult
-from mlx_harmony.chat_backend import LocalBackend, ServerBackend
+from mlx_harmony.backend_contract import BackendGenerationRequest
+from mlx_harmony.chat_backend import (
+    LocalBackend,
+    ServerBackend,
+    build_server_generation_request,
+)
 from mlx_harmony.generation.client import GenerationResult
 
 
@@ -84,8 +89,9 @@ def test_local_backend_returns_expected_contract() -> None:
         prompt_tokens=101,
         completion_tokens=202,
     )
+    request = BackendGenerationRequest(**kwargs)
     with patch("mlx_harmony.chat_backend.run_backend_chat", return_value=stub_result) as run_mock:
-        result = LocalBackend().generate(**kwargs)
+        result = LocalBackend().generate(request=request)
 
     run_mock.assert_called_once()
     assert result.handled_conversation is True
@@ -113,7 +119,8 @@ def test_server_backend_maps_request_and_returns_expected_contract() -> None:
             completion_tokens=22,
         )
     )
-    result = ServerBackend(client).generate(**kwargs)
+    request = BackendGenerationRequest(**kwargs)
+    result = ServerBackend(client).generate(request=request)
 
     assert len(client.requests) == 1
     request = client.requests[0]
@@ -131,3 +138,21 @@ def test_server_backend_maps_request_and_returns_expected_contract() -> None:
     assert result.prompt_tokens == 11
     assert result.completion_tokens == 22
     assert result.generation_index == kwargs["generation_index"] + 1
+
+
+def test_build_server_generation_request_filters_invalid_messages() -> None:
+    """Server request builder should only emit valid role/content messages."""
+    kwargs = _backend_kwargs()
+    kwargs["conversation"] = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "hello"},
+        {"role": "", "content": "drop"},
+        {"content": "drop"},
+        {"role": "assistant", "content": None},
+    ]
+    request = BackendGenerationRequest(**kwargs)
+    generation_request = build_server_generation_request(request)
+    assert generation_request.messages == [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "hello"},
+    ]

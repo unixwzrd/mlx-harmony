@@ -28,12 +28,12 @@ Track the next-sprint work items across major areas (engineering, performance, t
 - [ ] Phase 1: close CLI vs server core-path gap first.
   - [x] Unify stream and non-stream server request preparation so both paths use identical backend inputs.
   - [x] Remove remaining duplicated server-side prompt/parse/retry logic.
-  - [ ] Route server turn execution through the same shared turn pipeline used by CLI.
+  - [x] Route server turn execution through the same shared turn pipeline used by CLI.
   - [x] Validate deterministic retry pattern parity (`logs/cli` vs `logs/server`).
 - [ ] Phase 2: lock backend boundary and adapter responsibilities.
-  - [ ] Define one backend service contract used by both local (CLI) and HTTP paths.
-  - [ ] Keep transport adapters thin (local call adapter vs HTTP adapter only).
-  - [ ] Keep frontend behavior shared and transport-agnostic.
+  - [x] Define one backend service contract used by both local (CLI) and HTTP paths.
+  - [x] Keep transport adapters thin (local call adapter vs HTTP adapter only).
+  - [x] Keep frontend behavior shared and transport-agnostic.
 - [ ] Phase 3: add regression guardrails before further refactors.
   - [x] Adapter parity tests (local vs HTTP).
   - [x] Server stream/non-stream parity test uses shared backend execution helpers.

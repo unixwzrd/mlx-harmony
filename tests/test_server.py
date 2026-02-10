@@ -90,6 +90,7 @@ class TestChatCompletions:
         data = response.json()
         assert "choices" in data
         assert len(data["choices"]) > 0
+        assert data["system_fingerprint"] == "mlx-harmony-local"
         assert "message" in data["choices"][0]
         assert data["choices"][0]["message"]["role"] == "assistant"
         assert "content" in data["choices"][0]["message"]
@@ -183,6 +184,7 @@ class TestChatCompletions:
         # Parse first chunk
         first_chunk = json.loads(data_lines[0][6:])  # Remove "data: " prefix
         assert "choices" in first_chunk
+        assert first_chunk["system_fingerprint"] == "mlx-harmony-local"
         assert "delta" in first_chunk["choices"][0]
         assert "content" in first_chunk["choices"][0]["delta"]
 
@@ -210,11 +212,14 @@ class TestChatCompletions:
             last_prompt_start_time=1.0,
         )
         with (
-            patch("mlx_harmony.server._prepare_backend_inputs") as mock_prepare,
-            patch("mlx_harmony.server._execute_backend_turn") as mock_execute,
+            patch("mlx_harmony.server.prepare_backend_inputs") as mock_prepare,
+            patch("mlx_harmony.server.execute_backend_turn") as mock_execute,
         ):
             mock_prepare.return_value = backend_inputs
-            mock_execute.return_value = backend_result
+            mock_execute.return_value = (
+                backend_result,
+                server_module.BackendState(last_prompt_start_time=1.0, generation_index=1),
+            )
 
             non_stream_response = client.post("/v1/chat/completions", json=request_data)
             assert non_stream_response.status_code == 200
@@ -228,7 +233,7 @@ class TestChatCompletions:
         assert mock_prepare.call_count == 2
         assert mock_execute.call_count == 2
         for call in mock_execute.call_args_list:
-            assert call.kwargs["backend_inputs"] is backend_inputs
+            assert call.kwargs["inputs"] is backend_inputs
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_with_profile(
@@ -352,7 +357,7 @@ class TestChatCompletions:
 
             response = client.post("/v1/chat/completions", json=request_data)
             assert response.status_code == 400
-            assert "not found" in response.json()["detail"].lower()
+            assert "not found" in response.json()["error"]["message"].lower()
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_with_seed(self, mock_get_gen, client: TestClient, mock_generator):
@@ -380,7 +385,7 @@ class TestChatCompletions:
         }
         response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 400
-        assert "limited to 1" in response.json()["detail"]
+        assert "limited to 1" in response.json()["error"]["message"]
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_applies_stop_string_non_stream(
@@ -448,7 +453,7 @@ class TestChatCompletions:
             }
             response = client.post("/v1/chat/completions", json=request_data)
             assert response.status_code == 400
-            assert "stop" in response.json()["detail"]
+            assert "stop" in response.json()["error"]["message"]
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_rejects_unsupported_presence_penalty(
@@ -463,7 +468,7 @@ class TestChatCompletions:
         }
         response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 400
-        assert "presence_penalty" in response.json()["detail"]
+        assert "presence_penalty" in response.json()["error"]["message"]
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_rejects_unsupported_tools(
@@ -478,7 +483,7 @@ class TestChatCompletions:
         }
         response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 400
-        assert "tools" in response.json()["detail"]
+        assert "tools" in response.json()["error"]["message"]
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_accepts_response_format_json_object(
@@ -507,7 +512,22 @@ class TestChatCompletions:
         }
         response = client.post("/v1/chat/completions", json=request_data)
         assert response.status_code == 400
-        assert "response_format" in response.json()["detail"]
+        assert "response_format" in response.json()["error"]["message"]
+
+    @patch("mlx_harmony.server._get_generator")
+    def test_chat_completions_rejects_unsupported_logprobs(
+        self, mock_get_gen, client: TestClient, mock_generator
+    ):
+        """Reject unsupported logprobs parameter explicitly."""
+        mock_get_gen.return_value = mock_generator
+        request_data = {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "Hello!"}],
+            "logprobs": True,
+        }
+        response = client.post("/v1/chat/completions", json=request_data)
+        assert response.status_code == 400
+        assert "logprobs" in response.json()["error"]["message"]
 
 
 class TestServerErrors:
@@ -520,8 +540,11 @@ class TestServerErrors:
         }
 
         response = client.post("/v1/chat/completions", json=request_data)
-        # FastAPI should validate and return 422 for missing required field
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
+        body = response.json()
+        assert "error" in body
+        assert body["error"]["type"] == "invalid_request_error"
+        assert "model" in body["error"]["message"].lower()
 
 
 class TestServerHealth:
@@ -545,8 +568,10 @@ class TestServerHealth:
         }
 
         response = client.post("/v1/chat/completions", json=request_data)
-        # FastAPI should validate and return 422 for missing required field
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
+        body = response.json()
+        assert body["error"]["type"] == "invalid_request_error"
+        assert body["error"]["param"] == "messages"
 
     def test_chat_completions_invalid_messages(self, client: TestClient):
         """Test chat completions with invalid messages format."""
@@ -556,7 +581,10 @@ class TestServerHealth:
         }
 
         response = client.post("/v1/chat/completions", json=request_data)
-        assert response.status_code in [400, 422]
+        assert response.status_code == 400
+        body = response.json()
+        assert body["error"]["type"] == "invalid_request_error"
+        assert body["error"]["param"] == "messages"
 
     def test_models_endpoint_reads_models_dir(self, client: TestClient, tmp_path: Path) -> None:
         """Return OpenAI-compatible model list from models directory."""
@@ -570,6 +598,35 @@ class TestServerHealth:
         model_ids = [entry["id"] for entry in body["data"]]
         assert str(tmp_path / "model-a") in model_ids
         assert str(tmp_path / "model-b") in model_ids
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/v1/completions",
+            "/v1/embeddings",
+            "/v1/audio/transcriptions",
+            "/v1/audio/translations",
+            "/v1/audio/speech",
+            "/v1/images/generations",
+            "/v1/images/edits",
+            "/v1/images/variations",
+            "/v1/moderations",
+            "/v1/files",
+            "/v1/batches",
+            "/v1/responses",
+        ],
+    )
+    def test_placeholder_endpoints_return_openai_style_501(
+        self,
+        client: TestClient,
+        path: str,
+    ) -> None:
+        """Verify placeholder endpoints return a standardized 501 error envelope."""
+        response = client.post(path, json={})
+        assert response.status_code == 501
+        body = response.json()
+        assert body["error"]["type"] == "not_implemented_error"
+        assert body["error"]["code"] == "not_implemented"
 
 
 @pytest.mark.requires_model
