@@ -8,7 +8,7 @@ CLI and server paths use the same defaults and precedence rules.
 
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,7 +22,6 @@ from mlx_harmony.chat_commands import (
     render_models_list,
 )
 from mlx_harmony.config import DEFAULT_CONFIG_DIR, load_profiles, resolve_config_path
-from mlx_harmony.hyperparameters import resolve_param
 from mlx_harmony.logging import get_logger
 
 logger = get_logger(__name__)
@@ -62,6 +61,29 @@ def get_truncate_limits(prompt_config: Any | None) -> tuple[int, int]:
         else 1000
     )
     return (thinking_limit, response_limit)
+
+
+def get_turn_limits(prompt_config: Any | None) -> tuple[int, int]:
+    """Get backend turn limits from prompt config.
+
+    Args:
+        prompt_config: Prompt config object or None.
+
+    Returns:
+        Tuple of ``(max_tool_iterations, max_resume_attempts)`` with
+        defaults ``(10, 2)``.
+    """
+    max_tool_iterations = (
+        prompt_config.max_tool_iterations
+        if prompt_config and getattr(prompt_config, "max_tool_iterations", None) is not None
+        else 10
+    )
+    max_resume_attempts = (
+        prompt_config.max_resume_attempts
+        if prompt_config and getattr(prompt_config, "max_resume_attempts", None) is not None
+        else 2
+    )
+    return (int(max_tool_iterations), int(max_resume_attempts))
 
 
 def truncate_text(text: str, limit: int) -> str:
@@ -336,93 +358,93 @@ def build_hyperparameters(
     """
     default_max_tokens = 1024 if is_harmony else 512
     cfg = prompt_config
+
+    def _cfg_value(name: str) -> float | int | bool | str | None:
+        """Read one field from prompt config when present."""
+        if cfg is None:
+            return None
+        return getattr(cfg, name, None)
+
+    def _resolve_hparam(
+        *,
+        name: str,
+        explicit: float | int | bool | str | None,
+        default: float | int | bool | str | None,
+    ) -> float | int | bool | str | None:
+        """Resolve one hyperparameter with shared precedence rules.
+
+        Precedence: explicit CLI/request value > loaded value > config value > default.
+        """
+        if explicit is not None:
+            return explicit
+        loaded_value = loaded_hyperparameters.get(name)
+        if loaded_value is not None:
+            return loaded_value
+        config_value = _cfg_value(name)
+        if config_value is not None:
+            return config_value
+        return default
+
     hyperparameters = {
-        "max_tokens": (
-            args.max_tokens
-            if args.max_tokens is not None
-            else (
-                loaded_hyperparameters.get("max_tokens")
-                or resolve_param(
-                    None,
-                    cfg.max_tokens if cfg else None,
-                    default_max_tokens,
-                )
-            )
+        "max_tokens": _resolve_hparam(
+            name="max_tokens",
+            explicit=args.max_tokens,
+            default=default_max_tokens,
         ),
-        "temperature": (
-            args.temperature
-            if args.temperature is not None
-            else (
-                loaded_hyperparameters.get("temperature")
-                or resolve_param(None, cfg.temperature if cfg else None, None)
-            )
+        "temperature": _resolve_hparam(
+            name="temperature",
+            explicit=args.temperature,
+            default=None,
         ),
-        "top_p": (
-            args.top_p
-            if args.top_p is not None
-            else (
-                loaded_hyperparameters.get("top_p")
-                or resolve_param(None, cfg.top_p if cfg else None, None)
-            )
+        "top_p": _resolve_hparam(
+            name="top_p",
+            explicit=args.top_p,
+            default=None,
         ),
-        "min_p": (
-            args.min_p
-            if args.min_p is not None
-            else (
-                loaded_hyperparameters.get("min_p")
-                or resolve_param(None, cfg.min_p if cfg else None, None)
-            )
+        "min_p": _resolve_hparam(
+            name="min_p",
+            explicit=args.min_p,
+            default=None,
         ),
-        "top_k": (
-            args.top_k
-            if args.top_k is not None
-            else (
-                loaded_hyperparameters.get("top_k")
-                or resolve_param(None, cfg.top_k if cfg else None, None)
-            )
+        "top_k": _resolve_hparam(
+            name="top_k",
+            explicit=args.top_k,
+            default=None,
         ),
-        "repetition_penalty": (
-            args.repetition_penalty
-            if args.repetition_penalty is not None
-            else (
-                loaded_hyperparameters.get("repetition_penalty")
-                or resolve_param(None, cfg.repetition_penalty if cfg else None, None)
-            )
+        "repetition_penalty": _resolve_hparam(
+            name="repetition_penalty",
+            explicit=args.repetition_penalty,
+            default=None,
         ),
-        "repetition_context_size": (
-            args.repetition_context_size
-            if args.repetition_context_size is not None
-            else (
-                loaded_hyperparameters.get("repetition_context_size")
-                or resolve_param(None, cfg.repetition_context_size if cfg else None, None)
-            )
+        "repetition_context_size": _resolve_hparam(
+            name="repetition_context_size",
+            explicit=args.repetition_context_size,
+            default=None,
         ),
-        "seed": (
-            args.seed
-            if args.seed is not None
-            else (
-                loaded_hyperparameters.get("seed")
-                if loaded_hyperparameters.get("seed") is not None
-                else resolve_param(None, cfg.seed if cfg else None, -1)
-            )
+        "xtc_probability": _resolve_hparam(
+            name="xtc_probability",
+            explicit=args.xtc_probability,
+            default=None,
         ),
-        "loop_detection": (
-            args.loop_detection
-            if args.loop_detection is not None
-            else (
-                loaded_hyperparameters.get("loop_detection")
-                if loaded_hyperparameters.get("loop_detection") is not None
-                else resolve_param(None, cfg.loop_detection if cfg else None, "cheap")
-            )
+        "xtc_threshold": _resolve_hparam(
+            name="xtc_threshold",
+            explicit=args.xtc_threshold,
+            default=None,
         ),
-        "reseed_each_turn": (
-            args.reseed_each_turn
-            if args.reseed_each_turn is not None
-            else (
-                loaded_hyperparameters.get("reseed_each_turn")
-                if loaded_hyperparameters.get("reseed_each_turn") is not None
-                else resolve_param(None, cfg.reseed_each_turn if cfg else None, False)
-            )
+        "seed": _resolve_hparam(
+            name="seed",
+            explicit=args.seed,
+            default=-1,
+        ),
+        "loop_detection": _resolve_hparam(
+            name="loop_detection",
+            explicit=args.loop_detection,
+            default="cheap",
+        ),
+        "reseed_each_turn": _resolve_hparam(
+            name="reseed_each_turn",
+            explicit=args.reseed_each_turn,
+            default=False,
         ),
     }
     return {k: v for k, v in hyperparameters.items() if v is not None}
@@ -453,10 +475,12 @@ def build_hyperparameters_from_request(
         top_k=getattr(request, "top_k", None),
         repetition_penalty=getattr(request, "repetition_penalty", None),
         repetition_context_size=getattr(request, "repetition_context_size", None),
-        loop_detection=None,
+        xtc_probability=getattr(request, "xtc_probability", None),
+        xtc_threshold=getattr(request, "xtc_threshold", None),
+        loop_detection=getattr(request, "loop_detection", None),
         max_context_tokens=None,
         seed=getattr(request, "seed", None),
-        reseed_each_turn=None,
+        reseed_each_turn=getattr(request, "reseed_each_turn", None),
     )
     return build_hyperparameters(
         args,
@@ -464,3 +488,76 @@ def build_hyperparameters_from_request(
         prompt_config=prompt_config,
         is_harmony=is_harmony,
     )
+
+
+def sampling_fields_from_hyperparameters(
+    hyperparameters: Mapping[str, float | int | bool | str],
+) -> dict[str, float | int | None]:
+    """Build normalized sampling fields from shared hyperparameters.
+
+    Args:
+        hyperparameters: Shared runtime hyperparameter map.
+
+    Returns:
+        Sampling field map containing only transport/model generation fields.
+        Values are normalized to numeric scalars when present; missing values
+        are returned as ``None``.
+    """
+
+    def _as_float(key: str) -> float | None:
+        value = hyperparameters.get(key)
+        if value is None:
+            return None
+        return float(value)
+
+    def _as_int(key: str) -> int | None:
+        value = hyperparameters.get(key)
+        if value is None:
+            return None
+        return int(value)
+
+    return {
+        "temperature": _as_float("temperature"),
+        "max_tokens": _as_int("max_tokens"),
+        "top_p": _as_float("top_p"),
+        "min_p": _as_float("min_p"),
+        "top_k": _as_int("top_k"),
+        "repetition_penalty": _as_float("repetition_penalty"),
+        "repetition_context_size": _as_int("repetition_context_size"),
+        "xtc_probability": _as_float("xtc_probability"),
+        "xtc_threshold": _as_float("xtc_threshold"),
+        "seed": _as_int("seed"),
+    }
+
+
+def transport_fields_from_hyperparameters(
+    hyperparameters: Mapping[str, float | int | bool | str],
+) -> dict[str, float | int | bool | str | None]:
+    """Build normalized HTTP transport fields from shared hyperparameters.
+
+    Args:
+        hyperparameters: Shared runtime hyperparameter map.
+
+    Returns:
+        Transport field map used by server-backed adapters.
+    """
+    sampling_fields = sampling_fields_from_hyperparameters(hyperparameters)
+
+    loop_detection_raw = hyperparameters.get("loop_detection")
+    loop_detection = None if loop_detection_raw is None else str(loop_detection_raw)
+
+    reseed_raw = hyperparameters.get("reseed_each_turn")
+    if reseed_raw is None:
+        reseed_each_turn = None
+    elif isinstance(reseed_raw, bool):
+        reseed_each_turn = reseed_raw
+    elif isinstance(reseed_raw, str):
+        reseed_each_turn = reseed_raw.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        reseed_each_turn = bool(reseed_raw)
+
+    return {
+        **sampling_fields,
+        "loop_detection": loop_detection,
+        "reseed_each_turn": reseed_each_turn,
+    }

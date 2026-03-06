@@ -11,11 +11,11 @@ case "${RUN_MODE}" in
 esac
 
 DATASET="${1:-tests/data/english.json}"
-MODEL_PATH="${2:-models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx}"
+MODEL_PATH="${2:-models/huizimao-gpt-oss-20b-uncensored-mxfp4-q4-hi-mlx}"
 PROMPT_CONFIG="${3:-configs/prompt-config.deterministic.json}"
 TURN_LIMIT="${4:-20}"
 RUN_BASE="${RUN_BASE:-runs}"
-RUN_LABEL="${RUN_LABEL:-q8-20prompt}"
+RUN_LABEL="${RUN_LABEL:-q4-20prompt}"
 RUN_ID="${RUN_ID:-save-$(date +%Y%m%d-%H%M%S)-${RUN_LABEL}}"
 RUN_DIR="${RUN_BASE}/${RUN_ID}"
 

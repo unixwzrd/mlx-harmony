@@ -1,7 +1,7 @@
 # Next Sprint Checklist
 
 **Created**: 2026-01-28
-**Updated**: 2026-02-09
+**Updated**: 2026-02-13
 
 ## Purpose
 
@@ -34,6 +34,12 @@ Track the next-sprint work items across major areas (engineering, performance, t
   - [x] Define one backend service contract used by both local (CLI) and HTTP paths.
   - [x] Keep transport adapters thin (local call adapter vs HTTP adapter only).
   - [x] Keep frontend behavior shared and transport-agnostic.
+- [x] Phase 2.5: extract server orchestration into shared API service modules.
+  - [x] Move request validation/error envelope mapping into shared route helpers.
+  - [x] Move chat-completions route registration into shared route helper.
+  - [x] Move models/health/placeholder endpoint registration into shared route helpers.
+  - [x] Move chat-completions orchestration into shared API service handler.
+  - [x] Move model cache and turn-state runtime management into shared API service state objects.
 - [ ] Phase 3: add regression guardrails before further refactors.
   - [x] Adapter parity tests (local vs HTTP).
   - [x] Server stream/non-stream parity test uses shared backend execution helpers.
@@ -53,7 +59,7 @@ Track the next-sprint work items across major areas (engineering, performance, t
 - [x] Remove obsolete `chat_controller.py` and `chat_driver.py` modules after call sites moved.
 - [ ] Complete adapter parity:
   - [x] Route server non-stream chat completions through the shared `run_chat_turn` pipeline.
-  - [ ] Move remaining generation/logging behavior behind adapter usage (no duplicated turn pipeline).
+  - [x] Move remaining generation/logging behavior behind adapter usage (no duplicated turn pipeline).
   - [ ] Ensure local and server paths use the same prompt/parse/retry flow at the driver boundary.
 - [ ] Complete output parity (CLI vs server-backed client):
   - [x] Runtime artifact parity (debug/timing/profile output content and structure).
@@ -66,8 +72,20 @@ Track the next-sprint work items across major areas (engineering, performance, t
   - [x] Enforce same filenames/layout under `runs/.../logs/{cli,server}` and `runs/.../metrics/{cli,server}`.
   - [x] Ensure both paths generate the same report/plot/profile outputs.
 - [ ] Shared core-path parity:
-  - [ ] Use same parameter-setting path for CLI and server-backed client.
-  - [ ] Use same model-load/inference path behind adapter boundary where possible.
+  - [x] Use same parameter-setting path for CLI and server-backed client.
+  - [x] Route server-adapter transport payload fields from the shared frontend/backend hyperparameter map (including seed) instead of adapter-local defaults.
+  - [x] Reuse one shared sampling-field mapper in both local generation and HTTP transport request-building paths.
+  - [x] Carry shared loop/reseed controls (`loop_detection`, `reseed_each_turn`) through HTTP payload + request normalization to match local CLI behavior.
+  - [x] Carry XTC controls (`xtc_probability`, `xtc_threshold`) through shared hyperparameter build, HTTP payload, and local generation path.
+  - [x] Use one shared precedence helper for CLI/request hyperparameter merge behavior.
+  - [x] Use one shared turn-limit resolver (`max_tool_iterations`, `max_resume_attempts`) in both CLI frontend and server turn execution.
+  - [x] Use one shared local-request to backend-input mapper (`build_backend_inputs_from_generation_request`) to remove adapter-local field mapping.
+  - [x] Extract shared backend-response postprocessing helper (stop truncation + analysis gating + finish-reason mapping) to reduce server-only duplication.
+  - [x] Extract shared stream/non-stream API response builders in `api_service` so server route handling keeps one response-assembly path.
+  - [x] Move generator cache + turn runtime state primitives into shared `backend_runtime` so model lifecycle/state logic is reusable outside server wiring.
+  - [~] Use same model-load/inference path behind adapter boundary where possible.
+  - [x] Local backend now uses shared backend-runtime execution helper (`execute_backend_turn`) rather than direct duplicate call wiring.
+  - [x] CLI bootstrap and server runtime cache now both use shared generator loader (`load_runtime_generator`) for model initialization policy.
   - [ ] Keep only front-end transport differences (local function calls vs HTTP).
 - [ ] Startup/model lifecycle parity:
   - [ ] Add explicit server preload/warmup behavior at startup.

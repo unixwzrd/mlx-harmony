@@ -50,7 +50,11 @@ class ChatRequest(BaseModel):
     top_k: Optional[int] = None
     repetition_penalty: Optional[float] = None
     repetition_context_size: Optional[int] = None
+    xtc_probability: Optional[float] = None
+    xtc_threshold: Optional[float] = None
     seed: Optional[int] = None
+    loop_detection: Optional[str] = None
+    reseed_each_turn: Optional[bool] = None
     profile: Optional[str] = None
     prompt_config: Optional[str] = None
     profiles_file: Optional[str] = None

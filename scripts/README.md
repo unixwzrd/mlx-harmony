@@ -42,7 +42,7 @@ Defaults:
 
 - `mode`: `all`
 - `dataset`: `tests/data/english.json`
-- `model_path`: `models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx`
+- `model_path`: `models/huizimao-gpt-oss-20b-uncensored-mxfp4-q4-hi-mlx`
 - `prompt_config`: `configs/prompt-config.deterministic.json`
 - `turn_limit`: `20`
 

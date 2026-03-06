@@ -128,7 +128,7 @@ For repeatable profiling without typing delays, use the stdin harness and determ
 
 ```bash
 scripts/profile_chat_stdin.sh \
-  models/huizimao-gpt-oss-20b-uncensored-mxfp4-q8-hi-mlx
+  models/huizimao-gpt-oss-20b-uncensored-mxfp4-q4-hi-mlx
 ```
 
 Deterministic config: [configs/prompt-config.deterministic.json](configs/prompt-config.deterministic.json)

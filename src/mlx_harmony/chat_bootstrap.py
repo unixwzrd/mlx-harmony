@@ -4,6 +4,7 @@ import argparse
 from dataclasses import dataclass
 from typing import Any
 
+from mlx_harmony.backend_runtime import load_runtime_generator
 from mlx_harmony.chat_cli import build_parser
 from mlx_harmony.chat_history import (
     load_chat_session,
@@ -24,7 +25,6 @@ from mlx_harmony.config import (
 )
 from mlx_harmony.logging import configure_debug_file_logging, get_logger
 from mlx_harmony.runtime.context import RunContext
-from mlx_harmony.runtime.model_init import initialize_generator
 from mlx_harmony.tools import get_tools_for_model
 
 logger = get_logger(__name__)
@@ -106,12 +106,13 @@ def bootstrap_chat() -> BootstrapResult:
         mlock = prompt_config.mlock
     lazy = args.lazy if args.lazy is not None else False
 
-    generator = initialize_generator(
+    generator = load_runtime_generator(
         model_path=model_path,
-        prompt_config=prompt_config,
         prompt_config_path=prompt_config_path,
+        prompt_config=prompt_config,
         lazy=lazy,
-        mlock=mlock or False,
+        mlock=bool(mlock),
+        logger=logger,
     )
 
     tools = []

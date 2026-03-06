@@ -52,6 +52,11 @@ class ApiClient:
         top_k: Optional[int] = None,
         repetition_penalty: Optional[float] = None,
         repetition_context_size: Optional[int] = None,
+        xtc_probability: Optional[float] = None,
+        xtc_threshold: Optional[float] = None,
+        seed: Optional[int] = None,
+        loop_detection: Optional[str] = None,
+        reseed_each_turn: Optional[bool] = None,
         return_analysis: Optional[bool] = None,
     ) -> dict:
         url = f"http://{self._config.host}:{self._config.port}/v1/chat/completions"
@@ -73,6 +78,16 @@ class ApiClient:
             payload["repetition_penalty"] = repetition_penalty
         if repetition_context_size is not None:
             payload["repetition_context_size"] = repetition_context_size
+        if xtc_probability is not None:
+            payload["xtc_probability"] = xtc_probability
+        if xtc_threshold is not None:
+            payload["xtc_threshold"] = xtc_threshold
+        if seed is not None:
+            payload["seed"] = seed
+        if loop_detection is not None:
+            payload["loop_detection"] = loop_detection
+        if reseed_each_turn is not None:
+            payload["reseed_each_turn"] = reseed_each_turn
         if self._config.model:
             payload["model"] = self._config.model
         if self._config.profile:

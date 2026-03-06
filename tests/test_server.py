@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 import mlx_harmony.server as server_module
@@ -195,31 +196,17 @@ class TestChatCompletions:
     def test_chat_completions_stream_nonstream_use_shared_backend_executor(
         self, mock_get_gen, client: TestClient, mock_generator
     ):
-        """Ensure stream and non-stream paths both use shared backend helpers."""
+        """Ensure stream and non-stream paths both use shared service handler."""
         mock_get_gen.return_value = mock_generator
         request_data = {
             "model": "test-model",
             "messages": [{"role": "user", "content": "Hello!"}],
             "max_tokens": 10,
         }
-        backend_inputs = {"conversation": [], "hyperparameters": {}}
-        backend_result = BackendChatResult(
-            assistant_text="shared response",
-            analysis_text=None,
-            prompt_tokens=4,
-            completion_tokens=2,
-            finish_reason="stop",
-            last_prompt_start_time=1.0,
-        )
         with (
-            patch("mlx_harmony.server.prepare_backend_inputs") as mock_prepare,
-            patch("mlx_harmony.server.execute_backend_turn") as mock_execute,
+            patch("mlx_harmony.server.handle_chat_completions_request") as mock_handler,
         ):
-            mock_prepare.return_value = backend_inputs
-            mock_execute.return_value = (
-                backend_result,
-                server_module.BackendState(last_prompt_start_time=1.0, generation_index=1),
-            )
+            mock_handler.return_value = JSONResponse({"id": "chatcmpl-test"}, status_code=200)
 
             non_stream_response = client.post("/v1/chat/completions", json=request_data)
             assert non_stream_response.status_code == 200
@@ -228,12 +215,10 @@ class TestChatCompletions:
             stream_request_data["stream"] = True
             stream_response = client.post("/v1/chat/completions", json=stream_request_data)
             assert stream_response.status_code == 200
-            assert "data: [DONE]" in stream_response.text
 
-        assert mock_prepare.call_count == 2
-        assert mock_execute.call_count == 2
-        for call in mock_execute.call_args_list:
-            assert call.kwargs["inputs"] is backend_inputs
+        assert mock_handler.call_count == 2
+        for call in mock_handler.call_args_list:
+            assert call.kwargs["request"].model == "test-model"
 
     @patch("mlx_harmony.server._get_generator")
     def test_chat_completions_with_profile(

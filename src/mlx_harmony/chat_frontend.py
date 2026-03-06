@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from mlx_harmony.backend_contract import BackendGenerationRequest, FrontendBackend
+from mlx_harmony.backend_runtime import collect_mlx_memory_stats
 from mlx_harmony.chat_backend import LocalBackend
 from mlx_harmony.chat_history import (
     display_resume_message,
@@ -20,31 +21,12 @@ from mlx_harmony.chat_io import read_user_input, try_save_conversation
 from mlx_harmony.chat_render import display_assistant, display_thinking
 from mlx_harmony.chat_utils import (
     build_hyperparameters,
+    get_turn_limits,
     parse_command,
     resolve_max_context_tokens,
     truncate_text,
 )
 from mlx_harmony.config import apply_placeholders
-
-
-def _collect_memory_stats() -> dict[str, Any]:
-    try:
-        import mlx.core as mx
-    except Exception:
-        return {}
-    if not hasattr(mx, "metal"):
-        return {}
-    try:
-        info = mx.metal.device_info()
-    except Exception:
-        return {}
-    if not isinstance(info, dict):
-        return {}
-    stats: dict[str, Any] = {}
-    for key, value in info.items():
-        if isinstance(value, (int, float, str)):
-            stats[f"memory_{key}"] = value
-    return stats
 from mlx_harmony.logging import get_logger
 from mlx_harmony.runtime.context import RunContext
 
@@ -152,7 +134,7 @@ def _process_user_input(
         display_assistant=display_assistant,
         display_thinking=display_thinking,
         truncate_text=truncate_text,
-        collect_memory_stats=_collect_memory_stats,
+        collect_memory_stats=lambda: collect_mlx_memory_stats(enabled=True),
         write_debug_metrics=write_debug_metrics,
         write_debug_response=write_debug_response,
         write_debug_info=write_debug_info,
@@ -254,8 +236,7 @@ def run_cli_frontend(
             }
         )
 
-    max_tool_iterations = 10
-    max_resume_attempts = 2
+    max_tool_iterations, max_resume_attempts = get_turn_limits(context.prompt_config)
 
     state = _FrontendRuntimeState(
         hyperparameters=build_hyperparameters(
@@ -386,8 +367,7 @@ def run_prompt_frontend(
     models_dir = None
     if context.prompt_config is not None:
         models_dir = getattr(context.prompt_config, "models_dir", None)
-    max_tool_iterations = 10
-    max_resume_attempts = 2
+    max_tool_iterations, max_resume_attempts = get_turn_limits(context.prompt_config)
 
     state = _FrontendRuntimeState(
         hyperparameters=build_hyperparameters(

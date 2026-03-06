@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from mlx_harmony.backend_api import BackendChatResult
 from mlx_harmony.backend_contract import BackendGenerationRequest
+from mlx_harmony.backend_runtime import BackendState
 from mlx_harmony.chat_backend import (
     LocalBackend,
     ServerBackend,
@@ -28,6 +29,11 @@ def _backend_kwargs() -> dict[str, Any]:
             "top_k": 40,
             "repetition_penalty": 1.1,
             "repetition_context_size": 20,
+            "xtc_probability": 0.25,
+            "xtc_threshold": 0.1,
+            "seed": 1234,
+            "loop_detection": "full",
+            "reseed_each_turn": True,
         },
         "last_saved_hyperparameters": {
             "temperature": 0.7,
@@ -90,7 +96,13 @@ def test_local_backend_returns_expected_contract() -> None:
         completion_tokens=202,
     )
     request = BackendGenerationRequest(**kwargs)
-    with patch("mlx_harmony.chat_backend.run_backend_chat", return_value=stub_result) as run_mock:
+    with patch(
+        "mlx_harmony.chat_backend.execute_backend_turn",
+        return_value=(
+            stub_result,
+            BackendState(last_prompt_start_time=125.0, generation_index=7),
+        ),
+    ) as run_mock:
         result = LocalBackend().generate(request=request)
 
     run_mock.assert_called_once()
@@ -100,6 +112,35 @@ def test_local_backend_returns_expected_contract() -> None:
     assert result.generation_index == 7
     assert result.prompt_tokens == 101
     assert result.completion_tokens == 202
+
+
+def test_local_backend_uses_shared_input_builder() -> None:
+    """Local backend should use shared backend-runtime request input mapper."""
+    kwargs = _backend_kwargs()
+    request = BackendGenerationRequest(**kwargs)
+    stub_result = BackendChatResult(
+        assistant_text="",
+        analysis_text=None,
+        finish_reason="stop",
+        hyperparameters=kwargs["hyperparameters"],
+        last_saved_hyperparameters=kwargs["last_saved_hyperparameters"],
+        generation_index=8,
+        last_prompt_start_time=130.0,
+        prompt_tokens=12,
+        completion_tokens=13,
+    )
+    with patch(
+        "mlx_harmony.chat_backend.build_backend_inputs_from_generation_request",
+        return_value="mapped-inputs",
+    ) as map_mock, patch(
+        "mlx_harmony.chat_backend.execute_backend_turn",
+        return_value=(stub_result, BackendState(last_prompt_start_time=130.0, generation_index=8)),
+    ) as run_mock:
+        LocalBackend().generate(request=request)
+
+    map_mock.assert_called_once_with(request=request)
+    run_mock.assert_called_once()
+    assert run_mock.call_args.kwargs["inputs"] == "mapped-inputs"
 
 
 def test_server_backend_maps_request_and_returns_expected_contract() -> None:
@@ -131,6 +172,11 @@ def test_server_backend_maps_request_and_returns_expected_contract() -> None:
     assert request.top_k == 40
     assert request.repetition_penalty == 1.1
     assert request.repetition_context_size == 20
+    assert request.xtc_probability == 0.25
+    assert request.xtc_threshold == 0.1
+    assert request.seed == 1234
+    assert request.loop_detection == "full"
+    assert request.reseed_each_turn is True
 
     assert result.handled_conversation is False
     assert result.assistant_text == "remote assistant text"
@@ -156,3 +202,14 @@ def test_build_server_generation_request_filters_invalid_messages() -> None:
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "hello"},
     ]
+
+
+def test_build_server_generation_request_preserves_none_values() -> None:
+    """Unset hyperparameters should remain unset in transport payload."""
+    kwargs = _backend_kwargs()
+    kwargs["hyperparameters"] = {}
+    request = BackendGenerationRequest(**kwargs)
+    generation_request = build_server_generation_request(request)
+    assert generation_request.temperature is None
+    assert generation_request.max_tokens is None
+    assert generation_request.seed is None

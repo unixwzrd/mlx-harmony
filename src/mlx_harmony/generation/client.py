@@ -19,13 +19,18 @@ class GenerationRequest:
     """Generation request payload sent to the server."""
 
     messages: list[dict[str, str]]
-    temperature: float = 1.0
-    max_tokens: int = 512
-    top_p: float = 0.0
-    min_p: float = 0.0
-    top_k: int = 0
-    repetition_penalty: float = 0.0
-    repetition_context_size: int = 20
+    temperature: float | None = None
+    max_tokens: int | None = None
+    top_p: float | None = None
+    min_p: float | None = None
+    top_k: int | None = None
+    repetition_penalty: float | None = None
+    repetition_context_size: int | None = None
+    xtc_probability: float | None = None
+    xtc_threshold: float | None = None
+    seed: int | None = None
+    loop_detection: str | None = None
+    reseed_each_turn: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -100,7 +105,11 @@ class ServerGenerationClient:
             top_k=request.top_k,
             repetition_penalty=request.repetition_penalty,
             repetition_context_size=request.repetition_context_size,
-            return_analysis=True,
+            xtc_probability=request.xtc_probability,
+            xtc_threshold=request.xtc_threshold,
+            seed=request.seed,
+            loop_detection=request.loop_detection,
+            reseed_each_turn=request.reseed_each_turn,
         )
         choices = body.get("choices", [])
         if not choices:

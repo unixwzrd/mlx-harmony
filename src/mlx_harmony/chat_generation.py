@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from mlx_harmony.chat_utils import sampling_fields_from_hyperparameters
 from mlx_harmony.logging import get_logger
 
 logger = get_logger(__name__)
@@ -25,20 +26,23 @@ def stream_generation(
     repeat_token_count = 16
     low_var_window = 64
     low_var_unique_max = 4
+    sampling_fields = sampling_fields_from_hyperparameters(hyperparameters)
 
     for token_id in generator.generate(
         prompt_tokens=prompt_token_ids,
         messages=conversation,
-        temperature=hyperparameters.get("temperature"),
-        max_tokens=hyperparameters.get("max_tokens"),
-        top_p=hyperparameters.get("top_p"),
-        min_p=hyperparameters.get("min_p"),
-        top_k=hyperparameters.get("top_k"),
-        repetition_penalty=hyperparameters.get("repetition_penalty"),
-        repetition_context_size=hyperparameters.get("repetition_context_size"),
+        temperature=sampling_fields["temperature"],
+        max_tokens=sampling_fields["max_tokens"],
+        top_p=sampling_fields["top_p"],
+        min_p=sampling_fields["min_p"],
+        top_k=sampling_fields["top_k"],
+        repetition_penalty=sampling_fields["repetition_penalty"],
+        repetition_context_size=sampling_fields["repetition_context_size"],
+        xtc_probability=sampling_fields["xtc_probability"],
+        xtc_threshold=sampling_fields["xtc_threshold"],
         loop_detection=hyperparameters.get("loop_detection"),
         system_message=system_message,
-        seed=seed,
+        seed=sampling_fields["seed"] if seed is None else seed,
     ):
         token_int = int(token_id)
         tokens.append(token_int)
